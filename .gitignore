@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local env — never commit secrets
+.env.local
+.env*.local
+
+.vercel
