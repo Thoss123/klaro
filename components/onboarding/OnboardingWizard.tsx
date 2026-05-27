@@ -1,19 +1,94 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import AuthForm from '@/components/auth/AuthForm';
 import { OnboardingData } from '@/lib/types';
 import { useRouter } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { ensureDefaultProject, createSession } from '@/lib/supabase-chat';
+import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 
-const BRANCHE_OPTIONS = ['Steuerberatung', 'Handwerk', 'E-Commerce', 'Agentur', 'Beratung', 'Immobilien', 'Sonstiges'];
-const GROESSE_OPTIONS = ['Solo', '2–5', '6–20', '21–50', '50+'];
-const ERFAHRUNG_OPTIONS = ['Komplettes Neuland', 'Haben schon damit rumgespielt', 'Nutzen es regelmäßig aber unsystematisch', 'Haben schon Workflows im Einsatz'];
-const ZIEL_OPTIONS = ['Zeit sparen bei repetitiven Aufgaben', 'Mehr Umsatz durch bessere Prozesse', 'Wissen besser nutzen', 'Kosten senken', 'Bin noch unsicher'];
-const UMSETZER_OPTIONS = ['Ich selbst', 'Jemand intern', 'Externer Dienstleister', 'Noch unklar'];
-const HINDERNIS_OPTIONS = ['Keine Zeit uns damit zu beschäftigen', 'Fehlendes Know-How intern', 'Unsicherheit wegen Datenschutz', 'Wir wissen nicht, wo wir anfangen sollen', 'Bisher keine passenden Tools gefunden'];
-const TEMPO_OPTIONS = ['Diese Woche', 'Innerhalb eines Monats', 'Kein Zeitdruck'];
+type WizardOption = { label: string; value: string };
+
+const BRANCHE_OPTIONS: WizardOption[] = [
+  { label: 'Steuerberatung & Wirtschaftsprüfung', value: 'Steuerberatung' },
+  { label: 'Handwerk & Produktion', value: 'Handwerk' },
+  { label: 'E-Commerce & Online-Handel', value: 'E-Commerce' },
+  { label: 'Marketing-, Kreativ- oder Digitalagentur', value: 'Agentur' },
+  { label: 'Beratung & professionelle Dienstleistung', value: 'Beratung' },
+  { label: 'Immobilien', value: 'Immobilien' },
+  { label: 'Andere Branche', value: 'Sonstiges' },
+];
+
+const GROESSE_OPTIONS: WizardOption[] = [
+  { label: 'Nur ich — Selbstständig oder Freelancer', value: 'solo' },
+  { label: 'Kleines Team: 2–5 Mitarbeiter', value: 'small' },
+  { label: 'Wachsendes Team: 6–20 Mitarbeiter', value: 'medium' },
+  { label: 'Mittelstand: 21–50 Mitarbeiter', value: 'large' },
+  { label: 'Größerer Betrieb: mehr als 50 Mitarbeiter', value: 'large_plus' },
+];
+
+const ERFAHRUNG_OPTIONS: WizardOption[] = [
+  { label: 'Noch gar nicht — wir fangen bei null an', value: 'Komplettes Neuland' },
+  { label: 'Wir haben schon mit ChatGPT & Co. experimentiert', value: 'Haben schon damit rumgespielt' },
+  { label: 'Einzelne Tools laufen, aber ohne System', value: 'Nutzen es regelmäßig aber unsystematisch' },
+  { label: 'Es gibt schon Automatisierungen oder Workflows', value: 'Haben schon Workflows im Einsatz' },
+];
+
+/** Stored in DB as readable text — chat route matches via keywords */
+const ZIEL_OPTIONS: WizardOption[] = [
+  {
+    label: 'Wir wissen noch nicht, wo wir mit KI und Automatisierung anfangen sollen',
+    value: 'Weiß nicht, wo wir anfangen sollen',
+  },
+  {
+    label: 'Wir haben schon konkrete Ideen — brauchen einen klaren Umsetzungsplan',
+    value: 'Habe schon konkrete Ideen',
+  },
+  {
+    label: 'Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt',
+    value: 'Will wissen, ob KI für uns sinnvoll ist',
+  },
+  {
+    label: 'Wir wollen unserer IT oder einem Dienstleister ein klares Briefing geben',
+    value: 'Will meiner IT ein Briefing geben',
+  },
+];
+
+const UMSETZER_OPTIONS: WizardOption[] = [
+  { label: 'Ich setze es selbst um', value: 'Ich selbst' },
+  { label: 'Jemand im Team (z. B. IT, Ops, Assistenz)', value: 'Jemand intern' },
+  { label: 'Ein externer Dienstleister oder Agentur', value: 'Externer Dienstleister' },
+  { label: 'Noch unklar — das klären wir im Gespräch', value: 'Noch unklar' },
+];
+
+const HINDERNIS_OPTIONS: WizardOption[] = [
+  { label: 'Keine Zeit, sich intensiv damit zu beschäftigen', value: 'Keine Zeit uns damit zu beschäftigen' },
+  { label: 'Zu wenig technisches Know-how im Team', value: 'Fehlendes Know-How intern' },
+  { label: 'Bedenken zu Datenschutz, Sicherheit oder Compliance', value: 'Unsicherheit wegen Datenschutz' },
+  { label: 'Unklarheit, welcher Prozess den größten Hebel hat', value: 'Wir wissen nicht, wo wir anfangen sollen' },
+  { label: 'Bisher keine passenden Tools oder Anbieter gefunden', value: 'Bisher keine passenden Tools gefunden' },
+];
+
+const TEMPO_OPTIONS: WizardOption[] = [
+  { label: 'So schnell wie möglich — erste Quick Wins diese Woche', value: 'Diese Woche' },
+  { label: 'Innerhalb des nächsten Monats', value: 'Innerhalb eines Monats' },
+  { label: 'Kein fester Zeitdruck — wir planen strukturiert', value: 'Kein Zeitdruck' },
+];
+
+const ROLLE_OPTIONS: WizardOption[] = [
+  { label: 'Geschäftsführung / Inhaber (CEO)', value: 'CEO / Geschäftsführung' },
+  { label: 'Operatives Management / Teamleitung', value: 'Operatives Management' },
+  { label: 'IT / Technik / Systemadministration', value: 'IT / Technik' },
+  { label: 'Marketing, Vertrieb oder Projektleitung', value: 'Marketing / Vertrieb / Projektleitung' },
+  { label: 'Beratung / Fachberater (intern)', value: 'Beratung / Fachberater' },
+  { label: 'Externer Dienstleister oder Agentur', value: 'Externer Dienstleister' },
+  { label: 'Sonstige Rolle', value: 'Sonstige Rolle' },
+];
+
+const TOTAL_STEPS = 11;
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -27,34 +102,62 @@ export default function OnboardingWizard() {
     setData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAuthSuccess = () => {
-    // Save onboarding data to localstorage temporarily so chat page can pick it up
-    // In a real app we might pass it via query params or a global state store
-    const intro = localStorage.getItem('klaro_intro_message');
-    const payload = intro ? { ...data, intro_message: intro } : data;
-    localStorage.setItem('pending_onboarding', JSON.stringify(payload));
-    localStorage.removeItem('klaro_intro_message');
-    router.push('/chat?new=true');
+  const buildPayload = (): OnboardingData => {
+    const intro = typeof window !== 'undefined' ? localStorage.getItem('klaro_intro_message') : null;
+    return (intro ? { ...data, intro_message: intro } : data) as OnboardingData;
+  };
+
+  useEffect(() => {
+    if (step === TOTAL_STEPS) {
+      localStorage.setItem('pending_onboarding', JSON.stringify(buildPayload()));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, data]);
+
+  const handleAuthSuccess = async () => {
+    const payload = buildPayload();
+    const supabase = createSupabaseBrowserClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.push('/chat?new=true');
+      return;
+    }
+
+    try {
+      const userId = session.user.id;
+      const projectId = await ensureDefaultProject(userId);
+      const sessionId = await createSession(payload, userId, 'diagnose', undefined, undefined, projectId);
+      localStorage.removeItem('pending_onboarding');
+      localStorage.removeItem('klaro_intro_message');
+      router.push(`/chat?id=${sessionId}`);
+    } catch (e) {
+      console.error('Onboarding-Persistierung in die DB fehlgeschlagen:', e);
+      localStorage.setItem('pending_onboarding', JSON.stringify(payload));
+      router.push('/chat?new=true');
+    }
   };
 
   const currentQuestion = () => {
     switch (step) {
       case 1:
         return (
-          <QuestionStep 
-            title="In welcher Branche bist du unterwegs?"
+          <QuestionStep
+            title="In welcher Branche ist dein Unternehmen tätig?"
+            subtitle="Damit Klaro von Anfang an branchentypische Prozesse versteht."
             options={BRANCHE_OPTIONS}
             value={data.branche}
             onSelect={(v) => updateData('branche', v)}
             onNext={nextStep}
             onBack={prevStep}
-            isFirst={true}
+            isFirst
           />
         );
       case 2:
         return (
-          <QuestionStep 
+          <QuestionStep
             title="Wie groß ist dein Team?"
+            subtitle="Hilft bei der Ansprache und realistischen Automatisierungs-Vorschlägen."
             options={GROESSE_OPTIONS}
             value={data.unternehmensgroesse}
             onSelect={(v) => updateData('unternehmensgroesse', v)}
@@ -64,8 +167,9 @@ export default function OnboardingWizard() {
         );
       case 3:
         return (
-          <QuestionStep 
-            title="Wie sieht's bei euch mit KI aus?"
+          <QuestionStep
+            title="Wo steht ihr heute mit KI und Automatisierung?"
+            subtitle="Keine Bewertung — nur der Ist-Zustand."
             options={ERFAHRUNG_OPTIONS}
             value={data.ki_erfahrung}
             onSelect={(v) => updateData('ki_erfahrung', v)}
@@ -75,20 +179,33 @@ export default function OnboardingWizard() {
         );
       case 4:
         return (
-          <QuestionStep 
-            title="Was willst du mit KI erreichen?"
+          <QuestionStep
+            title="Was beschreibt deine Situation am besten?"
+            subtitle="Eine Antwort reicht — wähle, was am ehesten auf euch zutrifft."
             options={ZIEL_OPTIONS}
             value={data.ziel}
             onSelect={(v) => updateData('ziel', v)}
             onNext={nextStep}
             onBack={prevStep}
-            isMultiSelect={true}
           />
         );
       case 5:
         return (
-          <QuestionStep 
-            title="Wer würde KI-Lösungen bei euch umsetzen?"
+          <QuestionStep
+            title="Was ist deine Rolle im Unternehmen?"
+            subtitle="Für wen die Automatisierung gedacht ist — beeinflusst Ton und technische Tiefe."
+            options={ROLLE_OPTIONS}
+            value={data.rolle_im_unternehmen}
+            onSelect={(v) => updateData('rolle_im_unternehmen', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 6:
+        return (
+          <QuestionStep
+            title="Wer soll KI-Lösungen bei euch später umsetzen?"
+            subtitle="Klaro baut in Phase 4 vieles automatisch — jemand muss es aber anbinden und pflegen."
             options={UMSETZER_OPTIONS}
             value={data.wer_setzt_um}
             onSelect={(v) => updateData('wer_setzt_um', v)}
@@ -96,21 +213,24 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 6:
+      case 7:
         return (
-          <QuestionStep 
-            title="Was hat euch bisher davon abgehalten loszulegen?"
+          <QuestionStep
+            title="Was hat euch bisher ausgebremst?"
+            subtitle="Mehrere Antworten sind möglich — wählt alles, was bei euch zutrifft."
             options={HINDERNIS_OPTIONS}
             value={data.hindernis}
             onSelect={(v) => updateData('hindernis', v)}
             onNext={nextStep}
             onBack={prevStep}
+            mode="multi"
           />
         );
-      case 7:
+      case 8:
         return (
-          <QuestionStep 
-            title="Wie schnell wollt ihr Ergebnisse sehen?"
+          <QuestionStep
+            title="Bis wann möchtest du erste spürbare Ergebnisse?"
+            subtitle="Beeinflusst, wie fokussiert der Coach die nächsten Schritte plant."
             options={TEMPO_OPTIONS}
             value={data.tempo}
             onSelect={(v) => updateData('tempo', v)}
@@ -118,14 +238,38 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 8:
+      case 9:
+        return (
+          <TextQuestionStep
+            title="Wie dürfen wir dich im Chat ansprechen?"
+            subtitle="Dein Vorname — kurz vor dem Account, damit der Coach dich persönlich anspricht."
+            placeholder="z. B. Thomas"
+            value={data.vorname}
+            onChange={(v) => updateData('vorname', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 10:
+        return (
+          <TextQuestionStep
+            title="Wie heißt dein Unternehmen?"
+            subtitle="Damit der Coach euren Kontext kennt — direkt vor der Anmeldung."
+            placeholder="z. B. Muster GmbH"
+            value={data.firmenname}
+            onChange={(v) => updateData('firmenname', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 11:
         return (
           <div className="flex flex-col gap-4">
-             <div className="text-center mb-6">
-               <h2 className="text-3xl font-bold text-gray-900 mb-2">Fast geschafft!</h2>
-               <p className="text-gray-500">Erstelle einen Account, um deine Roadmap und Chats zu speichern.</p>
-             </div>
-             <AuthForm onSuccess={handleAuthSuccess} />
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Fast geschafft!</h2>
+              <p className="text-gray-500">Erstelle einen Account, um deine Roadmap und Chats zu speichern.</p>
+            </div>
+            <AuthForm onSuccess={handleAuthSuccess} />
           </div>
         );
       default:
@@ -135,21 +279,19 @@ export default function OnboardingWizard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header / Progress */}
       <div className="w-full p-6 flex items-center justify-center relative">
         <div className="flex gap-1.5">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-            <button 
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(i => (
+            <button
               key={i}
               onClick={() => { if (i < step) setStep(i); }}
               disabled={i >= step}
-              className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-indigo-600' : i < step ? 'w-4 bg-indigo-200 hover:bg-indigo-300 cursor-pointer' : 'w-4 bg-gray-200 cursor-default'}`} 
+              className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-indigo-600' : i < step ? 'w-4 bg-indigo-200 hover:bg-indigo-300 cursor-pointer' : 'w-4 bg-gray-200 cursor-default'}`}
             />
           ))}
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex items-center justify-center p-6 pb-32">
         <div className="w-full max-w-xl">
           <AnimatePresence mode="wait">
@@ -169,28 +311,32 @@ export default function OnboardingWizard() {
   );
 }
 
-function QuestionStep({ title, options, value, onSelect, onNext, onBack, isMultiSelect = false, isFirst = false }: { title: string, options: string[], value?: string, onSelect: (v: string) => void, onNext: () => void, onBack: () => void, isMultiSelect?: boolean, isFirst?: boolean }) {
-  const selectedValues = value ? value.split(', ').filter(Boolean) : [];
-
-  const handleSelect = (opt: string) => {
-    if (isMultiSelect) {
-      if (selectedValues.includes(opt)) {
-        onSelect(selectedValues.filter(v => v !== opt).join(', '));
-      } else {
-        onSelect([...selectedValues, opt].join(', '));
-      }
-    } else {
-      onSelect(opt);
-      // Let React update the state briefly before advancing for a better UX feeling
-      setTimeout(() => onNext(), 150);
-    }
-  };
-
+function TextQuestionStep({
+  title,
+  subtitle,
+  placeholder,
+  value,
+  onChange,
+  onNext,
+  onBack,
+  isFirst = false,
+}: {
+  title: string;
+  subtitle?: string;
+  placeholder?: string;
+  value?: string;
+  onChange: (v: string) => void;
+  onNext: () => void;
+  onBack?: () => void;
+  isFirst?: boolean;
+}) {
+  const trimmed = (value || '').trim();
   return (
     <div className="flex flex-col gap-8">
-      {!isFirst && (
+      {!isFirst && onBack && (
         <div className="flex justify-center mb-[-1rem]">
-          <button 
+          <button
+            type="button"
             onClick={onBack}
             className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm"
           >
@@ -200,36 +346,119 @@ function QuestionStep({ title, options, value, onSelect, onNext, onBack, isMulti
       )}
       <div className="text-center">
         <h2 className="text-3xl font-bold text-gray-900 leading-tight mb-2">{title}</h2>
-        {isMultiSelect && <p className="text-gray-500 text-sm">Mehrfachauswahl möglich</p>}
+        {subtitle && <p className="text-gray-500 text-base max-w-md mx-auto">{subtitle}</p>}
+      </div>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && trimmed) onNext();
+        }}
+      />
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!trimmed}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Weiter <ArrowRight size={20} />
+      </button>
+    </div>
+  );
+}
+
+function QuestionStep({
+  title,
+  subtitle,
+  options,
+  value,
+  onSelect,
+  onNext,
+  onBack,
+  isFirst = false,
+  mode = 'single',
+}: {
+  title: string;
+  subtitle?: string;
+  options: WizardOption[];
+  value?: string;
+  onSelect: (v: string) => void;
+  onNext: () => void;
+  onBack: () => void;
+  isFirst?: boolean;
+  mode?: 'single' | 'multi';
+}) {
+  const isMulti = mode === 'multi';
+  const selectedValues = parseMultiValue(value);
+
+  const handleSelect = (opt: WizardOption) => {
+    if (isMulti) {
+      onSelect(toggleMultiValue(value, opt.value));
+    } else {
+      onSelect(opt.value);
+      setTimeout(() => onNext(), 180);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-8">
+      {!isFirst && (
+        <div className="flex justify-center mb-[-1rem]">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm"
+          >
+            <ArrowLeft size={16} /> Zurück
+          </button>
+        </div>
+      )}
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-gray-900 leading-tight mb-2">{title}</h2>
+        {subtitle && <p className="text-gray-500 text-base max-w-md mx-auto">{subtitle}</p>}
       </div>
       <div className="flex flex-col gap-3">
         {options.map(opt => {
-          const isSelected = selectedValues.includes(opt);
+          const isSelected = isMulti ? selectedValues.includes(opt.value) : value === opt.value;
           return (
             <button
-              key={opt}
+              key={opt.value}
+              type="button"
               onClick={() => handleSelect(opt)}
-              className={`p-5 text-left border-2 rounded-2xl transition-all duration-200 text-lg font-medium hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-sm flex items-center gap-4 ${
-                isSelected ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-700'
+              className={`p-5 text-left border-2 rounded-2xl transition-all duration-200 hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-sm flex items-start gap-4 ${
+                isSelected ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 bg-white'
               }`}
             >
-              <div className={`w-6 h-6 shrink-0 flex items-center justify-center border-2 transition-colors ${isMultiSelect ? 'rounded-md' : 'rounded-full'} ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+              <div
+                className={`w-6 h-6 mt-0.5 shrink-0 flex items-center justify-center border-2 transition-colors ${
+                  isMulti ? 'rounded-md' : 'rounded-full'
+                } ${isSelected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}
+              >
                 {isSelected && (
-                   isMultiSelect ? 
-                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-4 h-4 text-white"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                   : 
-                   <div className="w-2.5 h-2.5 rounded-full bg-white"></div>
+                  isMulti ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-4 h-4 text-white">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                  )
                 )}
               </div>
-              {opt}
+              <span className={`text-base font-medium leading-snug ${isSelected ? 'text-indigo-800' : 'text-gray-700'}`}>
+                {opt.label}
+              </span>
             </button>
           );
         })}
       </div>
-      
-      {isMultiSelect && (
+
+      {isMulti && (
         <div className="mt-2 flex justify-center">
-          <button 
+          <button
+            type="button"
             onClick={onNext}
             disabled={selectedValues.length === 0}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"

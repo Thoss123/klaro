@@ -5,11 +5,12 @@ import { ChevronDown, Upload, MoreHorizontal, Plus, Trash2, Check } from 'lucide
 import { AnimatePresence, motion } from 'framer-motion';
 import { SessionSummary } from '@/lib/supabase-chat';
 
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan'];
+const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
 const PHASE_LABELS: Record<string, string> = {
   diagnose: 'Diagnose',
   analyse: 'Analyse',
   plan: 'Plan',
+  umsetzung: 'Umsetzung',
 };
 
 interface ProjectHeaderProps {

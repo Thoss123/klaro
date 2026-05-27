@@ -16,6 +16,9 @@ create table sessions (
   branche text,
   tempo text,
   unternehmensgroesse text,
+  vorname text,
+  firmenname text,
+  rolle_im_unternehmen text,
   phase text default 'diagnose',
   title text,
   user_id uuid,
@@ -38,4 +41,21 @@ create table canvas (
   session_id uuid references sessions(id) on delete cascade unique,
   data jsonb default '{}',
   updated_at timestamp default now()
+);
+
+-- Project-level canvas: persists across all sessions in a project
+create table project_canvas (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references projects(id) on delete cascade unique not null,
+  data jsonb default '{"pain_points":[],"use_cases":[],"documents":[]}',
+  updated_at timestamp default now()
+);
+
+-- Project-level memory: stores phase summaries for cross-chat knowledge
+create table project_memory (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references projects(id) on delete cascade not null,
+  phase text not null,
+  summary text not null,
+  created_at timestamp default now()
 );

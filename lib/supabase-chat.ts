@@ -106,7 +106,12 @@ export async function loadProjects(): Promise<Project[]> {
 
 export async function createSession(onboarding: OnboardingData, userId: string, phase: string = 'diagnose', memory?: string, initialCanvas?: CanvasData, projectId?: string): Promise<string> {
   const supabase = createSupabaseBrowserClient()
-  const { data, error } = await supabase
+    const defaultTitle = phase === 'diagnose' ? '1. Diagnose' :
+                         phase === 'analyse' ? '2. Analyse' :
+                         phase === 'plan' ? '3. Plan' :
+                         phase === 'umsetzung' ? '4. Umsetzung' : 'Neuer Chat';
+
+    const { data, error } = await supabase
     .from('sessions')
     .insert({
       project_id: projectId || null,
@@ -117,9 +122,12 @@ export async function createSession(onboarding: OnboardingData, userId: string, 
       branche: onboarding.branche,
       tempo: onboarding.tempo,
       unternehmensgroesse: onboarding.unternehmensgroesse,
+      vorname: onboarding.vorname || onboarding.username || null,
+      firmenname: onboarding.firmenname || null,
+      rolle_im_unternehmen: onboarding.rolle_im_unternehmen || null,
       phase: phase,
       memory: memory || null,
-      title: null,
+      title: defaultTitle,
       user_id: userId,
       welcome_sent: false
     })
@@ -129,14 +137,30 @@ export async function createSession(onboarding: OnboardingData, userId: string, 
   if (error) throw error
   
   // Create canvas for this session
-  const canvasPayload = initialCanvas 
+  const canvasPayload = initialCanvas
     ? { ...initialCanvas, phase: phase }
-    : { pain_points: [], use_cases: [], documents: [], phase: phase };
+    : { pain_points: [], use_cases: [], workflows: [], documents: [], phase: phase };
 
   await supabase.from('canvas').insert({
     session_id: data.id,
     data: canvasPayload
   })
+
+  // Ensure a project_canvas exists for this project
+  if (projectId) {
+    const { data: existingPC } = await supabase
+      .from('project_canvas')
+      .select('id')
+      .eq('project_id', projectId)
+      .maybeSingle()
+
+    if (!existingPC) {
+      await supabase.from('project_canvas').insert({
+        project_id: projectId,
+        data: canvasPayload
+      })
+    }
+  }
 
   return data.id
 }
@@ -194,7 +218,7 @@ export async function loadSessionOnboarding(sessionId: string): Promise<Onboardi
   const supabase = createSupabaseBrowserClient()
   const { data, error } = await supabase
     .from('sessions')
-    .select('ziel, ki_erfahrung, wer_setzt_um, hindernis, branche, tempo, unternehmensgroesse, memory')
+    .select('ziel, ki_erfahrung, wer_setzt_um, hindernis, branche, tempo, unternehmensgroesse, vorname, firmenname, rolle_im_unternehmen, memory')
     .eq('id', sessionId)
     .single()
 
@@ -244,7 +268,7 @@ export async function saveMessage(sessionId: string, role: 'user' | 'assistant',
     .eq('id', sessionId)
 }
 
-// ---- Canvas ----
+// ---- Canvas (Session-level, legacy) ----
 
 export async function saveCanvas(sessionId: string, canvasData: CanvasData): Promise<void> {
   const supabase = createSupabaseBrowserClient()
@@ -253,6 +277,82 @@ export async function saveCanvas(sessionId: string, canvasData: CanvasData): Pro
     .upsert({ session_id: sessionId, data: canvasData, updated_at: new Date().toISOString() }, { onConflict: 'session_id' })
 
   if (error) console.error('Error saving canvas:', error)
+}
+
+// ---- Project Canvas (project-bound, persists across all chats) ----
+
+export async function loadProjectCanvas(projectId: string): Promise<CanvasData | null> {
+  const supabase = createSupabaseBrowserClient()
+  const { data, error } = await supabase
+    .from('project_canvas')
+    .select('data')
+    .eq('project_id', projectId)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    console.error('Error loading project canvas:', error)
+    return null
+  }
+  return data?.data as CanvasData | null
+}
+
+export async function saveProjectCanvas(projectId: string, canvasData: CanvasData): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  const { error } = await supabase
+    .from('project_canvas')
+    .upsert(
+      { project_id: projectId, data: canvasData, updated_at: new Date().toISOString() },
+      { onConflict: 'project_id' }
+    )
+
+  if (error) console.error('Error saving project canvas:', error)
+}
+
+// ---- Project Memory ----
+
+export type ProjectMemoryEntry = {
+  id: string
+  phase: string
+  summary: string
+  created_at: string
+}
+
+export async function loadProjectMemory(projectId: string): Promise<ProjectMemoryEntry[]> {
+  const supabase = createSupabaseBrowserClient()
+  const { data, error } = await supabase
+    .from('project_memory')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Error loading project memory:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function saveProjectMemory(projectId: string, phase: string, summary: string): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  // Upsert by project + phase so we don't duplicate
+  const { data: existing } = await supabase
+    .from('project_memory')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('phase', phase)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase
+      .from('project_memory')
+      .update({ summary, created_at: new Date().toISOString() })
+      .eq('id', existing.id)
+  } else {
+    await supabase
+      .from('project_memory')
+      .insert({ project_id: projectId, phase, summary })
+  }
 }
 
 // ---- Phase ----

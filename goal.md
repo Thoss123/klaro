@@ -9,7 +9,7 @@ Ein KI-Coach der Unternehmen durch mäeutische Fragen zu einem fertigen AI-Imple
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS
 - **Database:** Supabase (sessions, canvas data, onboarding answers)
-- **AI:** Claude API (claude-sonnet-4-20250514)
+- **AI:** Google Gemini (`gemini-3.5-flash` primär, `gemini-3.1-flash-lite` Fallback) via `@google/generative-ai`, Env `GOOGLE_API_KEY`
 - **Language:** TypeScript
 - **Deployment:** Vercel
 

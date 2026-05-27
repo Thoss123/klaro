@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { clsx } from 'clsx';
 import { Bot, User, Edit2, Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Message } from '@/lib/types';
+import { stripInternalTags } from '@/lib/strip-internal-tags';
 
 export default function MessageBubble({ message, onEdit }: { message: Message, onEdit?: (id: string, newContent: string) => void }) {
   const { role, content, id } = message;
@@ -11,11 +12,20 @@ export default function MessageBubble({ message, onEdit }: { message: Message, o
   const [isCopied, setIsCopied] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
 
-  // Filtere <canvas_update> und <phase_complete> Tags heraus, damit sie im Chat unsichtbar sind
-  const visibleContent = content.replace(/<canvas_update>[\s\S]*?(<\/canvas_update>|$)/g, '').replace(/<phase_complete>[\s\S]*?(<\/phase_complete>|$)/g, '').trim();
+  const visibleContent = stripInternalTags(content);
+
+  const isPhase4Only = content.includes('<request_credential>') || content.includes('<deploy_workflow>') || content.includes('<test_workflow>') || content.includes('<activate_workflow>');
 
   // Wenn der Coach noch tippt (oder nur ein Update schickt), zeige Loading-Dots
-  if (!visibleContent && role === 'assistant' && !content.includes('<canvas_update>') && !content.includes('<phase_complete>')) {
+  const hasInternalOnly =
+    !visibleContent &&
+    (/<trigger_canvas_update/i.test(content) ||
+      /trigger_canvas_update/i.test(content) ||
+      /<phase_complete/i.test(content) ||
+      /<prepare_phase/i.test(content) ||
+      /<tool_call/i.test(content));
+
+  if (hasInternalOnly && role === 'assistant' && !isPhase4Only) {
     return (
       <div className="flex gap-4 mb-6">
         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
@@ -62,6 +72,7 @@ export default function MessageBubble({ message, onEdit }: { message: Message, o
           "rounded-2xl px-5 py-3 relative",
           role === 'user' ? "bg-indigo-600 text-white" : "bg-white border border-gray-100 text-gray-800 shadow-sm"
         )}>
+          {/* Bearbeiten-Funktion vorerst deaktiviert, wie gewünscht:
           {role === 'user' && !isEditing && (
             <button 
               onClick={() => { setIsEditing(true); setEditValue(content); }}
@@ -71,6 +82,7 @@ export default function MessageBubble({ message, onEdit }: { message: Message, o
               <Edit2 size={14} />
             </button>
           )}
+          */}
 
           {isEditing ? (
             <div className="flex flex-col gap-2 min-w-[250px]">

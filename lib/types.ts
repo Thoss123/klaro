@@ -7,6 +7,12 @@ export type OnboardingData = {
   branche: string
   tempo: string
   unternehmensgroesse: string
+  /** Preferred first name for chat (Anrede) */
+  vorname?: string
+  /** @deprecated use vorname */
+  username?: string
+  firmenname?: string
+  rolle_im_unternehmen?: string
   intro_message?: string
   memory?: string
 }
@@ -35,6 +41,8 @@ export type Project = {
 }
 
 // Canvas
+export type Phase = 'diagnose' | 'analyse' | 'plan' | 'umsetzung'
+
 export type PainPoint = {
   id: string
   title: string
@@ -42,6 +50,7 @@ export type PainPoint = {
   frequency?: string
   effort?: string
   priority: 'hoch' | 'mittel' | 'niedrig'
+  rank?: number // priority order, 1 = highest
   details?: { [key: string]: string }
 }
 
@@ -51,19 +60,66 @@ export type UseCase = {
   linked_pain_point: string
   effort: string
   impact: string
+  // Phase 2/3 enrichment
+  setup_effort?: string
+  cost_monthly?: string
+  tool?: string
+  roi?: string
+  priority?: 'quick_win' | 'medium_term' | 'long_term' | 'not_recommended'
+  /** Phase 3 hint: minimal = current tools only, balanced = light add-on, bold = rethink */
+  automation_level?: 'minimal' | 'balanced' | 'bold'
+}
+
+// Functional workflow (Phase 2) — steps with arrows, no tech yet
+export type WorkflowStep = {
+  id: string
+  label: string
+  type?: 'trigger' | 'action' | 'ai' | 'decision' | 'output'
+  tool?: string // filled in Phase 3
+}
+
+export type Workflow = {
+  id: string
+  title: string
+  linked_pain_point: string
+  steps: WorkflowStep[]
+}
+
+// Implementer profile (Phase 2/3)
+export type ImplementerProfile = {
+  id: string
+  is_chatter: boolean // is the person chatting the one who implements?
+  who: string // role/person
+  skill_level: 'keine' | 'grundkenntnisse' | 'fortgeschritten' | 'experte'
+  automation_experience: string // has worked with automation tools?
 }
 
 export type CanvasDocument = {
   id: string
   title: string
   content: string
+  format?: 'markdown' | 'text'
+}
+
+/** Unternehmensprofil aus Phase 1 (Angebot, Akquise, Ablauf) */
+export type CompanyProfile = {
+  offer?: string
+  target_customers?: string
+  acquisition?: string
+  process_steps?: string[]
+  /** Phase 2: minimal | balanced | bold */
+  change_appetite?: string
+  notes?: string
 }
 
 export type CanvasData = {
   pain_points: PainPoint[]
   use_cases: UseCase[]
+  workflows: Workflow[]
   documents: CanvasDocument[]
-  phase: 'diagnose' | 'analyse' | 'plan'
+  company?: CompanyProfile
+  implementer?: ImplementerProfile
+  phase: Phase
 }
 
 // Session
@@ -72,4 +128,44 @@ export type Session = {
   onboarding: OnboardingData
   canvas: CanvasData
   messages: Message[]
+}
+
+// Phase 4 — deployed workflows & credentials
+export type DeployedWorkflow = {
+  id: string
+  project_id: string
+  linked_use_case: string | null
+  n8n_workflow_id: string | null
+  name: string
+  description?: string
+  status: 'active' | 'inactive' | 'error' | 'draft'
+  execution_count: number
+  last_execution_at?: string
+  created_at: string
+}
+
+export type Credential = {
+  id: string
+  tool_name: string
+  credential_type: 'api_key' | 'oauth'
+  status: 'active' | 'revoked' | 'expired'
+  n8n_credential_id?: string
+  // encrypted_value never sent to frontend
+  created_at: string
+}
+
+// Phase 4 extensions to WorkflowStep
+export type WorkflowStepMapped = WorkflowStep & {
+  node_type?: string         // n8n node type, e.g. "n8n-nodes-base.gmail"
+  credential_tool?: string   // which credential is needed, e.g. "gmail"
+}
+
+// Agent-style action feedback
+export interface AgentAction {
+  id: string
+  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow'
+  status: 'running' | 'done' | 'error'
+  label: string
+  detail?: string
+  timestamp?: number
 }

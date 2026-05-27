@@ -9,9 +9,10 @@ import { Plus, Folder, LogOut, MoreHorizontal, Trash2, Pencil, ExternalLink, Che
 import { AnimatePresence, motion } from 'framer-motion';
 
 const PHASE_CONFIG: Record<string, { label: string; pill: string }> = {
-  diagnose: { label: 'Diagnose',  pill: 'bg-slate-100 text-slate-600' },
-  analyse:  { label: 'Analyse',   pill: 'bg-indigo-50 text-indigo-700' },
-  plan:     { label: 'Plan',      pill: 'bg-green-50 text-green-700' },
+  diagnose:  { label: 'Diagnose',  pill: 'bg-slate-100 text-slate-600' },
+  analyse:   { label: 'Analyse',   pill: 'bg-indigo-50 text-indigo-700' },
+  plan:      { label: 'Plan',      pill: 'bg-green-50 text-green-700' },
+  umsetzung: { label: 'Umsetzung', pill: 'bg-amber-50 text-amber-700' },
 };
 
 export default function DashboardPage() {
