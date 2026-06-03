@@ -12,6 +12,7 @@ export default function ChatInput({
   attachments,
   onAttachmentsChange,
   sessionId,
+  compact = false,
 }: {
   value: string
   onChange: (s: string) => void
@@ -22,6 +23,7 @@ export default function ChatInput({
   attachments: ChatAttachment[]
   onAttachmentsChange: (a: ChatAttachment[]) => void
   sessionId?: string | null
+  compact?: boolean
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +81,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="p-4 bg-white rounded-b-2xl border-t border-gray-100">
+    <div className={`${compact ? 'p-2' : 'p-4'} bg-white ${compact ? '' : 'rounded-b-2xl'} border-t border-gray-100 shrink-0`}>
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 px-1">
           {attachments.map(a => (

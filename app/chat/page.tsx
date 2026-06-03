@@ -1450,20 +1450,54 @@ function ChatPageContent() {
   }, {} as Record<string, SessionSummary[]>);
 
   if (isLoadingSession && !currentSessionId && sessions.length === 0) {
-      return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-gray-500">Lade Arbeitsbereich...</div>;
+      return <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-gray-500">Lade Arbeitsbereich...</div>;
   }
 
+  const mobileViewSwitch = (
+    <div className="shrink-0 flex justify-center border-t border-gray-100 bg-white px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="bg-gray-50 border border-gray-200 shadow-sm rounded-full p-1 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setMobileView('chat')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+            mobileView === 'chat' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
+          }`}
+        >
+          <MessageCircle size={16} /> Chat
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView('canvas')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+            mobileView === 'canvas' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
+          }`}
+        >
+          <Activity size={16} /> Canvas
+        </button>
+      </div>
+    </div>
+  );
+
+  const roadmapCanvasEl = (
+    <RoadmapCanvas
+      data={canvasData}
+      currentPhase={sessions.find(s => s.id === currentSessionId)?.phase || canvasData.phase || 'diagnose'}
+      maxReachedPhase={maxReachedPhase}
+      onPhaseClick={handlePhaseCircleClick}
+    />
+  );
+
   return (
-    <div className="flex w-full h-screen bg-slate-50 bg-grid overflow-hidden relative font-sans">
+    <div className={`flex w-full bg-slate-50 bg-grid overflow-hidden relative font-sans ${isMobile ? 'h-[100dvh] max-h-[100dvh]' : 'h-screen'}`}>
       
       {/* Sidebar background overlay */}
       <div className={`fixed inset-0 bg-transparent z-10 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
 
-      {/* Floating Chat Panel (Left) — full-screen on mobile, toggled via the bottom switch */}
+      {/* Chat panel — mobile: full viewport; desktop: floating left */}
       {((!isMobile && !isClosed) || (isMobile && mobileView === 'chat')) && (
       <div className={
         isMobile
-          ? 'absolute inset-0 z-30 bg-white flex flex-col overflow-hidden pb-[4.5rem]'
+          ? 'absolute inset-0 z-30 bg-white flex flex-col min-h-0 h-full max-h-full overflow-hidden'
           : `absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300`
       }>
 
@@ -1549,7 +1583,7 @@ function ChatPageContent() {
         </AnimatePresence>
 
         {/* Chat Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white shrink-0">
+        <div className={`flex items-center justify-between border-b border-gray-100 bg-white shrink-0 ${isMobile ? 'px-4 py-3' : 'px-5 py-4'}`}>
           <div className="flex items-center gap-3 text-gray-400 relative">
             <button onClick={() => setIsSidebarOpen(true)} className="hover:text-gray-700 transition-colors"><Menu size={18} /></button>
             <button onClick={() => setIsChatsMenuOpen(!isChatsMenuOpen)} className="hover:text-gray-700 transition-colors"><MoreHorizontal size={18} /></button>
@@ -1611,10 +1645,10 @@ function ChatPageContent() {
           </div>
         )}
 
-        {/* Body */}
-        <>
+        {/* Body — flex-1 + min-h-0 so messages scroll inside the viewport, not past it */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {isLoadingSession && (
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex-1 flex items-center justify-center min-h-0">
                 <div className="text-gray-400 text-sm">Lade Chat...</div>
               </div>
             )}
@@ -1624,6 +1658,7 @@ function ChatPageContent() {
                 messages={messages}
                 onEdit={handleEditMessage}
                 isStreaming={isStreaming}
+                className={isMobile ? 'px-4 py-4' : undefined}
                 injectBeforeLastAssistant={
                   agentActions.length > 0
                     ? <AgentActionsFeed actions={agentActions} inline />
@@ -1653,7 +1688,7 @@ function ChatPageContent() {
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="px-5 py-3 bg-indigo-50 border-t border-indigo-100 flex items-center justify-between shadow-[0_-4px_20px_-10px_rgba(99,102,241,0.3)] z-10"
+                  className="shrink-0 px-5 py-3 bg-indigo-50 border-t border-indigo-100 flex items-center justify-between shadow-[0_-4px_20px_-10px_rgba(99,102,241,0.3)] z-10"
                 >
                   <span className="text-xs text-indigo-700 font-bold uppercase tracking-wider flex items-center gap-2">
                     {isPreparingNextPhase ? (
@@ -1695,10 +1730,22 @@ function ChatPageContent() {
                 attachments={pendingAttachments}
                 onAttachmentsChange={setPendingAttachments}
                 sessionId={currentSessionId}
+                compact={isMobile}
               />
             )}
-          </>
+        </div>
+
+        {isMobile && mobileViewSwitch}
       </div>
+      )}
+
+      {isMobile && mobileView === 'canvas' && (
+        <div className="absolute inset-0 z-20 flex flex-col min-h-0 h-full max-h-full overflow-hidden bg-slate-50">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-4 px-1">
+            {roadmapCanvasEl}
+          </div>
+          {mobileViewSwitch}
+        </div>
       )}
 
       {/* Floating Chat Reopen Button (desktop only — mobile uses the bottom switch) */}
@@ -1711,45 +1758,14 @@ function ChatPageContent() {
         </button>
       )}
 
-      {/* Infinite Canvas Area (Center/Right) */}
+      {/* Canvas — desktop: main area; mobile: separate tab */}
+      {!isMobile && (
       <div
-        className={`flex-1 w-full h-full overflow-y-auto overflow-x-hidden transition-all duration-300 relative ${isMobile ? 'pt-4 pb-24 px-0' : 'pt-6 pb-6 pr-6'}`}
-        style={isMobile ? undefined : { paddingLeft: isMaximized ? '624px' : '384px' }}
+        className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden transition-all duration-300 relative pt-6 pb-6 pr-6"
+        style={{ paddingLeft: isMaximized ? '624px' : '384px' }}
       >
-        {(() => {
-          const activeSession = sessions.find(s => s.id === currentSessionId);
-          const activeSessionPhase = activeSession?.phase || canvasData.phase || 'diagnose';
-          return (
-            <RoadmapCanvas 
-              data={canvasData} 
-              currentPhase={activeSessionPhase}
-              maxReachedPhase={maxReachedPhase}
-              onPhaseClick={handlePhaseCircleClick} 
-            />
-          );
-        })()}
+        {roadmapCanvasEl}
       </div>
-
-      {/* Mobile: bottom-center switch between Chat and Canvas */}
-      {isMobile && (
-        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 bg-white border border-gray-200 shadow-xl rounded-full p-1 flex items-center gap-1">
-          <button
-            onClick={() => setMobileView('chat')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-              mobileView === 'chat' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <MessageCircle size={16} /> Chat
-          </button>
-          <button
-            onClick={() => setMobileView('canvas')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
-              mobileView === 'canvas' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <Activity size={16} /> Canvas
-          </button>
-        </div>
       )}
 
     {/* Phase 4: Credential Popup */}

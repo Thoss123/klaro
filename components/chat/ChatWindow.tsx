@@ -10,12 +10,14 @@ export default function ChatWindow({
   onEdit,
   injectBeforeLastAssistant,
   isStreaming,
+  className = '',
 }: {
   messages: Message[]
   onEdit?: (id: string, newContent: string) => void
   /** Rendered directly above the last assistant message (agent tool-call feed) */
   injectBeforeLastAssistant?: React.ReactNode
   isStreaming?: boolean
+  className?: string
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +47,7 @@ export default function ChatWindow({
       (lastMsg.role === 'assistant' && !lastVisibleText));
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-8 bg-white" ref={scrollRef}>
+    <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-8 bg-white ${className}`} ref={scrollRef}>
       {visibleMessages.map((m, i) => (
         <React.Fragment key={m.id}>
           {i === lastAssistantIdx && injectBeforeLastAssistant}
