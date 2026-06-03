@@ -13,3 +13,10 @@ export function isHiddenSystemMessage(content: string): boolean {
   }
   return false;
 }
+
+/** History for canvas sync / orchestration — ohne versteckte Kickoff-Zeilen. */
+export function filterCanvasHistory<T extends { role: string; content: string }>(
+  history: T[],
+): T[] {
+  return history.filter(m => !(m.role === 'user' && isHiddenSystemMessage(m.content)));
+}

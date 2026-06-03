@@ -126,8 +126,8 @@ export async function runCanvasPipeline(
   olog('supervisor', sup.ok, `verdict=${sup.data.verdict} pain=${sup.data.target_pain_point ?? '—'}`, sup.tokens);
 
   if (sup.data.verdict !== 'approved') {
-    // Blocked / revise — worker must not extract a (mis-aligned) workflow.
-    olog('pipeline', true, `halt: supervisor=${sup.data.verdict}`);
+    // Kein klares Workflow-Thema (z. B. Phasen-Kickoff) — Extraktion später, kein Fehler.
+    olog('pipeline', true, `defer: supervisor=${sup.data.verdict}`);
     const halted: Omit<PipelineResult, 'workerDirective'> = {
       ran: true,
       proceed: false,

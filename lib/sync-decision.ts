@@ -1,3 +1,5 @@
+import { isHiddenSystemMessage } from '@/lib/hidden-chat';
+
 /** Structured terminal logging for canvas + memory sync after each chat turn. */
 
 export type SyncChannel = 'canvas' | 'memory';
@@ -14,6 +16,8 @@ export type CanvasSkipReason =
   | 'invalid_json'
   | 'db_save_failed'
   | 'network_error'
+  | 'plan_awaiting_workflow_chat'
+  | 'orchestration_deferred'
   | 'unknown';
 
 export type MemorySkipReason =
@@ -61,10 +65,18 @@ export function evaluateCanvasEligibility(params: {
   const userLines = userMessages
     .filter(m => m.role === 'user')
     .map(m => (m.content || '').trim())
-    .filter(Boolean);
+    .filter(line => line.length > 0 && !isHiddenSystemMessage(line));
 
   const userText = userLines.join(' ');
   const chars = userText.length;
+
+  if (phase === 'plan' && chars < 40) {
+    return {
+      eligible: false,
+      reason: 'plan_awaiting_workflow_chat',
+      detail: 'Plan: erst nach sichtbarem Nutzer-Input zum Workflow (kein Kickoff allein)',
+    };
+  }
 
   if (chars < 40) {
     return {
@@ -123,4 +135,23 @@ export function summarizeCanvasDiff(
   const steps = (after.company?.process_steps as string[] | undefined)?.length ?? 0;
   const appetite = (after.company?.change_appetite as string | undefined) || '—';
   return `pain_points ${beforePp}→${afterPp} (Δ${dPp >= 0 ? '+' : ''}${dPp}), use_cases ${beforeUc}→${afterUc} (Δ${dUc >= 0 ? '+' : ''}${dUc}), company_steps=${steps}, change_appetite=${appetite}`;
+}
+
+/** Nutzerfreundliche Kurzbeschreibung für Canvas-Skip-Gründe (Agent-Feed). */
+export function canvasSkipUserLabel(reason: string | undefined, detail?: string): string {
+  switch (reason) {
+    case 'plan_awaiting_workflow_chat':
+      return 'Workflow-Canvas wartet auf euer Gespräch in Phase 3';
+    case 'orchestration_deferred':
+    case 'orchestration_blocked':
+      return 'Noch kein konkreter Workflow im Chat — Plan folgt nach der Besprechung';
+    case 'insufficient_context':
+      return `Kontext: ${detail || 'zu wenig'}`;
+    case 'missing_project_id':
+      return 'kein Projekt';
+    case 'thin_user_context':
+      return 'noch zu wenig Gesprächsinhalt';
+    default:
+      return reason || 'übersprungen';
+  }
 }

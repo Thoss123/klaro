@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Mistral } from '@mistralai/mistralai';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { evaluateHistoryForCanvas, logSync, summarizeCanvasDiff } from '@/lib/sync-decision';
+import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { runCanvasPipeline } from '@/lib/agent-orchestration';
 import { mistralCompleteJson } from '@/lib/agents/llm';
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'skipped', reason: 'missing_project_id' });
     }
 
-    const hist = history || [];
+    const hist = filterCanvasHistory(history || []);
     const histCheck = evaluateHistoryForCanvas(phase || 'diagnose', hist);
     if (!histCheck.ok) {
       logSync('canvas', 'skip', histCheck.detail, { reason: histCheck.reason, phase });
@@ -46,13 +47,15 @@ export async function POST(req: NextRequest) {
       canvas: (currentCanvas || {}) as Parameters<typeof runCanvasPipeline>[1]['canvas'],
     });
     if (pipeline.ran && !pipeline.proceed) {
-      logSync('canvas', 'skip', 'orchestration halted extraction', {
+      logSync('canvas', 'skip', 'orchestration deferred (no workflow topic yet)', {
         verdict: pipeline.supervisor?.verdict,
         phase,
       });
       return NextResponse.json({
         status: 'skipped',
-        reason: 'orchestration_blocked',
+        reason: 'orchestration_deferred',
+        detail:
+          'Im Gespräch ist noch kein klarer Workflow für einen Pain Point — der Coach klärt das zuerst.',
         verdict: pipeline.supervisor?.verdict,
         coach_hint: pipeline.supervisor?.coach_hint,
         orchestration: pipeline.logs,

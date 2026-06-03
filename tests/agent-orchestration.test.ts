@@ -78,7 +78,7 @@ describe('runCanvasPipeline', () => {
     expect(r.logs).toHaveLength(3);
   });
 
-  it('halts extraction when supervisor blocks', async () => {
+  it('defers extraction when supervisor blocks', async () => {
     const r = await runCanvasPipeline(
       fakeLLM({ supervisor: '{"verdict":"block","active_topic":"Smalltalk"}', qa: '{}' }),
       { phase: 'plan', history, canvas },

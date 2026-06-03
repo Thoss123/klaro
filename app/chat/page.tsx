@@ -45,7 +45,7 @@ import {
   formatAttachmentsForMessage,
   attachmentsForApi,
 } from '@/lib/chat-attachments';
-import { evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
+import { canvasSkipUserLabel, evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
 import { titleFromUserMessage } from '@/lib/session-title';
@@ -884,13 +884,7 @@ function ChatPageContent() {
               completeAction(aid, 'Canvas erfolgreich aktualisiert');
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
-              const label =
-                reason === 'insufficient_context'
-                  ? `Kontext: ${data.detail || 'zu wenig'}`
-                  : reason === 'missing_project_id'
-                    ? 'kein Projekt'
-                    : reason || 'übersprungen';
-              completeAction(aid, `Canvas: ${label}`);
+              completeAction(aid, `Canvas: ${canvasSkipUserLabel(reason, data.detail)}`);
             } else {
               logSync('canvas', 'fail', 'worker error', { reason, status });
               failAction(aid, `Canvas-Fehler (${reason || res.status})`);

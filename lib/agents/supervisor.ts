@@ -10,6 +10,7 @@
 
 import type { CanvasData } from '@/lib/types';
 import type { AgentMessage, AgentResult, SupervisorResult, SupervisorVerdict } from './types';
+import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { asStringArray, type CompleteJson, estimateTokens, safeParseJson } from './llm';
 
 export interface SupervisorInput {
@@ -28,6 +29,7 @@ export function renderChatSlice(history: AgentMessage[], lastN = 8): string {
 }
 
 export function buildSupervisorPrompt(input: SupervisorInput): { system: string; user: string } {
+  const visibleHistory = filterCanvasHistory(input.history);
   const painList = (input.canvas.pain_points || [])
     .map(p => `- ${p.id}: ${p.title}`)
     .join('\n') || '(keine)';
@@ -55,7 +57,7 @@ ${wfList}
 Antworte AUSSCHLIESSLICH mit JSON:
 {"verdict":"approved|revise_coach|block","active_topic":"...","target_pain_point":"pp_x oder null","merge_with_existing":true|false,"instruction_for_worker":"konkrete Anweisung was extrahiert werden soll","coach_hint":"optionaler interner Hinweis"}`;
 
-  const user = `Aktueller Gesprächsausschnitt:\n${renderChatSlice(input.history)}`;
+  const user = `Aktueller Gesprächsausschnitt:\n${renderChatSlice(visibleHistory)}`;
   return { system, user };
 }
 

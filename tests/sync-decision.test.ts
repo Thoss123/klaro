@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getHiddenInitMessage } from '@/lib/phase-welcome';
 import {
   evaluateCanvasEligibility,
   evaluateHistoryForCanvas,
@@ -24,9 +25,21 @@ describe('evaluateCanvasEligibility', () => {
     expect(r.reason).toBe('worker_already_running');
   });
 
-  it('blocks thin user context', () => {
+  it('blocks thin user context in plan (await workflow chat)', () => {
     const r = evaluateCanvasEligibility({ isHiddenInit: false, projectId: 'p', phase: 'plan', userMessages: [{ role: 'user', content: 'ok' }], workerAlreadyScheduled: false });
-    expect(r.reason).toBe('thin_user_context');
+    expect(r.reason).toBe('plan_awaiting_workflow_chat');
+  });
+
+  it('ignores hidden kickoff lines for eligibility', () => {
+    const r = evaluateCanvasEligibility({
+      isHiddenInit: false,
+      projectId: 'p',
+      phase: 'plan',
+      userMessages: [{ role: 'user', content: getHiddenInitMessage('plan') }],
+      workerAlreadyScheduled: false,
+    });
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toBe('plan_awaiting_workflow_chat');
   });
 
   it('blocks diagnose welcome-only chatter', () => {
