@@ -1,6 +1,8 @@
 import React, { FormEvent, useRef, useEffect, useState } from 'react';
-import { ArrowUp, Loader2, Paperclip, FileText, Image as ImageIcon, Square, X } from 'lucide-react';
+import { ArrowUp, Loader2, Paperclip, FileText, Square, X } from 'lucide-react';
 import type { ChatAttachment } from '@/lib/chat-attachments';
+
+const DOCUMENT_ACCEPT = '.txt,.md,.csv,.json,text/*';
 
 export default function ChatInput({
   value,
@@ -26,9 +28,7 @@ export default function ChatInput({
   compact?: boolean
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef = useRef<HTMLInputElement>(null);
-  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -65,9 +65,8 @@ export default function ChatInput({
         id: crypto.randomUUID(),
         name: data.name || file.name,
         mimeType: data.mimeType || file.type,
-        type: data.type === 'image' ? 'image' : 'document',
+        type: 'document',
         url: data.url,
-        base64: data.base64,
         textExtract: data.textExtract,
       };
       onAttachmentsChange([...attachments, att]);
@@ -76,7 +75,6 @@ export default function ChatInput({
       alert(msg);
     } finally {
       setUploading(false);
-      setIsFileMenuOpen(false);
     }
   };
 
@@ -93,7 +91,7 @@ export default function ChatInput({
               key={a.id}
               className="inline-flex items-center gap-1.5 text-xs bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full"
             >
-              {a.type === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
+              <FileText size={12} />
               <span className="max-w-[140px] truncate">{a.name}</span>
               <button
                 type="button"
@@ -109,20 +107,9 @@ export default function ChatInput({
       )}
       <form onSubmit={onSubmit} className="flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-3xl relative min-h-[52px]">
         <input
-          ref={imageInputRef}
+          ref={fileInputRef}
           type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={e => {
-            const f = e.target.files?.[0];
-            if (f) uploadFile(f);
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={docInputRef}
-          type="file"
-          accept=".txt,.md,.csv,.json,text/*,application/pdf"
+          accept={DOCUMENT_ACCEPT}
           className="hidden"
           onChange={e => {
             const f = e.target.files?.[0];
@@ -133,30 +120,13 @@ export default function ChatInput({
         <button
           type="button"
           disabled={uploading || disabled}
-          onClick={() => setIsFileMenuOpen(!isFileMenuOpen)}
+          onClick={() => fileInputRef.current?.click()}
           className="w-8 h-8 flex shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 active:bg-gray-200 rounded-full transition-colors self-end mb-0.5"
+          aria-label="Datei anhängen (.txt, .md, .csv, .json)"
+          title="Datei anhängen (.txt, .md, .csv, .json)"
         >
           {uploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={18} />}
         </button>
-
-        {isFileMenuOpen && (
-          <div className="absolute bottom-12 left-0 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50">
-            <button
-              type="button"
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => docInputRef.current?.click()}
-            >
-              <FileText size={16} /> Dokument (.txt, .md, .csv)
-            </button>
-            <button
-              type="button"
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => imageInputRef.current?.click()}
-            >
-              <ImageIcon size={16} /> Bild hochladen
-            </button>
-          </div>
-        )}
 
         <textarea
           ref={inputRef}
