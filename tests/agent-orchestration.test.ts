@@ -78,14 +78,23 @@ describe('runCanvasPipeline', () => {
     expect(r.logs).toHaveLength(3);
   });
 
-  it('defers extraction when supervisor blocks', async () => {
+  it('defers extraction when supervisor blocks and no workflows yet', async () => {
     const r = await runCanvasPipeline(
       fakeLLM({ supervisor: '{"verdict":"block","active_topic":"Smalltalk"}', qa: '{}' }),
-      { phase: 'plan', history, canvas },
+      { phase: 'plan', history, canvas: { pain_points: canvas.pain_points, workflows: [] } },
     );
     expect(r.ran).toBe(true);
     expect(r.proceed).toBe(false);
     expect(r.workerDirective).toBe('');
+  });
+
+  it('proceeds when supervisor blocks but workflows already on canvas', async () => {
+    const r = await runCanvasPipeline(
+      fakeLLM({ supervisor: '{"verdict":"revise_coach","active_topic":"Smalltalk"}', qa: '{}' }),
+      { phase: 'plan', history, canvas },
+    );
+    expect(r.ran).toBe(true);
+    expect(r.proceed).toBe(true);
   });
 
   it('skips research for non-research topics but still runs supervisor + qa', async () => {

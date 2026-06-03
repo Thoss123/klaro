@@ -1,3 +1,6 @@
+import { shouldSuppressPlanWorkflowCoachNotice } from '@/lib/plan-workflows';
+import type { CanvasData } from '@/lib/types';
+
 /**
  * Sichtbare Coach-Erklärungen im Chat (Was + Warum) — kein [System:]-Prefix.
  */
@@ -5,7 +8,12 @@
 export function coachStatusMessageForCanvas(
   reason: string | undefined,
   phase: string,
+  canvas?: Partial<CanvasData>,
 ): string | null {
+  if (canvas && shouldSuppressPlanWorkflowCoachNotice(phase, canvas, reason)) {
+    return null;
+  }
+
   switch (reason) {
     case 'plan_awaiting_workflow_chat':
     case 'thin_user_context':

@@ -2,7 +2,11 @@ import { isValidWorkflow } from '@/lib/canvas-normalize';
 import type { CanvasData } from '@/lib/types';
 
 /** Gate phase_complete tags — canvas + phase-specific requirements. */
-export function canAdvanceFromPhase(phase: string, canvas: CanvasData): { ok: boolean; reason?: string } {
+export function canAdvanceFromPhase(
+  phase: string,
+  canvas: CanvasData,
+  opts?: { coachSignaledComplete?: boolean },
+): { ok: boolean; reason?: string } {
   if (phase === 'analyse') {
     const imp = canvas.implementer;
     const who = imp?.who?.trim();
@@ -16,6 +20,10 @@ export function canAdvanceFromPhase(phase: string, canvas: CanvasData): { ok: bo
     const workflows = (canvas.workflows || []).filter(isValidWorkflow);
     if (workflows.length === 0) {
       return { ok: false, reason: 'no_workflows' };
+    }
+    // Coach hat phase_complete gesendet — Nutzer darf weiter, auch wenn nicht jeder PP verlinkt ist.
+    if (opts?.coachSignaledComplete) {
+      return { ok: true };
     }
     const painIds = new Set((canvas.pain_points || []).map(p => p.id));
     if (painIds.size > 0) {

@@ -14,6 +14,7 @@
  * so Phase 1/2 canvas updates keep their existing cost profile.
  */
 
+import { countValidWorkflows } from '@/lib/plan-workflows';
 import type { CanvasData, Workflow } from '@/lib/types';
 import type { AgentMessage, PipelineLogEntry, PipelineResult, SupervisorResult } from './agents/types';
 import type { CompleteJson } from './agents/llm';
@@ -126,7 +127,22 @@ export async function runCanvasPipeline(
   olog('supervisor', sup.ok, `verdict=${sup.data.verdict} pain=${sup.data.target_pain_point ?? '—'}`, sup.tokens);
 
   if (sup.data.verdict !== 'approved') {
-    // Kein klares Workflow-Thema (z. B. Phasen-Kickoff) — Extraktion später, kein Fehler.
+    const existingWorkflows = countValidWorkflows(input.canvas);
+    if (input.phase === 'plan' && existingWorkflows > 0) {
+      olog(
+        'pipeline',
+        true,
+        `supervisor=${sup.data.verdict} but ${existingWorkflows} workflow(s) on canvas — proceed without halt`,
+      );
+      const passThrough: Omit<PipelineResult, 'workerDirective'> = {
+        ran: true,
+        proceed: true,
+        supervisor: sup.data,
+        logs,
+        totalTokens,
+      };
+      return { ...passThrough, workerDirective: '' };
+    }
     olog('pipeline', true, `defer: supervisor=${sup.data.verdict}`);
     const halted: Omit<PipelineResult, 'workerDirective'> = {
       ran: true,

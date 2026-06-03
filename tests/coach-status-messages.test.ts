@@ -8,6 +8,20 @@ describe('coachStatusMessageForCanvas', () => {
     expect(msg).not.toMatch(/\[System/i);
   });
 
+  it('stays silent when plan canvas already has workflows', () => {
+    const msg = coachStatusMessageForCanvas('orchestration_deferred', 'plan', {
+      workflows: [
+        {
+          id: 'w1',
+          title: 'A',
+          linked_pain_point: 'pp_1',
+          steps: [{ id: 's1', label: 'x', type: 'trigger' }],
+        },
+      ],
+    });
+    expect(msg).toBeNull();
+  });
+
   it('explains awaiting user input in plan', () => {
     const msg = coachStatusMessageForCanvas('plan_awaiting_workflow_chat', 'plan');
     expect(msg).toMatch(/deine Antwort/);

@@ -641,8 +641,13 @@ function ChatPageContent() {
 
   /** Coach erklärt im Chat, warum die Roadmap (noch) nicht aktualisiert wurde. */
   const appendCoachStatusExplanation = useCallback(
-    async (sessionId: string, reason: string | undefined, phase: string) => {
-      const text = coachStatusMessageForCanvas(reason, phase);
+    async (
+      sessionId: string,
+      reason: string | undefined,
+      phase: string,
+      canvas: CanvasData,
+    ) => {
+      const text = coachStatusMessageForCanvas(reason, phase, canvas);
       if (!text) return;
       const key = `${sessionId}:${reason ?? 'unknown'}:${text.slice(0, 48)}`;
       if (lastCoachStatusKeyRef.current === key) return;
@@ -869,7 +874,7 @@ function ChatPageContent() {
             reason: canvasEval.reason,
             detail: canvasEval.detail,
           });
-          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
+          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, streamCanvasData);
           return;
         }
         logSync('canvas', 'invoke', `POST /api/canvas-worker (${source})`, {
@@ -912,7 +917,7 @@ function ChatPageContent() {
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
               completeAction(aid, `Canvas: ${canvasSkipUserLabel(reason, data.detail)}`);
-              void appendCoachStatusExplanation(sessionId, reason, chatPhase);
+              void appendCoachStatusExplanation(sessionId, reason, chatPhase, streamCanvasData);
             } else {
               logSync('canvas', 'fail', 'worker error', { reason, status });
               failAction(aid, `Canvas-Fehler (${reason || res.status})`);
@@ -946,7 +951,7 @@ function ChatPageContent() {
             reason: canvasEval.reason,
             detail: canvasEval.detail,
           });
-          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
+          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, streamCanvasData);
         }
 
         // Process tool calls from the stream
@@ -1015,7 +1020,7 @@ function ChatPageContent() {
                 reason: canvasEval.reason,
                 detail: canvasEval.detail,
               });
-              void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
+              void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, canvasSnapshot);
             }
           } else {
             logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
@@ -1023,10 +1028,13 @@ function ChatPageContent() {
 
           if (detectCompletedPhase(rawAssistantContent, chatPhase)) {
             const prepKey = `${sessionId}:${chatPhase}`;
-            const gate = canAdvanceFromPhase(chatPhase, canvasSnapshot);
+            const gate = canAdvanceFromPhase(chatPhase, canvasSnapshot, {
+              coachSignaledComplete: true,
+            });
             if (!gate.ok) {
               logSync('canvas', 'skip', `phase_complete blocked: ${gate.reason}`, { phase: chatPhase });
-            } else if (!phasePrepTriggeredForRef.current.has(prepKey)) {
+            }
+            if (gate.ok && !phasePrepTriggeredForRef.current.has(prepKey)) {
               phasePrepTriggeredForRef.current.add(prepKey);
               await prepareNextPhaseRef.current?.(false);
             }
