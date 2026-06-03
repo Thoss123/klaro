@@ -15,6 +15,7 @@ export default function ChatInput({
   onAttachmentsChange,
   sessionId,
   compact = false,
+  backgroundStatus,
 }: {
   value: string
   onChange: (s: string) => void
@@ -26,6 +27,8 @@ export default function ChatInput({
   onAttachmentsChange: (a: ChatAttachment[]) => void
   sessionId?: string | null
   compact?: boolean
+  /** Shown while canvas/memory sync runs after the coach reply finished */
+  backgroundStatus?: string | null
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +87,12 @@ export default function ChatInput({
 
   return (
     <div className={`${compact ? 'p-2' : 'p-4'} bg-white ${compact ? '' : 'rounded-b-2xl'} border-t border-gray-100 shrink-0`}>
+      {backgroundStatus && !isStreaming && (
+        <p className="flex items-center gap-2 text-xs text-indigo-600 font-medium mb-2 px-1">
+          <Loader2 size={14} className="animate-spin shrink-0" />
+          {backgroundStatus}
+        </p>
+      )}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 px-1">
           {attachments.map(a => (

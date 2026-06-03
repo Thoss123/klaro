@@ -694,7 +694,8 @@ function ChatPageContent() {
     }
 
     setIsStreaming(true);
-    clearActions(); // fresh agent-action log for this turn
+    // Keep still-running background jobs visible; drop completed entries from prior turns.
+    setAgentActions(prev => prev.filter(a => a.status === 'running'));
     const turnId = ++activeTurnRef.current;
     abortControllerRef.current = new AbortController();
 
@@ -942,105 +943,125 @@ function ChatPageContent() {
         return;
       }
 
-      if (!shownCanvasActions.has('trigger_canvas')) {
-        if (canvasEval.eligible && !canvasWorker.current) {
-          logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
-          startCanvasWorker('auto_sync');
-        } else if (!canvasWorker.current) {
-          logSync('canvas', 'skip', 'auto_sync not run', {
-            reason: canvasEval.reason,
-            detail: canvasEval.detail,
-          });
-        }
-      } else {
-        logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
+      // Coach text is complete — unlock input; canvas/memory/phase sync runs in background.
+      streamReaderRef.current = null;
+      if (activeTurnRef.current === turnId) {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
       }
 
-      if (detectCompletedPhase(rawAssistantContent, chatPhase)) {
-        const prepKey = `${sessionId}:${chatPhase}`;
-        const gate = canAdvanceFromPhase(chatPhase, streamCanvasData);
-        if (!gate.ok) {
-          logSync('canvas', 'skip', `phase_complete blocked: ${gate.reason}`, { phase: chatPhase });
-        } else if (!phasePrepTriggeredForRef.current.has(prepKey)) {
-          phasePrepTriggeredForRef.current.add(prepKey);
-          await prepareNextPhaseRef.current?.(false);
-        }
-      }
-
-      // Background Memory Update (with status logging)
-      if (isHiddenInit) {
-        logSync('memory', 'skip', 'hidden init — no memory extract');
-      } else if (!assistantContent.trim()) {
-        logSync('memory', 'skip', 'empty assistant reply');
-      } else if (sessionId) {
-        logSync('memory', 'invoke', 'POST /api/memory-update', {
-          sessionId,
-          userChars: (content || '').length,
-          assistantChars: assistantContent.length,
-        });
-        const memAid = addAction('memory_update', 'Aktualisiere Gesprächs-Memory...');
-        fetch('/api/memory-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId,
-            currentMemory: sessionMemory,
-            newMessage: `User: ${content}\n\nAssistant: ${assistantContent}`,
-          }),
-        })
-          .then(async res => {
-            const data = await res.json().catch(() => ({}));
-            const status = data.status || (res.ok ? 'unknown' : 'error');
-            const reason = data.reason || data.error || res.statusText;
-            if (status === 'updated' && data.memory) {
-              logSync('memory', 'success', 'memory updated', {
-                chars: data.memory.length,
-                reason,
+      const runPostTurnSync = async () => {
+        let canvasSnapshot = streamCanvasData;
+        try {
+          if (!shownCanvasActions.has('trigger_canvas')) {
+            if (canvasEval.eligible && !canvasWorker.current) {
+              logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
+              startCanvasWorker('auto_sync');
+            } else if (!canvasWorker.current) {
+              logSync('canvas', 'skip', 'auto_sync not run', {
+                reason: canvasEval.reason,
+                detail: canvasEval.detail,
               });
-              setSessionMemory(data.memory);
-              completeAction(memAid, 'Memory aktualisiert');
-            } else if (status === 'unchanged') {
-              logSync('memory', 'skip', reason === 'no_new_facts' ? 'no new facts in turn' : 'unchanged', {
-                reason,
-              });
-              completeAction(memAid, `Memory: ${reason === 'no_new_facts' ? 'keine neuen Fakten' : 'unverändert'}`);
-            } else if (status === 'skipped') {
-              logSync('memory', 'skip', 'API skipped', { reason });
-              completeAction(memAid, `Memory übersprungen (${reason})`);
-            } else {
-              logSync('memory', 'fail', 'API error', { reason, status });
-              failAction(memAid, `Memory-Fehler (${reason})`);
             }
-          })
-          .catch(err => {
-            logSync('memory', 'fail', 'network error', { error: String(err) });
-            failAction(memAid, 'Memory-Fehler (Netzwerk)');
-          });
-      }
+          } else {
+            logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
+          }
 
-      // ---- Phase 4: Process control tags after stream completes ----
-      if (chatPhase === 'umsetzung' || assistantContent.includes('<request_credential>') || assistantContent.includes('<deploy_workflow>')) {
-        await processPhase4Tags(assistantContent, streamCanvasData, projId);
-      }
+          if (detectCompletedPhase(rawAssistantContent, chatPhase)) {
+            const prepKey = `${sessionId}:${chatPhase}`;
+            const gate = canAdvanceFromPhase(chatPhase, canvasSnapshot);
+            if (!gate.ok) {
+              logSync('canvas', 'skip', `phase_complete blocked: ${gate.reason}`, { phase: chatPhase });
+            } else if (!phasePrepTriggeredForRef.current.has(prepKey)) {
+              phasePrepTriggeredForRef.current.add(prepKey);
+              await prepareNextPhaseRef.current?.(false);
+            }
+          }
 
-      // Worker owns project_canvas — wait for it, never overwrite with stale streamCanvasData
-      const pendingCanvasWorker = canvasWorker.current;
-      if (pendingCanvasWorker) {
-        await pendingCanvasWorker.catch(() => {});
-        if (projId) {
-          const fresh = await loadProjectCanvas(projId);
-          if (fresh) streamCanvasData = withSessionPhase(fresh, chatPhase);
+          if (isHiddenInit) {
+            logSync('memory', 'skip', 'hidden init — no memory extract');
+          } else if (!assistantContent.trim()) {
+            logSync('memory', 'skip', 'empty assistant reply');
+          } else if (sessionId) {
+            logSync('memory', 'invoke', 'POST /api/memory-update', {
+              sessionId,
+              userChars: (content || '').length,
+              assistantChars: assistantContent.length,
+            });
+            const memAid = addAction('memory_update', 'Aktualisiere Gesprächs-Memory...');
+            await fetch('/api/memory-update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId,
+                currentMemory: sessionMemory,
+                newMessage: `User: ${content}\n\nAssistant: ${assistantContent}`,
+              }),
+            })
+              .then(async res => {
+                const data = await res.json().catch(() => ({}));
+                const status = data.status || (res.ok ? 'unknown' : 'error');
+                const reason = data.reason || data.error || res.statusText;
+                if (status === 'updated' && data.memory) {
+                  logSync('memory', 'success', 'memory updated', {
+                    chars: data.memory.length,
+                    reason,
+                  });
+                  setSessionMemory(data.memory);
+                  completeAction(memAid, 'Memory aktualisiert');
+                } else if (status === 'unchanged') {
+                  logSync('memory', 'skip', reason === 'no_new_facts' ? 'no new facts in turn' : 'unchanged', {
+                    reason,
+                  });
+                  completeAction(memAid, `Memory: ${reason === 'no_new_facts' ? 'keine neuen Fakten' : 'unverändert'}`);
+                } else if (status === 'skipped') {
+                  logSync('memory', 'skip', 'API skipped', { reason });
+                  completeAction(memAid, `Memory übersprungen (${reason})`);
+                } else {
+                  logSync('memory', 'fail', 'API error', { reason, status });
+                  failAction(memAid, `Memory-Fehler (${reason})`);
+                }
+              })
+              .catch(err => {
+                logSync('memory', 'fail', 'network error', { error: String(err) });
+                failAction(memAid, 'Memory-Fehler (Netzwerk)');
+              });
+          }
+
+          if (
+            chatPhase === 'umsetzung' ||
+            assistantContent.includes('<request_credential>') ||
+            assistantContent.includes('<deploy_workflow>')
+          ) {
+            await processPhase4Tags(assistantContent, canvasSnapshot, projId);
+          }
+
+          const pendingCanvasWorker = canvasWorker.current;
+          if (pendingCanvasWorker) {
+            await pendingCanvasWorker.catch(() => {});
+            if (projId) {
+              const fresh = await loadProjectCanvas(projId);
+              if (fresh) canvasSnapshot = withSessionPhase(fresh, chatPhase);
+            }
+          } else if (projId) {
+            const existingPc = await loadProjectCanvas(projId);
+            const progressIdx = Math.max(
+              PHASE_ORDER.indexOf(existingPc?.phase || chatPhase),
+              PHASE_ORDER.indexOf(chatPhase)
+            );
+            const progressPhase = PHASE_ORDER[progressIdx] || chatPhase;
+            await saveProjectCanvas(projId, {
+              ...canvasSnapshot,
+              phase: progressPhase as CanvasData['phase'],
+            });
+          }
+          await saveCanvas(sessionId, canvasSnapshot);
+        } catch (syncErr) {
+          console.error('Post-turn sync error:', syncErr);
         }
-      } else if (projId) {
-        const existingPc = await loadProjectCanvas(projId);
-        const progressIdx = Math.max(
-          PHASE_ORDER.indexOf(existingPc?.phase || chatPhase),
-          PHASE_ORDER.indexOf(chatPhase)
-        );
-        const progressPhase = PHASE_ORDER[progressIdx] || chatPhase;
-        await saveProjectCanvas(projId, { ...streamCanvasData, phase: progressPhase as CanvasData['phase'] });
-      }
-      await saveCanvas(sessionId, streamCanvasData);
+      };
+
+      void runPostTurnSync();
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -1438,6 +1459,8 @@ function ChatPageContent() {
   };
 
   // Only show chats that belong to the current project
+  const hasRunningBackgroundWork = agentActions.some(a => a.status === 'running');
+
   const projectSessions = currentProject
     ? sessions.filter(s => s.project_id === currentProject.id)
     : sessions;
@@ -1731,6 +1754,11 @@ function ChatPageContent() {
                 onAttachmentsChange={setPendingAttachments}
                 sessionId={currentSessionId}
                 compact={isMobile}
+                backgroundStatus={
+                  hasRunningBackgroundWork
+                    ? 'Canvas und Memory werden im Hintergrund aktualisiert — du kannst schon weiterschreiben.'
+                    : null
+                }
               />
             )}
         </div>

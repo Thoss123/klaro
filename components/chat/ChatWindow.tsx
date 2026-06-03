@@ -25,7 +25,7 @@ export default function ChatWindow({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, injectBeforeLastAssistant]);
+  }, [messages, isStreaming]);
 
   const visibleMessages = messages.filter(
     m => !(m.role === 'user' && isHiddenSystemMessage(m.content))
