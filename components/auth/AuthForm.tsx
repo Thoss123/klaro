@@ -2,12 +2,21 @@
 
 import React, { useRef, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { isExistingAccountOnSignup } from '@/lib/auth-signup';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import Lottie from 'lottie-react';
 import successAnimation from '@/public/success.json';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export default function AuthForm({ onSuccess, defaultMode = 'signup' }: { onSuccess: () => void, defaultMode?: 'login' | 'signup' }) {
+export default function AuthForm({
+  onSuccess,
+  onExistingAccount,
+  defaultMode = 'signup',
+}: {
+  onSuccess: () => void
+  onExistingAccount?: (details: { email: string; password: string }) => void
+  defaultMode?: 'login' | 'signup'
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
@@ -31,15 +40,19 @@ export default function AuthForm({ onSuccess, defaultMode = 'signup' }: { onSucc
     try {
       const supabase = getSupabase();
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: `${window.location.origin}/api/auth/callback`,
           },
         });
-        if (error) throw error;
-        
+        if (isExistingAccountOnSignup(signUpData, signUpError)) {
+          onExistingAccount?.({ email, password });
+          return;
+        }
+        if (signUpError) throw signUpError;
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           onSuccess();

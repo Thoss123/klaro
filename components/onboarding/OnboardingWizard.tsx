@@ -4,10 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import AuthForm from '@/components/auth/AuthForm';
+import OnboardingExistingAccount from '@/components/onboarding/OnboardingExistingAccount';
 import { OnboardingData } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
-import { ensureDefaultProject, createSession } from '@/lib/supabase-chat';
+import { ensureDefaultProject, createProject, createSession } from '@/lib/supabase-chat';
 import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 
 type WizardOption = { label: string; value: string };
@@ -106,6 +107,9 @@ export default function OnboardingWizard() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [data, setData] = useState<Partial<OnboardingData>>({});
+  const [existingAccount, setExistingAccount] = useState<{ email: string; password: string } | null>(null);
+  const [existingAccountBusy, setExistingAccountBusy] = useState(false);
+  const [existingAccountError, setExistingAccountError] = useState<string | null>(null);
 
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
@@ -126,6 +130,11 @@ export default function OnboardingWizard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, data]);
 
+  const clearOnboardingStorage = () => {
+    localStorage.removeItem('pending_onboarding');
+    localStorage.removeItem('klaro_intro_message');
+  };
+
   const handleAuthSuccess = async () => {
     const payload = buildPayload();
     const supabase = createSupabaseBrowserClient();
@@ -140,14 +149,55 @@ export default function OnboardingWizard() {
       const userId = session.user.id;
       const projectId = await ensureDefaultProject(userId);
       const sessionId = await createSession(payload, userId, 'diagnose', undefined, undefined, projectId);
-      localStorage.removeItem('pending_onboarding');
-      localStorage.removeItem('klaro_intro_message');
+      clearOnboardingStorage();
       router.push(`/chat?id=${sessionId}`);
     } catch (e) {
       console.error('Onboarding-Persistierung in die DB fehlgeschlagen:', e);
       localStorage.setItem('pending_onboarding', JSON.stringify(payload));
       router.push('/chat?new=true');
     }
+  };
+
+  const handleStartNewProjectWithOnboarding = async () => {
+    if (!existingAccount) return;
+    setExistingAccountBusy(true);
+    setExistingAccountError(null);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: existingAccount.email,
+        password: existingAccount.password,
+      });
+      if (error) throw error;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Anmeldung fehlgeschlagen.');
+
+      const payload = buildPayload();
+      const projectName = payload.firmenname?.trim() || 'Neues Projekt';
+      const projectId = await createProject(session.user.id, projectName);
+      const sessionId = await createSession(
+        payload,
+        session.user.id,
+        'diagnose',
+        undefined,
+        undefined,
+        projectId,
+      );
+      clearOnboardingStorage();
+      router.push(`/chat?id=${sessionId}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen.';
+      setExistingAccountError(msg);
+    } finally {
+      setExistingAccountBusy(false);
+    }
+  };
+
+  const handleCancelOnboardingToLogin = () => {
+    clearOnboardingStorage();
+    setExistingAccount(null);
+    router.push('/login');
   };
 
   const currentQuestion = () => {
@@ -278,13 +328,35 @@ export default function OnboardingWizard() {
           />
         );
       case 11:
+        if (existingAccount) {
+          return (
+            <OnboardingExistingAccount
+              email={existingAccount.email}
+              firmenname={data.firmenname}
+              loading={existingAccountBusy}
+              error={existingAccountError}
+              onStartNewProject={handleStartNewProjectWithOnboarding}
+              onCancelToLogin={handleCancelOnboardingToLogin}
+              onUseDifferentEmail={() => {
+                setExistingAccount(null);
+                setExistingAccountError(null);
+              }}
+            />
+          );
+        }
         return (
           <div className="flex flex-col gap-4">
             <div className="text-center mb-6">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">Fast geschafft!</h2>
               <p className="text-gray-500">Erstelle einen Account, um deine Roadmap und Chats zu speichern.</p>
             </div>
-            <AuthForm onSuccess={handleAuthSuccess} />
+            <AuthForm
+              onSuccess={handleAuthSuccess}
+              onExistingAccount={({ email, password }) => {
+                setExistingAccount({ email, password });
+                setExistingAccountError(null);
+              }}
+            />
           </div>
         );
       default:
