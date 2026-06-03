@@ -2,6 +2,7 @@
 
 - Always communicate with the user in German (UI copy, explanations, and coach-facing text).
 - Only create git commits when the user explicitly asks.
+- **Git (Dev):** Push changes directly to `master` — no feature branches or separate PRs unless the user asks otherwise.
 - Onboarding: Ziel single-select; Hindernis multi-select; order branche → … → rolle (mid-flow) → … → vorname + firmenname (steps 9–10, before auth).
 - Phase 1 coach: no „typischer Tag“; offer type then Projektablauf (customer acquisition → delivery); company facts → canvas + session memory; intro → „Lass uns gleich starten:“ → first diagnostic question in message 2; reference onboarding; one question per message, max one Zwischenfrage before next script step.
 - „Rundherum“ questions (Verwaltung, Buchhaltung, Wissen, etc.) for all team sizes including Solo.
