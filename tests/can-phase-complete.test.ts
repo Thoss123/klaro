@@ -28,4 +28,8 @@ describe('canAdvanceFromPhase', () => {
   it('allows plan when coach signaled complete with at least one workflow', () => {
     expect(canAdvanceFromPhase('plan', canvas, { coachSignaledComplete: true }).ok).toBe(true);
   });
+
+  it('allows plan when user requested advance with workflows', () => {
+    expect(canAdvanceFromPhase('plan', canvas, { userRequestedAdvance: true }).ok).toBe(true);
+  });
 });

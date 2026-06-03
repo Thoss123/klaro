@@ -1,4 +1,7 @@
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
+import { detectPhaseAdvanceIntent } from '@/lib/phase-advance-intent';
+import { countValidWorkflows } from '@/lib/plan-workflows';
+import type { CanvasData } from '@/lib/types';
 
 /** Structured terminal logging for canvas + memory sync after each chat turn. */
 
@@ -17,6 +20,7 @@ export type CanvasSkipReason =
   | 'db_save_failed'
   | 'network_error'
   | 'plan_awaiting_workflow_chat'
+  | 'phase_advance_requested'
   | 'orchestration_deferred'
   | 'unknown';
 
@@ -49,8 +53,18 @@ export function evaluateCanvasEligibility(params: {
   phase: string;
   userMessages: { role: string; content: string }[];
   workerAlreadyScheduled: boolean;
+  canvas?: Partial<CanvasData> | null;
+  latestUserMessage?: string;
 }): { eligible: boolean; reason: CanvasSkipReason | 'ok'; detail: string } {
-  const { isHiddenInit, projectId, phase, userMessages, workerAlreadyScheduled } = params;
+  const {
+    isHiddenInit,
+    projectId,
+    phase,
+    userMessages,
+    workerAlreadyScheduled,
+    canvas,
+    latestUserMessage,
+  } = params;
 
   if (isHiddenInit) {
     return { eligible: false, reason: 'hidden_init', detail: 'Welcome/hidden init — no sync' };
@@ -69,6 +83,19 @@ export function evaluateCanvasEligibility(params: {
 
   const userText = userLines.join(' ');
   const chars = userText.length;
+
+  const advanceSource = (latestUserMessage || '').trim() || userLines[userLines.length - 1] || '';
+  if (
+    phase === 'plan' &&
+    detectPhaseAdvanceIntent(advanceSource) &&
+    countValidWorkflows(canvas || {}) > 0
+  ) {
+    return {
+      eligible: false,
+      reason: 'phase_advance_requested',
+      detail: 'Plan: Nutzer will nächste Phase — kein Canvas-Sync',
+    };
+  }
 
   if (phase === 'plan' && chars < 40) {
     return {
@@ -151,6 +178,8 @@ export function canvasSkipUserLabel(reason: string | undefined, detail?: string)
       return 'kein Projekt';
     case 'thin_user_context':
       return 'noch zu wenig Gesprächsinhalt';
+    case 'phase_advance_requested':
+      return 'Phasenwechsel — Canvas übersprungen';
     default:
       return reason || 'übersprungen';
   }

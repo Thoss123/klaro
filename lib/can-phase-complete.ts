@@ -5,7 +5,7 @@ import type { CanvasData } from '@/lib/types';
 export function canAdvanceFromPhase(
   phase: string,
   canvas: CanvasData,
-  opts?: { coachSignaledComplete?: boolean },
+  opts?: { coachSignaledComplete?: boolean; userRequestedAdvance?: boolean },
 ): { ok: boolean; reason?: string } {
   if (phase === 'analyse') {
     const imp = canvas.implementer;
@@ -21,8 +21,8 @@ export function canAdvanceFromPhase(
     if (workflows.length === 0) {
       return { ok: false, reason: 'no_workflows' };
     }
-    // Coach hat phase_complete gesendet — Nutzer darf weiter, auch wenn nicht jeder PP verlinkt ist.
-    if (opts?.coachSignaledComplete) {
+    // Coach oder Nutzer will weiter — auch wenn nicht jeder PP verlinkt ist.
+    if (opts?.coachSignaledComplete || opts?.userRequestedAdvance) {
       return { ok: true };
     }
     const painIds = new Set((canvas.pain_points || []).map(p => p.id));
