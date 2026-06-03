@@ -1,7 +1,8 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import Lottie from 'lottie-react';
 import successAnimation from '@/public/success.json';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,7 +15,13 @@ export default function AuthForm({ onSuccess, defaultMode = 'signup' }: { onSucc
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createSupabaseBrowserClient();
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const getSupabase = () => {
+    if (!supabaseRef.current) {
+      supabaseRef.current = createSupabaseBrowserClient();
+    }
+    return supabaseRef.current;
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +29,7 @@ export default function AuthForm({ onSuccess, defaultMode = 'signup' }: { onSucc
     setError(null);
 
     try {
+      const supabase = getSupabase();
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email,
@@ -64,6 +72,7 @@ export default function AuthForm({ onSuccess, defaultMode = 'signup' }: { onSucc
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
+      const supabase = getSupabase();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

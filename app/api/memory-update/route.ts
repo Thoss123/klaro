@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Mistral } from '@mistralai/mistralai';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServiceClient } from '@/lib/supabase';
 import { logSync } from '@/lib/sync-decision';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +19,8 @@ export async function POST(req: Request) {
       logSync('memory', 'skip', 'MISTRAL_API_KEY missing');
       return NextResponse.json({ status: 'skipped', reason: 'no_api_key', memory: currentMemory || '' });
     }
+
+    const supabase = createSupabaseServiceClient()
 
     logSync('memory', 'invoke', `session=${sessionId}`, {
       currentChars: (currentMemory || '').length,

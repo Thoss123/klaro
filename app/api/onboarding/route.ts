@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { createSupabaseAnonClient } from '@/lib/supabase'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
     const data = await req.json();
     const { ziel, ki_erfahrung, wer_setzt_um, hindernis, tempo } = data;
 
+    const supabase = createSupabaseAnonClient()
     const { data: session, error } = await supabase
       .from('sessions')
       .insert([
