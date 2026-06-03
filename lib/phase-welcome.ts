@@ -15,7 +15,9 @@ export function getHiddenInitMessage(phase: string): string {
         `${SYSTEM_PREFIX} phase=plan\n` +
         'Starte Phase 3 (Plan). Kurz Recap was du aus Phase 1–2 schon weißt (Pain + Tools), ' +
         'dann nur EINE Lücken-Frage zum ersten Pain Point — kein A/B/C (war Phase 2), ' +
-        'kein kompletter Workflow von vorn, keine erneute Vorstellung.'
+        'kein kompletter Workflow von vorn, keine erneute Vorstellung. ' +
+        'Sag dem Nutzer in 1 Satz: Den Workflow-Plan in der Roadmap rechts legst du erst an, ' +
+        'wenn ihr hier den konkreten Ablauf für einen Pain Point besprochen habt — nicht schon jetzt.'
       );
     case 'umsetzung':
       return (

@@ -45,6 +45,7 @@ import {
   formatAttachmentsForMessage,
   attachmentsForApi,
 } from '@/lib/chat-attachments';
+import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
 import { canvasSkipUserLabel, evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
@@ -442,6 +443,7 @@ function ChatPageContent() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const activeTurnRef = useRef(0);
+  const lastCoachStatusKeyRef = useRef<string | null>(null);
   const [canvasData, setCanvasData] = useState<CanvasData>(emptyCanvas);
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   /** Chat/API phase — always follows the active session, not project_canvas.progress */
@@ -636,6 +638,30 @@ function ChatPageContent() {
       return [];
     }
   }, []);
+
+  /** Coach erklärt im Chat, warum die Roadmap (noch) nicht aktualisiert wurde. */
+  const appendCoachStatusExplanation = useCallback(
+    async (sessionId: string, reason: string | undefined, phase: string) => {
+      const text = coachStatusMessageForCanvas(reason, phase);
+      if (!text) return;
+      const key = `${sessionId}:${reason ?? 'unknown'}:${text.slice(0, 48)}`;
+      if (lastCoachStatusKeyRef.current === key) return;
+      lastCoachStatusKeyRef.current = key;
+
+      const statusMsg: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: text,
+      };
+      setMessages(prev => [...prev, statusMsg]);
+      try {
+        await saveMessage(sessionId, 'assistant', text);
+      } catch (e) {
+        console.error('Coach-Status speichern fehlgeschlagen:', e);
+      }
+    },
+    [],
+  );
 
   // ---- Send message (Hoisted for use in useEffect) ----
   const sendMessage = useCallback(async (
@@ -843,6 +869,7 @@ function ChatPageContent() {
             reason: canvasEval.reason,
             detail: canvasEval.detail,
           });
+          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
           return;
         }
         logSync('canvas', 'invoke', `POST /api/canvas-worker (${source})`, {
@@ -885,6 +912,7 @@ function ChatPageContent() {
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
               completeAction(aid, `Canvas: ${canvasSkipUserLabel(reason, data.detail)}`);
+              void appendCoachStatusExplanation(sessionId, reason, chatPhase);
             } else {
               logSync('canvas', 'fail', 'worker error', { reason, status });
               failAction(aid, `Canvas-Fehler (${reason || res.status})`);
@@ -918,6 +946,7 @@ function ChatPageContent() {
             reason: canvasEval.reason,
             detail: canvasEval.detail,
           });
+          void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
         }
 
         // Process tool calls from the stream
@@ -986,6 +1015,7 @@ function ChatPageContent() {
                 reason: canvasEval.reason,
                 detail: canvasEval.detail,
               });
+              void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase);
             }
           } else {
             logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
@@ -1103,7 +1133,7 @@ function ChatPageContent() {
       // (won't re-fire anyway since isWelcomeSent DB flag is now true)
       if (isHiddenInit && sessionId) welcomeInProgressRef.current.delete(sessionId);
     }
-  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments]);
+  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation]);
 
   // ---- Auth & Onboarding effect ----
   useEffect(() => {
@@ -1186,6 +1216,7 @@ function ChatPageContent() {
   // ---- Load a specific session ----
   // Queries project directly from Supabase so it never relies on stale sessions state.
   const switchToSession = async (sessionId: string) => {
+    lastCoachStatusKeyRef.current = null;
     setIsLoadingSession(true);
     const supabase = createSupabaseBrowserClient();
     try {
