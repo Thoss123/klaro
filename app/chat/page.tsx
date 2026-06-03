@@ -47,6 +47,8 @@ import {
 } from '@/lib/chat-attachments';
 import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
 import { canvasSkipUserLabel, evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
+import { detectPhaseAdvanceIntent } from '@/lib/phase-advance-intent';
+import { countValidWorkflows } from '@/lib/plan-workflows';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
 import { titleFromUserMessage } from '@/lib/session-title';
@@ -852,12 +854,16 @@ function ChatPageContent() {
         hiddenInit: isHiddenInit,
       });
 
+      const userAdvanceIntent =
+        !isHiddenInit && detectPhaseAdvanceIntent(content || '');
       const canvasEval = evaluateCanvasEligibility({
         isHiddenInit,
         projectId: projId,
         phase: chatPhase,
         userMessages: payloadMessages,
         workerAlreadyScheduled: false,
+        canvas: streamCanvasData,
+        latestUserMessage: isHiddenInit ? undefined : content,
       });
       logSync('canvas', 'evaluate', canvasEval.eligible ? 'eligible' : 'blocked', {
         reason: canvasEval.reason,
@@ -1011,33 +1017,53 @@ function ChatPageContent() {
       const runPostTurnSync = async () => {
         let canvasSnapshot = streamCanvasData;
         try {
-          if (!shownCanvasActions.has('trigger_canvas')) {
-            if (canvasEval.eligible && !canvasWorker.current) {
-              logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
-              startCanvasWorker('auto_sync');
-            } else if (!canvasWorker.current) {
-              logSync('canvas', 'skip', 'auto_sync not run', {
-                reason: canvasEval.reason,
-                detail: canvasEval.detail,
+          const tryAdvancePhase = async (source: 'coach_tag' | 'user_intent', switchAfter: boolean) => {
+            const prepKey = `${sessionId}:${chatPhase}`;
+            const gate = canAdvanceFromPhase(chatPhase, canvasSnapshot, {
+              coachSignaledComplete: source === 'coach_tag',
+              userRequestedAdvance: source === 'user_intent',
+            });
+            if (!gate.ok) {
+              logSync('canvas', 'skip', `phase advance blocked (${source}): ${gate.reason}`, {
+                phase: chatPhase,
               });
-              void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, canvasSnapshot);
+              return false;
+            }
+            if (phasePrepTriggeredForRef.current.has(prepKey)) return true;
+            phasePrepTriggeredForRef.current.add(prepKey);
+            logSync('canvas', 'turn', `prepare next phase (${source})`, { phase: chatPhase });
+            await prepareNextPhaseRef.current?.(switchAfter);
+            return true;
+          };
+
+          const skipCanvasForAdvance =
+            userAdvanceIntent && canvasEval.reason === 'phase_advance_requested';
+
+          if (!skipCanvasForAdvance) {
+            if (!shownCanvasActions.has('trigger_canvas')) {
+              if (canvasEval.eligible && !canvasWorker.current) {
+                logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
+                startCanvasWorker('auto_sync');
+              } else if (!canvasWorker.current) {
+                logSync('canvas', 'skip', 'auto_sync not run', {
+                  reason: canvasEval.reason,
+                  detail: canvasEval.detail,
+                });
+                void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, canvasSnapshot);
+              }
+            } else {
+              logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
             }
           } else {
-            logSync('canvas', 'evaluate', 'auto_sync skipped — tag already triggered worker');
+            logSync('canvas', 'skip', 'user phase advance — no canvas worker', {
+              workflows: countValidWorkflows(canvasSnapshot),
+            });
           }
 
           if (detectCompletedPhase(rawAssistantContent, chatPhase)) {
-            const prepKey = `${sessionId}:${chatPhase}`;
-            const gate = canAdvanceFromPhase(chatPhase, canvasSnapshot, {
-              coachSignaledComplete: true,
-            });
-            if (!gate.ok) {
-              logSync('canvas', 'skip', `phase_complete blocked: ${gate.reason}`, { phase: chatPhase });
-            }
-            if (gate.ok && !phasePrepTriggeredForRef.current.has(prepKey)) {
-              phasePrepTriggeredForRef.current.add(prepKey);
-              await prepareNextPhaseRef.current?.(false);
-            }
+            await tryAdvancePhase('coach_tag', false);
+          } else if (userAdvanceIntent) {
+            await tryAdvancePhase('user_intent', true);
           }
 
           if (isHiddenInit) {

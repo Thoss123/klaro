@@ -18,5 +18,6 @@ export function shouldSuppressPlanWorkflowCoachNotice(
     'orchestration_deferred',
     'orchestration_blocked',
     'insufficient_context',
+    'phase_advance_requested',
   ].includes(reason ?? '');
 }

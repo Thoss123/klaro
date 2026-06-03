@@ -56,6 +56,7 @@ export function coachStatusMessageForCanvas(
       );
 
     case 'hidden_init':
+    case 'phase_advance_requested':
       return null;
 
     default:
