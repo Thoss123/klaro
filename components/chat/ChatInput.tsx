@@ -33,7 +33,11 @@ export default function ChatInput({
 
   useEffect(() => {
     if (!disabled && inputRef.current) {
-      inputRef.current.focus();
+      // iOS zooms focused inputs with font-size < 16px; skip autofocus on touch devices.
+      const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      if (!isTouch) {
+        inputRef.current.focus();
+      }
     }
   }, [disabled]);
 
@@ -172,7 +176,7 @@ export default function ChatInput({
           }}
           placeholder="Antworten..."
           rows={1}
-          className="flex-1 bg-transparent px-2 py-1 focus:outline-none text-gray-800 text-sm resize-none self-center leading-relaxed"
+          className="flex-1 bg-transparent px-2 py-1 focus:outline-none text-gray-800 text-base resize-none self-center leading-relaxed"
           style={{ minHeight: '24px', maxHeight: '150px' }}
         />
         <button
