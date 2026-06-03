@@ -12,6 +12,18 @@ import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 
 type WizardOption = { label: string; value: string };
 
+const BRANCHE_OTHER_VALUE = 'Sonstiges';
+
+function isCustomOptionValue(
+  value: string | undefined,
+  options: WizardOption[],
+  otherValue: string,
+): boolean {
+  if (!value || value === otherValue) return false;
+  const standard = options.map((o) => o.value).filter((v) => v !== otherValue);
+  return !standard.includes(value);
+}
+
 const BRANCHE_OPTIONS: WizardOption[] = [
   { label: 'Steuerberatung & Wirtschaftsprüfung', value: 'Steuerberatung' },
   { label: 'Handwerk & Produktion', value: 'Handwerk' },
@@ -19,7 +31,7 @@ const BRANCHE_OPTIONS: WizardOption[] = [
   { label: 'Marketing-, Kreativ- oder Digitalagentur', value: 'Agentur' },
   { label: 'Beratung & professionelle Dienstleistung', value: 'Beratung' },
   { label: 'Immobilien', value: 'Immobilien' },
-  { label: 'Andere Branche', value: 'Sonstiges' },
+  { label: 'Andere Branche', value: BRANCHE_OTHER_VALUE },
 ];
 
 const GROESSE_OPTIONS: WizardOption[] = [
@@ -151,6 +163,9 @@ export default function OnboardingWizard() {
             onNext={nextStep}
             onBack={prevStep}
             isFirst
+            otherOptionValue={BRANCHE_OTHER_VALUE}
+            otherInputLabel="Welche Branche trifft auf euch zu?"
+            otherInputPlaceholder="z. B. Logistik, Gesundheitswesen, Bildung"
           />
         );
       case 2:
@@ -381,6 +396,9 @@ function QuestionStep({
   onBack,
   isFirst = false,
   mode = 'single',
+  otherOptionValue,
+  otherInputLabel,
+  otherInputPlaceholder,
 }: {
   title: string;
   subtitle?: string;
@@ -391,18 +409,47 @@ function QuestionStep({
   onBack: () => void;
   isFirst?: boolean;
   mode?: 'single' | 'multi';
+  otherOptionValue?: string;
+  otherInputLabel?: string;
+  otherInputPlaceholder?: string;
 }) {
   const isMulti = mode === 'multi';
   const selectedValues = parseMultiValue(value);
+  const hasOtherOption = Boolean(otherOptionValue);
+  const isOtherActive =
+    hasOtherOption &&
+    (value === otherOptionValue ||
+      isCustomOptionValue(value, options, otherOptionValue!));
+  const [otherDraft, setOtherDraft] = useState('');
+
+  useEffect(() => {
+    if (!hasOtherOption) return;
+    if (isCustomOptionValue(value, options, otherOptionValue!)) {
+      setOtherDraft(value!.trim());
+    } else if (value !== otherOptionValue) {
+      setOtherDraft('');
+    }
+  }, [value, hasOtherOption, otherOptionValue, options]);
 
   const handleSelect = (opt: WizardOption) => {
     if (isMulti) {
       onSelect(toggleMultiValue(value, opt.value));
+    } else if (hasOtherOption && opt.value === otherOptionValue) {
+      onSelect(opt.value);
     } else {
       onSelect(opt.value);
       setTimeout(() => onNext(), 180);
     }
   };
+
+  const handleOtherContinue = () => {
+    const trimmed = otherDraft.trim();
+    if (!trimmed) return;
+    onSelect(trimmed);
+    onNext();
+  };
+
+  const otherReady = otherDraft.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -422,7 +469,11 @@ function QuestionStep({
       </div>
       <div className="flex flex-col gap-3">
         {options.map(opt => {
-          const isSelected = isMulti ? selectedValues.includes(opt.value) : value === opt.value;
+          const isSelected = isMulti
+            ? selectedValues.includes(opt.value)
+            : hasOtherOption && opt.value === otherOptionValue
+              ? isOtherActive
+              : value === opt.value;
           return (
             <button
               key={opt.value}
@@ -455,12 +506,31 @@ function QuestionStep({
         })}
       </div>
 
-      {isMulti && (
+      {hasOtherOption && isOtherActive && (
+        <div className="flex flex-col gap-3 -mt-2">
+          {otherInputLabel && (
+            <p className="text-sm font-medium text-gray-600 text-center">{otherInputLabel}</p>
+          )}
+          <input
+            type="text"
+            value={otherDraft}
+            onChange={(e) => setOtherDraft(e.target.value)}
+            placeholder={otherInputPlaceholder}
+            className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && otherReady) handleOtherContinue();
+            }}
+          />
+        </div>
+      )}
+
+      {(isMulti || (hasOtherOption && isOtherActive)) && (
         <div className="mt-2 flex justify-center">
           <button
             type="button"
-            onClick={onNext}
-            disabled={selectedValues.length === 0}
+            onClick={isOtherActive ? handleOtherContinue : onNext}
+            disabled={isOtherActive ? !otherReady : selectedValues.length === 0}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Weiter <ArrowRight size={20} />
