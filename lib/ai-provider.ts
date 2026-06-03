@@ -2,13 +2,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Mistral } from '@mistralai/mistralai';
 import { AITool, toGeminiTools, toMistralTools, KLARO_TOOLS } from './ai-tools';
 
+export type VisionAttachment = { mimeType: string; base64: string };
+
 export interface AIProvider {
   streamMessage(
     systemPrompt: string,
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>
+    onToolCall?: (toolCall: any) => Promise<any>,
+    attachments?: VisionAttachment[]
   ): Promise<void>;
 }
 
@@ -18,13 +21,25 @@ export class GeminiProvider implements AIProvider {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
   }
+
+  private userParts(message: string, attachments?: VisionAttachment[]) {
+    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+    for (const a of attachments || []) {
+      if (a.mimeType?.startsWith('image/') && a.base64) {
+        parts.push({ inlineData: { mimeType: a.mimeType, data: a.base64 } });
+      }
+    }
+    parts.push({ text: message || ' ' });
+    return parts;
+  }
   
   async streamMessage(
     systemPrompt: string,
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>
+    onToolCall?: (toolCall: any) => Promise<any>,
+    attachments?: VisionAttachment[]
   ) {
     const geminiHistory = history.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -93,7 +108,7 @@ export class GeminiProvider implements AIProvider {
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
-        const result = await chat.sendMessageStream(message);
+        const result = await chat.sendMessageStream(this.userParts(message, attachments));
         await processStream(result, chat);
     } catch (error: any) {
         console.warn('Primary model failed in AIProvider:', error?.message);
@@ -103,7 +118,7 @@ export class GeminiProvider implements AIProvider {
         try {
             // Retry with primary model first
             let retryChat = model.startChat({ history: normalizedHistory });
-            const retryResult = await retryChat.sendMessageStream(message);
+            const retryResult = await retryChat.sendMessageStream(this.userParts(message, attachments));
             await processStream(retryResult, retryChat);
         } catch (retryError: any) {
             console.warn('Retry failed:', retryError?.message);
@@ -114,7 +129,7 @@ export class GeminiProvider implements AIProvider {
                tools: [{ functionDeclarations: toGeminiTools(KLARO_TOOLS) }]
             });
             const fallbackChat = fallbackModel.startChat({ history: normalizedHistory });
-            const fallbackResult = await fallbackChat.sendMessageStream(message);
+            const fallbackResult = await fallbackChat.sendMessageStream(this.userParts(message, attachments));
             await processStream(fallbackResult, fallbackChat);
         }
     }
@@ -133,7 +148,8 @@ export class MistralProvider implements AIProvider {
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>
+    onToolCall?: (toolCall: any) => Promise<any>,
+    attachments?: VisionAttachment[]
   ) {
     if (!process.env.MISTRAL_API_KEY) {
         throw new Error('MISTRAL_API_KEY is missing');
@@ -201,7 +217,7 @@ export class MistralProvider implements AIProvider {
         .slice(0, -1) // last message is the current user message
         .map(m => ({ role: m.role, content: m.content }));
       const lastUserMsg = messages.filter(m => m.role === 'user').at(-1)?.content || message;
-      await gemini.streamMessage(systemPrompt, geminiHistory, lastUserMsg, onChunk, onToolCall);
+      await gemini.streamMessage(systemPrompt, geminiHistory, lastUserMsg, onChunk, onToolCall, attachments);
     }
   }
 }

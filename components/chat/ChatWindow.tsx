@@ -1,16 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 import MessageBubble from './MessageBubble';
+import ChatPendingLoader from './ChatPendingLoader';
 import { Message } from '@/lib/types';
+import { isHiddenSystemMessage } from '@/lib/hidden-chat';
+import { stripInternalTags } from '@/lib/strip-internal-tags';
 
 export default function ChatWindow({
   messages,
   onEdit,
   injectBeforeLastAssistant,
+  isStreaming,
 }: {
   messages: Message[]
   onEdit?: (id: string, newContent: string) => void
   /** Rendered directly above the last assistant message (agent tool-call feed) */
   injectBeforeLastAssistant?: React.ReactNode
+  isStreaming?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -20,23 +25,34 @@ export default function ChatWindow({
     }
   }, [messages, injectBeforeLastAssistant]);
 
-  // Index of the last assistant message
+  const visibleMessages = messages.filter(
+    m => !(m.role === 'user' && isHiddenSystemMessage(m.content))
+  );
+
   const lastAssistantIdx = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return i;
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i].role === 'assistant') return i;
     }
     return -1;
   })();
 
+  const lastMsg = visibleMessages[visibleMessages.length - 1];
+  const lastVisibleText = lastMsg ? stripInternalTags(lastMsg.content).trim() : '';
+  const showStreamLoader =
+    isStreaming &&
+    (!lastMsg ||
+      lastMsg.role === 'user' ||
+      (lastMsg.role === 'assistant' && !lastVisibleText));
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50" ref={scrollRef}>
-      {messages.map((m, i) => (
+    <div className="flex-1 overflow-y-auto px-6 py-8 bg-white" ref={scrollRef}>
+      {visibleMessages.map((m, i) => (
         <React.Fragment key={m.id}>
-          {/* Agent tool-call feed appears ABOVE the last assistant message */}
           {i === lastAssistantIdx && injectBeforeLastAssistant}
           <MessageBubble message={m} onEdit={onEdit} />
         </React.Fragment>
       ))}
+      {showStreamLoader && <ChatPendingLoader />}
     </div>
   );
 }

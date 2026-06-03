@@ -1,5 +1,6 @@
 import { createSupabaseBrowserClient } from './supabase-browser'
 import { Message, CanvasData, OnboardingData, Project } from './types'
+import { numberedSessionTitle } from './session-title'
 
 export type SessionSummary = {
   id: string
@@ -106,10 +107,17 @@ export async function loadProjects(): Promise<Project[]> {
 
 export async function createSession(onboarding: OnboardingData, userId: string, phase: string = 'diagnose', memory?: string, initialCanvas?: CanvasData, projectId?: string): Promise<string> {
   const supabase = createSupabaseBrowserClient()
-    const defaultTitle = phase === 'diagnose' ? '1. Diagnose' :
-                         phase === 'analyse' ? '2. Analyse' :
-                         phase === 'plan' ? '3. Plan' :
-                         phase === 'umsetzung' ? '4. Umsetzung' : 'Neuer Chat';
+
+  let samePhaseCount = 0
+  if (projectId) {
+    const { count } = await supabase
+      .from('sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('phase', phase)
+    samePhaseCount = count ?? 0
+  }
+  const defaultTitle = numberedSessionTitle(phase, samePhaseCount)
 
     const { data, error } = await supabase
     .from('sessions')

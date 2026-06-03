@@ -41,5 +41,7 @@ export function stripInternalTags(content: string): string {
   text = text.replace(/^`{1,3}\s*/g, '');
   text = text.replace(/\s*`{1,3}$/g, '');
 
+  text = text.replace(/\([^)]*(?:schon im Canvas|frag nur das, was ich noch nicht weiß)[^)]*\)\s*/gi, '');
+
   return text.trim();
 }

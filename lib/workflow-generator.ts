@@ -50,6 +50,20 @@ export interface StepMapping {
   parameters?: Record<string, any>;
 }
 
+/** All Klaro-deployed n8n workflows are namespaced with this prefix so they are
+ *  instantly identifiable in the shared n8n instance. */
+export const KLARO_WORKFLOW_PREFIX = 'KLARO: ';
+
+/** Ensure a workflow name carries the KLARO: prefix exactly once. */
+export function withKlaroPrefix(name: string): string {
+  const clean = (name || '').trim();
+  if (clean.toUpperCase().startsWith('KLARO:')) {
+    // Normalize spacing after the colon.
+    return KLARO_WORKFLOW_PREFIX + clean.replace(/^klaro:\s*/i, '');
+  }
+  return KLARO_WORKFLOW_PREFIX + (clean || 'Workflow');
+}
+
 /**
  * Build a valid n8n workflow JSON from a Phase-3 Workflow + step mappings.
  * Positions nodes horizontally with 200px spacing.
@@ -100,7 +114,8 @@ export function buildN8nWorkflow(
   });
 
   return {
-    name: workflowName,
+    // n8n workflows are namespaced so they're identifiable in the shared instance.
+    name: withKlaroPrefix(workflowName),
     nodes,
     connections,
     settings: { executionOrder: 'v1' },

@@ -14,3 +14,56 @@
       linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
   }
 }
+
+/* Global loader — slow start, then accelerates (cubic) */
+.momentum {
+  --uib-size: 16px;
+  --uib-color: #0a0a0a;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--uib-size);
+  width: var(--uib-size);
+  animation: klaro-momentum-rotate 2.2s ease-in-out infinite;
+}
+
+.momentum::before,
+.momentum::after {
+  content: '';
+  height: 28%;
+  width: 28%;
+  border-radius: 50%;
+  background-color: var(--uib-color);
+}
+
+.momentum::before {
+  margin-right: 12%;
+  animation: klaro-momentum-wobble-a 2.2s ease-in-out infinite;
+}
+
+.momentum::after {
+  animation: klaro-momentum-wobble-b 2.2s ease-in-out infinite;
+}
+
+@keyframes klaro-momentum-wobble-a {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(calc(var(--uib-size) * -0.22)); }
+}
+
+@keyframes klaro-momentum-wobble-b {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(calc(var(--uib-size) * 0.22)); }
+}
+
+@keyframes klaro-momentum-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.btn-shine {
+  color: #52525b;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+}

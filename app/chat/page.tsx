@@ -26,15 +26,29 @@ import {
   loadProjectMemory,
   saveProjectMemory,
 } from '@/lib/supabase-chat';
-import ProjectHeader from '@/components/chat/ProjectHeader';
+import ProjectMenu from '@/components/chat/ProjectMenu';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Menu, MoreHorizontal, Maximize2, Minimize2, X, Plus, Settings, Home as HomeIcon, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { detectCompletedPhase } from '@/lib/detect-phase-transition';
+import { canAdvanceFromPhase } from '@/lib/can-phase-complete';
 import { getHiddenInitMessage } from '@/lib/phase-welcome';
+import {
+  shouldAutoKickoffSession,
+  getSessionKickoff,
+  pickLatestSessionForPhase,
+} from '@/lib/session-kickoff';
+import {
+  type ChatAttachment,
+  formatAttachmentsForMessage,
+  attachmentsForApi,
+} from '@/lib/chat-attachments';
 import { evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
+import { normalizeCanvasData } from '@/lib/canvas-normalize';
+import { isHiddenSystemMessage } from '@/lib/hidden-chat';
+import { titleFromUserMessage } from '@/lib/session-title';
 
 // ---- Agent Actions Feed Component ----
 // Renders inline in the chat flow like a real AI-agent tool call:
@@ -109,6 +123,19 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
+
+/** Tracks whether the viewport is below the `md` breakpoint (mobile). */
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 const emptyCanvas: CanvasData = {
   pain_points: [],
@@ -379,9 +406,12 @@ function ChatPageContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionMemory, setSessionMemory] = useState<string>('');
   const [input, setInput] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const activeTurnRef = useRef(0);
   const [canvasData, setCanvasData] = useState<CanvasData>(emptyCanvas);
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   /** Chat/API phase — always follows the active session, not project_canvas.progress */
@@ -406,6 +436,9 @@ function ChatPageContent() {
   const [isClosed, setIsClosed] = useState(false);
   const [isChatsMenuOpen, setIsChatsMenuOpen] = useState(false);
   const [isPhaseMenuOpen, setIsPhaseMenuOpen] = useState(false);
+  // Mobile: only one of chat / canvas is shown at a time, toggled via a bottom-center switch.
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<'chat' | 'canvas'>('chat');
 
   // ---- Phase 4 state ----
   const [credentialRequest, setCredentialRequest] = useState<{ tool: string; label: string; type: string } | null>(null);
@@ -414,7 +447,7 @@ function ChatPageContent() {
   const [isDevContextOpen, setIsDevContextOpen] = useState(false);
   // Maps canvas workflow_id → deployed DB workflow id
   const deployedWorkflowIdsRef = useRef<Record<string, string>>({});
-  const prepareNextPhaseRef = useRef<(() => Promise<void>) | null>(null);
+  const prepareNextPhaseRef = useRef<((switchAfter?: boolean) => Promise<void>) | null>(null);
   const phasePrepTriggeredForRef = useRef<Set<string>>(new Set());
 
   const withSessionPhase = useCallback((canvas: CanvasData, phase: string): CanvasData => ({
@@ -424,6 +457,18 @@ function ChatPageContent() {
 
   // ---- Project state ----
   const [currentProject, setCurrentProject] = useState<{ id: string, name: string } | null>(null);
+
+  const maxReachedPhase = React.useMemo(() => {
+    let maxIdx = PHASE_ORDER.indexOf(canvasData.phase || 'diagnose');
+    if (currentProject) {
+      for (const s of sessions) {
+        if (s.project_id !== currentProject.id) continue;
+        const idx = PHASE_ORDER.indexOf(s.phase || 'diagnose');
+        if (idx > maxIdx) maxIdx = idx;
+      }
+    }
+    return PHASE_ORDER[Math.max(0, maxIdx)] || 'diagnose';
+  }, [sessions, currentProject, canvasData.phase]);
 
   // ---- Agent action helpers ----
   // Actions render inline in the chat like real agent tool calls:
@@ -574,7 +619,8 @@ function ChatPageContent() {
       ziel: '', ki_erfahrung: '', wer_setzt_um: '', hindernis: '', branche: '', tempo: '',
       unternehmensgroesse: '', vorname: '', firmenname: '', rolle_im_unternehmen: '',
     };
-    if ((!content.trim() && !isHiddenInit) || isStreaming) return;
+    const turnAttachments = isHiddenInit ? [] : [...pendingAttachments];
+    if ((!content.trim() && !turnAttachments.length && !isHiddenInit) || isStreaming) return;
 
     let sessionId = targetSessionId || currentSessionId;
     if (!sessionId && userId) {
@@ -589,29 +635,33 @@ function ChatPageContent() {
     }
     if (!sessionId) return;
 
+    const userContent = isHiddenInit
+      ? content
+      : formatAttachmentsForMessage(content, turnAttachments);
+
     let newMessages: Message[] = [];
     if (messagesOverride) {
-      // Edit path: trim history to the override, then append the (re-)edited user message.
-      // This replaces the old assistant reply and everything after the edited message.
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
-        content
+        content: userContent,
       };
       newMessages = [...messagesOverride, userMessage];
       setMessages(newMessages);
       setInput('');
+      setPendingAttachments([]);
     } else {
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
-        content
+        content: userContent,
       };
       newMessages = [...messages];
       if (!isHiddenInit) {
         newMessages.push(userMessage);
         setMessages(newMessages);
         setInput('');
+        setPendingAttachments([]);
       }
     }
 
@@ -620,12 +670,12 @@ function ChatPageContent() {
       if (lastUserMsg && lastUserMsg.role === 'user') {
         await saveMessage(sessionId, 'user', lastUserMsg.content);
 
-        // Auto-set title from first user message
         const sessionList = await refreshSessions();
         const session = sessionList.find(s => s.id === sessionId);
-        if (session && !session.title) {
-          const title = lastUserMsg.content.substring(0, 60) + (lastUserMsg.content.length > 60 ? '...' : '');
-          await updateSessionTitle(sessionId, title);
+        const phaseForTitle = session?.phase || sessionPhase || 'diagnose';
+        const derived = titleFromUserMessage(lastUserMsg.content, phaseForTitle);
+        if (session && derived && (!session.title || /^[1-4]\.\s/.test(session.title) && !session.title.includes('—'))) {
+          await updateSessionTitle(sessionId, derived);
           refreshSessions();
         }
       }
@@ -645,10 +695,14 @@ function ChatPageContent() {
 
     setIsStreaming(true);
     clearActions(); // fresh agent-action log for this turn
+    const turnId = ++activeTurnRef.current;
     abortControllerRef.current = new AbortController();
 
     const assistantId = crypto.randomUUID();
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+
+    const chatPhase =
+      sessions.find(s => s.id === sessionId)?.phase || sessionPhase || 'diagnose';
 
     try {
       const payloadMessages = isHiddenInit
@@ -682,9 +736,6 @@ function ChatPageContent() {
 
       // DEBUG: log what we're sending
       console.log('[chat] Sending to API — onboarding:', JSON.stringify(ob));
-      const chatPhase =
-        sessions.find(s => s.id === sessionId)?.phase || sessionPhase || 'diagnose';
-
       console.log('[chat] phase:', chatPhase, '| isHiddenInit:', isHiddenInit);
 
       const response = await fetch('/api/chat', {
@@ -697,17 +748,32 @@ function ChatPageContent() {
           onboarding: obWithMemory,
           phase: chatPhase,
           canvas: withSessionPhase(canvasData, chatPhase),
+          attachments: attachmentsForApi(turnAttachments),
         })
       });
+
+      if (!response.ok) {
+        const errPreview = (await response.text()).slice(0, 200);
+        const looksLikeHtml = /<!DOCTYPE|<html/i.test(errPreview);
+        throw new Error(
+          looksLikeHtml
+            ? 'Chat-API nicht erreichbar (Build-Fehler?). Dev-Server neu starten.'
+            : `Chat-API Fehler (${response.status}): ${errPreview}`
+        );
+      }
 
       if (!response.body) throw new Error("No response body");
 
       const reader = response.body.getReader();
+      streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       let assistantContent = '';
       let streamCanvasData = withSessionPhase(canvasData, chatPhase);
       const shownCanvasActions = new Set<string>();
-      let canvasWorkerPromise: Promise<void> | null = null;
+      // Holder object (not a bare `let`) so TS keeps the Promise|null type:
+      // the assignment happens inside the startCanvasWorker closure, which a
+      // bare local would narrow away to `null` at the await site below.
+      const canvasWorker: { current: Promise<void> | null } = { current: null };
 
       const hasCanvasTrigger = (text: string) =>
         /<trigger_canvas_update/i.test(text) ||
@@ -737,7 +803,7 @@ function ChatPageContent() {
       });
 
       const startCanvasWorker = (source: 'tag' | 'auto_sync') => {
-        if (canvasWorkerPromise) {
+        if (canvasWorker.current) {
           logSync('canvas', 'skip', `worker already scheduled (${source})`, { reason: 'worker_already_running' });
           return;
         }
@@ -757,10 +823,11 @@ function ChatPageContent() {
           ...payloadMessages,
           { role: 'assistant', content: stripInternalTags(assistantContent) },
         ];
-        canvasWorkerPromise = fetch('/api/canvas-worker', {
+        canvasWorker.current = fetch('/api/canvas-worker', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          signal: abortControllerRef.current?.signal,
           body: JSON.stringify({
             history: workerHistory,
             currentCanvas: streamCanvasData,
@@ -777,7 +844,12 @@ function ChatPageContent() {
 
             if (status === 'success' && data.canvas) {
               logSync('canvas', 'success', 'canvas updated', { diff, phase: chatPhase });
-              setCanvasData(withSessionPhase(data.canvas as CanvasData, chatPhase));
+              const normalized = normalizeCanvasData(
+                data.canvas as Record<string, unknown>,
+                streamCanvasData,
+                chatPhase
+              );
+              setCanvasData(withSessionPhase(normalized, chatPhase));
               completeAction(aid, 'Canvas erfolgreich aktualisiert');
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
@@ -800,6 +872,10 @@ function ChatPageContent() {
       };
 
       while (true) {
+        if (abortControllerRef.current?.signal.aborted || activeTurnRef.current !== turnId) {
+          await reader.cancel().catch(() => {});
+          break;
+        }
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -828,10 +904,7 @@ function ChatPageContent() {
               const key = `tool_${match.index}`;
               if (!shownCanvasActions.has(key)) {
                 shownCanvasActions.add(key);
-                if (toolCall.type === 'prepare_phase') {
-                  const aid = addAction('phase_prepare', `Bereite Phase ${toolCall.args?.next_phase || ''} vor...`);
-                  setTimeout(() => completeAction(aid, `Phase ${toolCall.args?.next_phase || ''} vorbereitet`), 800);
-                } else if (toolCall.type === 'deploy_workflow') {
+                if (toolCall.type === 'deploy_workflow') {
                   const aid = addAction('deploy_workflow', `Deploye Workflow in n8n...`);
                   setTimeout(() => completeAction(aid, `Workflow erfolgreich deployed`), 2000);
                 } else if (toolCall.type === 'test_workflow') {
@@ -852,18 +925,28 @@ function ChatPageContent() {
         );
       }
 
+      const aborted = abortControllerRef.current?.signal.aborted || activeTurnRef.current !== turnId;
       const rawAssistantContent = assistantContent;
       assistantContent = stripInternalTags(assistantContent);
       setMessages(prev =>
         prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
       );
-      await saveMessage(sessionId, 'assistant', assistantContent);
+      if (assistantContent.trim()) {
+        await saveMessage(sessionId, 'assistant', assistantContent);
+      } else if (aborted) {
+        setMessages(prev => prev.filter(m => m.id !== assistantId));
+      }
+
+      if (aborted) {
+        logSync('canvas', 'skip', 'turn aborted — skip post-stream');
+        return;
+      }
 
       if (!shownCanvasActions.has('trigger_canvas')) {
-        if (canvasEval.eligible && !canvasWorkerPromise) {
+        if (canvasEval.eligible && !canvasWorker.current) {
           logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
           startCanvasWorker('auto_sync');
-        } else if (!canvasWorkerPromise) {
+        } else if (!canvasWorker.current) {
           logSync('canvas', 'skip', 'auto_sync not run', {
             reason: canvasEval.reason,
             detail: canvasEval.detail,
@@ -875,7 +958,10 @@ function ChatPageContent() {
 
       if (detectCompletedPhase(rawAssistantContent, chatPhase)) {
         const prepKey = `${sessionId}:${chatPhase}`;
-        if (!phasePrepTriggeredForRef.current.has(prepKey)) {
+        const gate = canAdvanceFromPhase(chatPhase, streamCanvasData);
+        if (!gate.ok) {
+          logSync('canvas', 'skip', `phase_complete blocked: ${gate.reason}`, { phase: chatPhase });
+        } else if (!phasePrepTriggeredForRef.current.has(prepKey)) {
           phasePrepTriggeredForRef.current.add(prepKey);
           await prepareNextPhaseRef.current?.(false);
         }
@@ -938,8 +1024,9 @@ function ChatPageContent() {
       }
 
       // Worker owns project_canvas — wait for it, never overwrite with stale streamCanvasData
-      if (canvasWorkerPromise) {
-        await canvasWorkerPromise.catch(() => {});
+      const pendingCanvasWorker = canvasWorker.current;
+      if (pendingCanvasWorker) {
+        await pendingCanvasWorker.catch(() => {});
         if (projId) {
           const fresh = await loadProjectCanvas(projId);
           if (fresh) streamCanvasData = withSessionPhase(fresh, chatPhase);
@@ -957,18 +1044,21 @@ function ChatPageContent() {
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
-         console.log('Stream aborted');
+        console.log('Stream aborted');
       } else {
-         console.error('Chat API Error:', err);
+        console.error('Chat API Error:', err);
       }
     } finally {
-      setIsStreaming(false);
-      abortControllerRef.current = null;
+      streamReaderRef.current = null;
+      if (activeTurnRef.current === turnId) {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+      }
       // Release the welcome lock so switching to this session again (if it has no messages) doesn't get stuck
       // (won't re-fire anyway since isWelcomeSent DB flag is now true)
       if (isHiddenInit && sessionId) welcomeInProgressRef.current.delete(sessionId);
     }
-  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase]);
+  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments]);
 
   // ---- Auth & Onboarding effect ----
   useEffect(() => {
@@ -1060,7 +1150,7 @@ function ChatPageContent() {
         supabase.from('sessions').select('project_id, phase, memory').eq('id', sessionId).maybeSingle(),
         isWelcomeSent(sessionId)
       ]);
-      setMessages(msgs);
+      setMessages(msgs.filter(m => !(m.role === 'user' && isHiddenSystemMessage(m.content))));
       if (ob) setOnboarding(ob);
       setSessionMemory(sessionRes.data?.memory || '');
       setCurrentSessionId(sessionId);
@@ -1109,15 +1199,10 @@ function ChatPageContent() {
         if (nextSess?.id) setPreparedNextSessionId(nextSess.id);
       }
 
-      // Auto-start message if chat is new and welcome hasn't been sent
-      if (msgs.length === 0 && !welcomeSent) {
+      if (shouldAutoKickoffSession(msgs, welcomeSent)) {
         setTimeout(() => {
-           const intro = ob?.intro_message?.trim();
-           if (intro) {
-             sendMessage(intro, false, [], sessionId, ob || undefined);
-           } else {
-             sendMessage(getHiddenInitMessage(phase), true, [], sessionId, ob || undefined);
-           }
+          const kick = getSessionKickoff(phase, ob?.intro_message);
+          sendMessage(kick.content, kick.hidden, [], sessionId, ob || undefined);
         }, 500);
       }
     } catch (err) {
@@ -1229,7 +1314,8 @@ function ChatPageContent() {
       
       // Auto-send welcome for new chat
       setTimeout(() => {
-         sendMessage(getHiddenInitMessage(currentPhase), true, [], newId, ob);
+        const kick = getSessionKickoff(currentPhase, ob.intro_message);
+        sendMessage(kick.content, kick.hidden, [], newId, ob);
       }, 500);
       
     } catch (err) {
@@ -1282,10 +1368,11 @@ function ChatPageContent() {
   };
 
   const stopChat = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    activeTurnRef.current += 1;
+    abortControllerRef.current?.abort();
+    streamReaderRef.current?.cancel().catch(() => {});
+    abortControllerRef.current = null;
+    streamReaderRef.current = null;
     setIsStreaming(false);
   };
 
@@ -1342,12 +1429,9 @@ function ChatPageContent() {
   };
 
   const handlePhaseCircleClick = async (clickedPhase: string) => {
-     if (!currentSessionId || !currentProject) return;
-     // Click on a phase should load the session for that phase IN THE SAME PROJECT
+     if (!currentProject) return;
      const projectSessions = sessions.filter(s => s.project_id === currentProject.id);
-     // Find the most recent session for this phase
-     const phaseSession = projectSessions.find(s => s.phase === clickedPhase);
-     
+     const phaseSession = pickLatestSessionForPhase(projectSessions, clickedPhase);
      if (phaseSession) {
         await switchToSession(phaseSession.id);
      }
@@ -1375,9 +1459,13 @@ function ChatPageContent() {
       {/* Sidebar background overlay */}
       <div className={`fixed inset-0 bg-transparent z-10 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
 
-      {/* Floating Chat Panel (Left) */}
-      {!isClosed && (
-      <div className={`absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300`}>
+      {/* Floating Chat Panel (Left) — full-screen on mobile, toggled via the bottom switch */}
+      {((!isMobile && !isClosed) || (isMobile && mobileView === 'chat')) && (
+      <div className={
+        isMobile
+          ? 'absolute inset-0 z-30 bg-white flex flex-col overflow-hidden pb-[4.5rem]'
+          : `absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300`
+      }>
 
         {/* Inner Menu Overlay */}
         <AnimatePresence>
@@ -1411,6 +1499,25 @@ function ChatPageContent() {
                </button>
 
                <div className="h-px bg-gray-100 my-3"></div>
+
+               {/* Project controls (moved out of the old top-right ProjectHeader bar) */}
+               {!isLoadingSession && currentProject && (
+                 <>
+                   <div className="px-1">
+                     <ProjectMenu
+                       currentProject={currentProject}
+                       canvasPhase={sessionPhase}
+                       sessions={sessions}
+                       onPhaseSelect={handlePhaseCircleClick}
+                       onRename={handleRenameProject}
+                       onDelete={handleDeleteProject}
+                       onCreate={handleCreateProject}
+                       onNavigate={() => setIsSidebarOpen(false)}
+                     />
+                   </div>
+                   <div className="h-px bg-gray-100 my-3"></div>
+                 </>
+               )}
 
                {PHASE_ORDER.map(phase => {
                  const phaseSessions = sessionsByPhase[phase] || [];
@@ -1477,10 +1584,14 @@ function ChatPageContent() {
                <Database size={12} />
                DEV
             </button>
-            <button onClick={() => setIsMaximized(!isMaximized)} className="hover:text-gray-700 transition-colors">
-               {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
-            <button onClick={() => setIsClosed(true)} className="hover:text-gray-700 transition-colors"><X size={18} /></button>
+            {!isMobile && (
+              <>
+                <button onClick={() => setIsMaximized(!isMaximized)} className="hover:text-gray-700 transition-colors">
+                   {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+                <button onClick={() => setIsClosed(true)} className="hover:text-gray-700 transition-colors"><X size={18} /></button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1512,6 +1623,7 @@ function ChatPageContent() {
               <ChatWindow
                 messages={messages}
                 onEdit={handleEditMessage}
+                isStreaming={isStreaming}
                 injectBeforeLastAssistant={
                   agentActions.length > 0
                     ? <AgentActionsFeed actions={agentActions} inline />
@@ -1580,14 +1692,17 @@ function ChatPageContent() {
                 disabled={isStreaming}
                 isStreaming={isStreaming}
                 onStop={stopChat}
+                attachments={pendingAttachments}
+                onAttachmentsChange={setPendingAttachments}
+                sessionId={currentSessionId}
               />
             )}
           </>
       </div>
       )}
 
-      {/* Floating Chat Reopen Button */}
-      {isClosed && (
+      {/* Floating Chat Reopen Button (desktop only — mobile uses the bottom switch) */}
+      {!isMobile && isClosed && (
         <button
           onClick={() => setIsClosed(false)}
           className="absolute bottom-6 left-6 z-30 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-indigo-700 transition-colors"
@@ -1597,35 +1712,45 @@ function ChatPageContent() {
       )}
 
       {/* Infinite Canvas Area (Center/Right) */}
-      <div 
-        className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden pt-6 pb-6 pr-6 transition-all duration-300 relative"
-        style={{ paddingLeft: isMaximized ? '624px' : '384px' }}
+      <div
+        className={`flex-1 w-full h-full overflow-y-auto overflow-x-hidden transition-all duration-300 relative ${isMobile ? 'pt-4 pb-24 px-0' : 'pt-6 pb-6 pr-6'}`}
+        style={isMobile ? undefined : { paddingLeft: isMaximized ? '624px' : '384px' }}
       >
-        {/* Top Right Controls — ProjectHeader */}
-        {!isLoadingSession && (
-          <ProjectHeader
-            currentProject={currentProject}
-            canvasPhase={sessionPhase}
-            sessions={sessions}
-            onPhaseSelect={handlePhaseCircleClick}
-            onRename={handleRenameProject}
-            onDelete={handleDeleteProject}
-            onCreate={handleCreateProject}
-          />
-        )}
-
         {(() => {
           const activeSession = sessions.find(s => s.id === currentSessionId);
           const activeSessionPhase = activeSession?.phase || canvasData.phase || 'diagnose';
           return (
             <RoadmapCanvas 
               data={canvasData} 
-              currentPhase={activeSessionPhase} 
+              currentPhase={activeSessionPhase}
+              maxReachedPhase={maxReachedPhase}
               onPhaseClick={handlePhaseCircleClick} 
             />
           );
         })()}
       </div>
+
+      {/* Mobile: bottom-center switch between Chat and Canvas */}
+      {isMobile && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 bg-white border border-gray-200 shadow-xl rounded-full p-1 flex items-center gap-1">
+          <button
+            onClick={() => setMobileView('chat')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+              mobileView === 'chat' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <MessageCircle size={16} /> Chat
+          </button>
+          <button
+            onClick={() => setMobileView('canvas')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+              mobileView === 'canvas' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <Activity size={16} /> Canvas
+          </button>
+        </div>
+      )}
 
     {/* Phase 4: Credential Popup */}
     <AnimatePresence>

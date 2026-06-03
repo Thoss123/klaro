@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CanvasData, CanvasDocument, PainPoint, Workflow } from '@/lib/types';
+import { CanvasData, CanvasDocument, PainPoint, UseCase, Workflow } from '@/lib/types';
+import { inferDocumentPhase, isValidWorkflow, normalizeCompanyProfile, parseToolList, toDisplayText } from '@/lib/canvas-normalize';
 import { Check, Lock, FileText, Target, AlertTriangle, ArrowRight, Cpu, Zap, GitBranch, Send, Wrench, User, Download, X, Clock, Euro, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -12,13 +13,30 @@ const PHASE_NAMES: Record<string, string> = {
   umsetzung: 'PHASE 4: UMSETZUNG',
 };
 
-// Node definitions — 4 phases on a tall vertical canvas
+// Node definitions — 4 phases on a tall vertical canvas (DO NOT change layout/curve/side cards)
 const NODES = {
   diagnose:  { top: '90%', left: '40%', boxSide: 'right' as const, svgY: 90, svgX: 40 },
   analyse:   { top: '65%', left: '45%', boxSide: 'left'  as const, svgY: 65, svgX: 45 },
   plan:      { top: '40%', left: '40%', boxSide: 'right' as const, svgY: 40, svgX: 40 },
   umsetzung: { top: '13%', left: '45%', boxSide: 'left'  as const, svgY: 13, svgX: 45 },
 };
+
+/** Hide redundant blobs when a phase document already covers the same topic */
+function docTitleMatches(doc: CanvasDocument, re: RegExp) {
+  return re.test(cleanTitle(doc.title).toLowerCase());
+}
+
+function phaseDocsCover(
+  docs: CanvasDocument[],
+  patterns: RegExp[]
+): boolean {
+  return docs.length > 0 && patterns.some(p => docs.some(d => docTitleMatches(d, p)));
+}
+
+/** Same % anchor as phase checkpoint (vertical center on large canvas) */
+function railTop(phase: keyof typeof NODES): string {
+  return NODES[phase].top;
+}
 
 const numMap: Record<string, string> = { diagnose: '1', analyse: '2', plan: '3', umsetzung: '4' };
 
@@ -31,7 +49,17 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
 };
 
 // Strip raw IDs like "(pp_1)" from display titles
-const cleanTitle = (s: string) => s.replace(/\s*\([a-z]+_\d+\)/gi, '').trim();
+const cleanTitle = (s: unknown) =>
+  toDisplayText(s).replace(/\s*\([a-z]+_\d+\)/gi, '').trim();
+
+const changeAppetiteLabel = (level: string) => {
+  const m: Record<string, string> = {
+    minimal: 'A — möglichst wenig ändern',
+    balanced: 'B — offen für sinnvolle Zusatz-Tools',
+    bold: 'C — Prozesse neu denken',
+  };
+  return m[level] || level;
+};
 
 // Staggered card entrance animation
 const cardVariants = {
@@ -42,16 +70,26 @@ const cardVariants = {
   }),
 };
 
-export default function RoadmapCanvas({ data, currentPhase, onPhaseClick }: {
+export default function RoadmapCanvas({
+  data,
+  currentPhase,
+  maxReachedPhase,
+  onPhaseClick,
+}: {
   data: CanvasData
   currentPhase: string
+  /** Highest phase ever reached in this project (keeps later phases unlocked) */
+  maxReachedPhase?: string
   onPhaseClick: (phase: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [openDoc, setOpenDoc] = useState<CanvasDocument | null>(null);
   const [openWorkflow, setOpenWorkflow] = useState<Workflow | null>(null);
+  const [openUseCase, setOpenUseCase] = useState<UseCase | null>(null);
+  const [openPainPoint, setOpenPainPoint] = useState<PainPoint | null>(null);
+  const [showCompany, setShowCompany] = useState(false);
+  const [showImplementer, setShowImplementer] = useState(false);
 
-  // Smooth-scroll active node into view when phase changes
   useEffect(() => {
     if (containerRef.current) {
       const activeNode = NODES[currentPhase as keyof typeof NODES] || NODES.diagnose;
@@ -59,12 +97,10 @@ export default function RoadmapCanvas({ data, currentPhase, onPhaseClick }: {
       const scrollHeight = container.scrollHeight;
       const clientHeight = container.clientHeight;
       const targetTop = Math.max(0, (parseFloat(activeNode.top) / 100) * scrollHeight - clientHeight / 2);
-
       const startTop = container.scrollTop;
       const distance = targetTop - startTop;
-      const duration = 2500;
+      const duration = 2000;
       let startTime: number | null = null;
-
       const animation = (currentTime: number) => {
         if (startTime === null) startTime = currentTime;
         const elapsed = currentTime - startTime;
@@ -73,28 +109,58 @@ export default function RoadmapCanvas({ data, currentPhase, onPhaseClick }: {
         container.scrollTop = startTop + distance * ease;
         if (elapsed < duration) requestAnimationFrame(animation);
       };
-
       requestAnimationFrame(animation);
     }
   }, [currentPhase]);
 
-  const maxReachedIdx = PHASE_ORDER.indexOf(data.phase || 'diagnose');
+  const progressPhase = maxReachedPhase || data.phase || 'diagnose';
+  const maxReachedIdx = Math.max(
+    0,
+    PHASE_ORDER.indexOf(progressPhase as (typeof PHASE_ORDER)[number])
+  );
   const isAccessible = (phase: string) => PHASE_ORDER.indexOf(phase) <= maxReachedIdx;
 
   const painPoints = data.pain_points || [];
   const useCases   = data.use_cases   || [];
-  const workflows  = data.workflows   || [];
+  const workflows  = (data.workflows || []).filter(isValidWorkflow);
   const documents  = data.documents   || [];
-  const company    = data.company;
-  const hasCompany = !!(company?.offer || company?.target_customers || company?.acquisition || company?.process_steps?.length);
+  const docsByPhase = (phase: string) =>
+    documents.filter(d => inferDocumentPhase(d) === phase);
+  const company    = normalizeCompanyProfile(data.company) ?? data.company;
+  const hasCompany = !!(
+    company?.offer ||
+    company?.target_customers ||
+    company?.acquisition ||
+    company?.process_steps?.length ||
+    company?.notes
+  );
 
   const sortedPainPoints = [...painPoints].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
 
-  return (
-    <div className="w-full h-full overflow-y-auto relative bg-transparent" ref={containerRef} style={{ scrollBehavior: 'smooth' }}>
-      <div className="w-full relative min-h-[420vh]">
+  const diagDocs = docsByPhase('diagnose');
+  const analyseDocs = docsByPhase('analyse');
+  const planDocs = docsByPhase('plan');
+  const umsetzungDocs = docsByPhase('umsetzung');
 
-        {/* SVG Curved Paths */}
+  const showCompanyCard =
+    hasCompany && !phaseDocsCover(diagDocs, [/unternehmen/, /profil/, /zusammenfassung/]);
+  const showPainCards =
+    sortedPainPoints.length > 0 &&
+    !phaseDocsCover(diagDocs, [/pain/, /engpass/, /problem/, /herausforderung/]);
+  const showUseCases =
+    useCases.length > 0 &&
+    !phaseDocsCover(analyseDocs, [/tool/, /prozess/, /ist-/, /setup/, /marketing/, /automatisierung/]);
+  const showImplementerCard =
+    !!data.implementer &&
+    !phaseDocsCover(analyseDocs, [/umsetzer/, /implementier/, /skill/]);
+
+  const twoColGrid = 'grid grid-cols-1 min-[300px]:grid-cols-2 gap-3 min-w-0';
+
+  return (
+    <div className="w-full h-full overflow-y-auto overflow-x-hidden relative bg-transparent @container" ref={containerRef} style={{ scrollBehavior: 'smooth' }}>
+      {/* Desktop / tablet: curved roadmap with absolute-positioned nodes + side rails */}
+      <div className="hidden @[640px]:block w-full relative min-h-[420vh]">
+
         <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
           <path
             d={`M ${NODES.diagnose.svgX} ${NODES.diagnose.svgY} C 35 80, 50 78, ${NODES.analyse.svgX} ${NODES.analyse.svgY} C 40 55, 35 52, ${NODES.plan.svgX} ${NODES.plan.svgY} C 35 30, 50 28, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`}
@@ -105,242 +171,209 @@ export default function RoadmapCanvas({ data, currentPhase, onPhaseClick }: {
           <ActivePath d={`M ${NODES.plan.svgX} ${NODES.plan.svgY} C 35 30, 50 28, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`} active={maxReachedIdx >= 3} />
         </svg>
 
-        {/* ── PHASE 1: DIAGNOSE ── */}
-        <PhaseNode
-          phase="diagnose" title="Problem Identifikation"
-          desc="Wir finden heraus wo die echte Lücke sitzt und schärfen die Pain Points."
-          nodeConfig={NODES.diagnose} isAccessible={isAccessible('diagnose')}
-          isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0}
-          onClick={() => onPhaseClick('diagnose')}
-        />
-        <AnimatePresence>
-          {hasCompany && (
-            <div className="absolute top-[92%] left-[58%] w-80 space-y-2">
-              <SectionLabel>Unternehmen</SectionLabel>
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border border-indigo-100 p-4 rounded-xl shadow-sm text-sm"
-              >
-                <div className="font-bold text-gray-800 flex items-center gap-2 mb-2">
-                  <Building2 size={14} className="text-indigo-500 shrink-0" />
-                  Profil
-                </div>
-                {company?.offer && <p className="text-gray-600 mb-1"><span className="font-semibold text-gray-700">Angebot: </span>{company.offer}</p>}
-                {company?.target_customers && <p className="text-gray-600 mb-1"><span className="font-semibold text-gray-700">Zielkunden: </span>{company.target_customers}</p>}
-                {company?.acquisition && <p className="text-gray-600 mb-1"><span className="font-semibold text-gray-700">Akquise: </span>{company.acquisition}</p>}
-                {company?.process_steps && company.process_steps.length > 0 && (
-                  <ol className="list-decimal list-inside text-gray-500 space-y-0.5 mt-2 border-t border-gray-100 pt-2">
-                    {company.process_steps.map((step, i) => (
-                      <li key={i}>{step}</li>
-                    ))}
-                  </ol>
-                )}
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {sortedPainPoints.length > 0 && (
-            <div className={`absolute ${hasCompany ? 'top-[78%]' : 'top-[86%]'} left-[58%] w-80 space-y-3`}>
-              <SectionLabel>Identifizierte Pain Points</SectionLabel>
-              {sortedPainPoints.map((p, i) => (
-                <motion.div
-                  key={p.id}
-                  custom={i}
-                  variants={cardVariants}
-                  initial="hidden"
-                  animate="visible"
-                  layout
-                  className="bg-white border border-red-100 p-4 rounded-xl shadow-sm text-sm"
-                >
-                  <div className="font-bold text-gray-800 flex items-center gap-2 mb-1">
-                    <AlertTriangle size={14} className="text-red-400 shrink-0" />
-                    <span className="flex-1">{cleanTitle(p.title)}</span>
-                    {p.rank && <span className="text-[10px] font-bold bg-red-50 text-red-500 px-1.5 py-0.5 rounded">#{p.rank}</span>}
-                  </div>
-                  <p className="text-gray-500 mb-2">{p.description}</p>
-                  {(p.frequency || p.effort) && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {p.frequency && <Chip icon={<Clock size={10} />}>{p.frequency}</Chip>}
-                      {p.effort && <Chip icon={<Clock size={10} />}>{p.effort}</Chip>}
-                    </div>
-                  )}
-                  {p.details && Object.keys(p.details).length > 0 && (
-                    <div className="border-t border-gray-100 pt-2 mt-2 space-y-1">
-                      {Object.entries(p.details).map(([k, v]) => (
-                        <div key={k} className="text-xs">
-                          <span className="font-semibold text-gray-600">{k.replace(/_/g, ' ')}: </span>
-                          <span className="text-gray-500">{v as string}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </AnimatePresence>
+        <PhaseNode phase="diagnose" title="Problem Identifikation" desc="Pain Points & Unternehmensprofil." nodeConfig={NODES.diagnose} isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
+        <PhaseNode phase="analyse" title="Tools & Setup" desc="Ist-Tools & Umsetzer." nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
+        <PhaseNode phase="plan" title="Workflows" desc="Automatisierungs-Blaupausen." nodeConfig={NODES.plan} isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
+        <PhaseNode phase="umsetzung" title="Umsetzung" desc="Deployment & Go-Live." nodeConfig={NODES.umsetzung} isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
 
-        {/* ── PHASE 2: TOOLS & SETUP ── */}
-        <PhaseNode
-          phase="analyse" title="Tools & Setup"
-          desc="Wir klären wer umsetzt und welche Plattform passt."
-          nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')}
-          isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1}
-          onClick={() => onPhaseClick('analyse')}
-        />
-        <AnimatePresence>
-          {(data.implementer || useCases.length > 0) && (
-            <div className="absolute top-[60%] left-[6%] w-80 space-y-3">
-              {/* Implementer profile */}
-              {data.implementer && (
-                <motion.div
-                  key="implementer"
-                  variants={cardVariants}
-                  custom={0}
-                  initial="hidden"
-                  animate="visible"
-                  layout
-                  className="bg-violet-50 border border-violet-100 p-4 rounded-xl shadow-sm text-sm"
-                >
-                  <div className="font-bold text-violet-900 flex items-center gap-2 mb-2">
-                    <User size={14} className="text-violet-500" /> Umsetzer-Profil
-                  </div>
-                  <div className="text-xs text-violet-800/80 space-y-1">
-                    <div>{data.implementer.who}</div>
-                    <div>Skill: <span className="font-semibold">{data.implementer.skill_level}</span></div>
-                    {data.implementer.automation_experience && (
-                      <div className="text-violet-700/70">{data.implementer.automation_experience}</div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Use cases (high-level, from Phase 2) */}
-              {useCases.length > 0 && (
-                <>
-                  <SectionLabel>Use Cases</SectionLabel>
-                  {useCases.map((uc, i) => (
-                    <motion.div
-                      key={uc.id}
-                      custom={i + 1}
-                      variants={cardVariants}
-                      initial="hidden"
-                      animate="visible"
-                      layout
-                      className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl shadow-sm text-sm"
-                    >
-                      <div className="font-bold text-indigo-900 flex items-center gap-2 mb-2">
-                        <Target size={14} className="text-indigo-500" /> {cleanTitle(uc.title)}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {uc.tool && <Chip icon={<Cpu size={10} />}>{uc.tool}</Chip>}
-                        {uc.effort && <Chip>Aufwand: {uc.effort}</Chip>}
-                        {uc.impact && <Chip>Impact: {uc.impact}</Chip>}
-                        {uc.setup_effort && <Chip icon={<Wrench size={10} />}>Setup: {uc.setup_effort}</Chip>}
-                        {uc.cost_monthly && <Chip icon={<Euro size={10} />}>{uc.cost_monthly}</Chip>}
-                        {uc.roi && <Chip>{uc.roi}</Chip>}
-                      </div>
-                    </motion.div>
+        {/* Phase 1 — links (Checkpoint + Titel rechts) */}
+        {(diagDocs.length > 0 || showPainCards) && (
+          <ContentRail side="left" top={railTop('diagnose')}>
+            {diagDocs.length > 0 && (
+              <>
+                <SectionLabel>Dokumente</SectionLabel>
+                <DocStack docs={diagDocs} onOpen={setOpenDoc} />
+              </>
+            )}
+            {showPainCards && (
+              <>
+                <SectionLabel className={diagDocs.length > 0 ? 'mt-5' : ''}>Pain Points</SectionLabel>
+                <div className={twoColGrid}>
+                  {sortedPainPoints.map(p => (
+                    <PainPointInlineCard key={p.id} painPoint={p} onExpand={() => setOpenPainPoint(p)} />
                   ))}
-                </>
-              )}
-            </div>
-          )}
-        </AnimatePresence>
+                </div>
+              </>
+            )}
+          </ContentRail>
+        )}
+        {showCompanyCard && company && (
+          <ContentRail side="right" top={railTop('diagnose')}>
+            <SectionLabel>Unternehmen</SectionLabel>
+            <CompanyInlineCard company={company} onExpand={() => setShowCompany(true)} />
+          </ContentRail>
+        )}
 
-        {/* ── PHASE 3: WORKFLOWS ── */}
-        <PhaseNode
-          phase="plan" title="Workflows & Priorisierung"
-          desc="Wir skizzieren die konkreten Automatisierungs-Workflows für jeden Pain Point."
-          nodeConfig={NODES.plan} isAccessible={isAccessible('plan')}
-          isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2}
-          onClick={() => onPhaseClick('plan')}
-        />
-        <AnimatePresence>
-          {workflows.length > 0 && (
-            <div className="absolute top-[34%] left-[52%] space-y-3">
-              <SectionLabel>Automatisierungs-Workflows</SectionLabel>
-              {workflows.map((wf, i) => {
-                const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
-                return (
-                  <motion.button
-                    key={wf.id}
-                    custom={i}
-                    variants={cardVariants}
-                    initial="hidden"
-                    animate="visible"
-                    layout
-                    onClick={() => setOpenWorkflow(wf)}
-                    className="w-full text-left bg-white border-2 border-gray-200 rounded-xl p-3 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
-                        <GitBranch size={15} className="text-amber-600" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold text-gray-800 text-xs truncate">{cleanTitle(wf.title)}</div>
-                        {linkedPP && <div className="text-[10px] text-gray-400 truncate">{cleanTitle(linkedPP.title)}</div>}
-                      </div>
-                      <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-[10px] text-gray-400">{wf.steps?.length ?? 0} Schritte</span>
-                        <ArrowRight size={13} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
-                      </div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Phase 2 — rechts */}
+        {(analyseDocs.length > 0 || showImplementerCard || showUseCases) && (
+          <ContentRail side="right" top={railTop('analyse')}>
+            {analyseDocs.length > 0 && (
+              <>
+                <SectionLabel>Dokumente</SectionLabel>
+                <DocStack docs={analyseDocs} onOpen={setOpenDoc} />
+              </>
+            )}
+            {showImplementerCard && (
+              <>
+                <SectionLabel className={analyseDocs.length > 0 ? 'mt-5' : ''}>Umsetzer</SectionLabel>
+                <ImplementerInlineCard
+                  implementer={data.implementer}
+                  changeAppetite={company?.change_appetite}
+                  onExpand={() => setShowImplementer(true)}
+                />
+              </>
+            )}
+            {showUseCases && (
+              <>
+                <SectionLabel className={(analyseDocs.length > 0 || showImplementerCard) ? 'mt-5' : ''}>Ist-Tools & Automatisierung</SectionLabel>
+                <div className={twoColGrid}>
+                  {useCases.map(uc => (
+                    <UseCaseInlineCard key={uc.id} useCase={uc} onExpand={() => setOpenUseCase(uc)} />
+                  ))}
+                </div>
+              </>
+            )}
+          </ContentRail>
+        )}
 
-        {/* ── PHASE 4: UMSETZUNG ── */}
-        <PhaseNode
-          phase="umsetzung" title="Umsetzung"
-          desc="Wir setzen Schritt für Schritt um — Detail für Detail."
-          nodeConfig={NODES.umsetzung} isAccessible={isAccessible('umsetzung')}
-          isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3}
-          onClick={() => onPhaseClick('umsetzung')}
-        />
+        {/* Phase 3 — links */}
+        {((workflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0) && (
+          <ContentRail side="left" top={railTop('plan')}>
+            {workflows.length > 0 && maxReachedIdx >= 2 && (
+              <>
+                <SectionLabel>Workflows</SectionLabel>
+                <div className={twoColGrid}>
+                  {workflows.map(wf => {
+                    const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
+                    return (
+                      <WorkflowInlineCard
+                        key={wf.id}
+                        workflow={wf}
+                        linkedTitle={linkedPP ? cleanTitle(linkedPP.title) : undefined}
+                        onExpand={() => setOpenWorkflow(wf)}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            {planDocs.length > 0 && (
+              <>
+                <SectionLabel className={workflows.length > 0 && maxReachedIdx >= 2 ? 'mt-5' : ''}>Dokumente</SectionLabel>
+                <DocStack docs={planDocs} onOpen={setOpenDoc} />
+              </>
+            )}
+          </ContentRail>
+        )}
 
-        {/* Documents (Phase 3 & 4) — clickable to open formatted modal */}
-        <AnimatePresence>
-          {documents.length > 0 && (
-            <div className="absolute top-[8%] left-[6%] w-80 space-y-3">
-              <SectionLabel>Pläne & Dokumente</SectionLabel>
-              {documents.map((doc, i) => (
-                <motion.button
-                  key={doc.id}
-                  custom={i}
-                  variants={cardVariants}
-                  initial="hidden"
-                  animate="visible"
-                  layout
-                  onClick={() => setOpenDoc(doc)}
-                  className="w-full text-left bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-sm hover:border-indigo-300 hover:shadow-md transition-all group"
-                >
-                  <div className="font-bold text-gray-800 flex items-center gap-2 mb-2">
-                    <FileText size={14} className="text-blue-500 shrink-0" />
-                    <span className="flex-1">{cleanTitle(doc.title)}</span>
-                    <span className="text-[10px] text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity">Öffnen →</span>
-                  </div>
-                  <div className="bg-gray-50 p-2 rounded text-xs text-gray-500 line-clamp-3 leading-relaxed">
-                    {doc.content.replace(/[#*`_>-]/g, '').substring(0, 120)}…
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Phase 4 — rechts */}
+        {umsetzungDocs.length > 0 && (
+          <ContentRail side="right" top={railTop('umsetzung')}>
+            <SectionLabel>Dokumente</SectionLabel>
+            <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
+          </ContentRail>
+        )}
 
       </div>
 
-      {/* Document modal */}
-      <DocumentModal doc={openDoc} onClose={() => setOpenDoc(null)} />
+      {/* Mobile: single-column vertical stack — each phase with its cards full-width */}
+      <div className="@[640px]:hidden flex flex-col gap-7 px-4 py-3 pb-8">
+        {/* Phase 1 — Diagnose */}
+        <section>
+          <MobilePhaseHeader phase="diagnose" title="Problem Identifikation" isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
+          {diagDocs.length > 0 && (
+            <>
+              <SectionLabel className="mb-2">Dokumente</SectionLabel>
+              <DocStack docs={diagDocs} onOpen={setOpenDoc} />
+            </>
+          )}
+          {showPainCards && (
+            <>
+              <SectionLabel className={diagDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Pain Points</SectionLabel>
+              <div className="grid grid-cols-1 gap-3">
+                {sortedPainPoints.map(p => (
+                  <PainPointInlineCard key={p.id} painPoint={p} onExpand={() => setOpenPainPoint(p)} />
+                ))}
+              </div>
+            </>
+          )}
+          {showCompanyCard && company && (
+            <>
+              <SectionLabel className="mt-4 mb-2">Unternehmen</SectionLabel>
+              <CompanyInlineCard company={company} onExpand={() => setShowCompany(true)} />
+            </>
+          )}
+        </section>
 
-      {/* Workflow fullscreen modal */}
+        {/* Phase 2 — Tools & Setup */}
+        <section>
+          <MobilePhaseHeader phase="analyse" title="Tools & Setup" isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
+          {analyseDocs.length > 0 && (
+            <>
+              <SectionLabel className="mb-2">Dokumente</SectionLabel>
+              <DocStack docs={analyseDocs} onOpen={setOpenDoc} />
+            </>
+          )}
+          {showImplementerCard && (
+            <>
+              <SectionLabel className={analyseDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Umsetzer</SectionLabel>
+              <ImplementerInlineCard implementer={data.implementer} changeAppetite={company?.change_appetite} onExpand={() => setShowImplementer(true)} />
+            </>
+          )}
+          {showUseCases && (
+            <>
+              <SectionLabel className={(analyseDocs.length > 0 || showImplementerCard) ? 'mt-4 mb-2' : 'mb-2'}>Ist-Tools & Automatisierung</SectionLabel>
+              <div className="grid grid-cols-1 gap-3">
+                {useCases.map(uc => (
+                  <UseCaseInlineCard key={uc.id} useCase={uc} onExpand={() => setOpenUseCase(uc)} />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Phase 3 — Workflows */}
+        <section>
+          <MobilePhaseHeader phase="plan" title="Workflows" isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
+          {workflows.length > 0 && maxReachedIdx >= 2 && (
+            <>
+              <SectionLabel className="mb-2">Workflows</SectionLabel>
+              <div className="grid grid-cols-1 gap-3">
+                {workflows.map(wf => {
+                  const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
+                  return (
+                    <WorkflowInlineCard key={wf.id} workflow={wf} linkedTitle={linkedPP ? cleanTitle(linkedPP.title) : undefined} onExpand={() => setOpenWorkflow(wf)} />
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {planDocs.length > 0 && (
+            <>
+              <SectionLabel className={workflows.length > 0 && maxReachedIdx >= 2 ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
+              <DocStack docs={planDocs} onOpen={setOpenDoc} />
+            </>
+          )}
+        </section>
+
+        {/* Phase 4 — Umsetzung */}
+        <section>
+          <MobilePhaseHeader phase="umsetzung" title="Umsetzung" isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
+          {umsetzungDocs.length > 0 && (
+            <>
+              <SectionLabel className="mb-2">Dokumente</SectionLabel>
+              <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
+            </>
+          )}
+        </section>
+      </div>
+
+      <DocumentModal doc={openDoc} onClose={() => setOpenDoc(null)} />
       <WorkflowModal workflow={openWorkflow} painPoints={painPoints} onClose={() => setOpenWorkflow(null)} />
+      <UseCaseModal useCase={openUseCase} onClose={() => setOpenUseCase(null)} />
+      <PainPointModal painPoint={openPainPoint} onClose={() => setOpenPainPoint(null)} />
+      <CompanyModal company={company} open={showCompany} onClose={() => setShowCompany(false)} />
+      <ImplementerModal implementer={data.implementer} changeAppetite={company?.change_appetite} open={showImplementer} onClose={() => setShowImplementer(false)} />
     </div>
   );
 }
@@ -362,8 +395,335 @@ function ActivePath({ d, active }: { d: string, active: boolean }) {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{children}</h3>;
+const CARD_TONE = {
+  indigo: 'border-indigo-100 bg-white',
+  violet: 'border-violet-100 bg-white',
+  rose: 'border-rose-100 bg-white',
+  amber: 'border-amber-100 bg-white',
+  neutral: 'border-gray-200 bg-white',
+} as const;
+
+const PREVIEW_CHARS = 120;
+const PREVIEW_BULLETS = 3;
+
+function isShortText(text: string, max = PREVIEW_CHARS) {
+  return text.trim().length <= max;
+}
+
+/** Content away from center path — may overlap line (ok) */
+function ContentRail({
+  side,
+  top,
+  children,
+}: {
+  side: 'left' | 'right';
+  top: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`absolute z-10 flex flex-col gap-3 pointer-events-auto
+        -translate-y-1/2 @max-[1200px]:translate-y-0 @max-[1200px]:mt-36
+        ${side === 'left' ? 'left-[2%]' : 'right-[2%]'}
+        w-[min(44%,320px)]`}
+      style={{ top }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function SectionLabel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <h3 className={`text-[10px] font-bold uppercase tracking-wider text-slate-400 ${className}`}>
+      {children}
+    </h3>
+  );
+}
+
+function ExpandLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs font-medium text-indigo-600 hover:text-indigo-800 mt-2 text-left"
+    >
+      … alle Details
+    </button>
+  );
+}
+
+function StructuredCard({
+  title,
+  icon,
+  tone,
+  children,
+  onExpand,
+  expandable,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  tone: keyof typeof CARD_TONE;
+  children: React.ReactNode;
+  onExpand?: () => void;
+  expandable?: boolean;
+}) {
+  const Wrapper = expandable && onExpand ? 'div' : 'div';
+  return (
+    <Wrapper className={`rounded-lg border p-3.5 shadow-sm text-sm ${CARD_TONE[tone]}`}>
+      <div className="flex items-start gap-2.5 mb-2">
+        <span className="mt-0.5 shrink-0">{icon}</span>
+        <p className="font-semibold text-gray-900 leading-snug text-sm">{title}</p>
+      </div>
+      <div className="text-gray-600 text-xs leading-relaxed pl-0.5">{children}</div>
+      {expandable && onExpand && <ExpandLink onClick={onExpand} />}
+    </Wrapper>
+  );
+}
+
+function CompanyInlineCard({
+  company,
+  onExpand,
+}: {
+  company: NonNullable<CanvasData['company']>;
+  onExpand: () => void;
+}) {
+  const c = normalizeCompanyProfile(company) ?? company;
+  const rows: { label: string; value: string }[] = [];
+  if (c.offer) rows.push({ label: 'Angebot', value: toDisplayText(c.offer) });
+  if (c.target_customers) rows.push({ label: 'Zielkunden', value: toDisplayText(c.target_customers) });
+  if (c.acquisition) rows.push({ label: 'Akquise', value: toDisplayText(c.acquisition) });
+  const steps = c.process_steps ?? [];
+  const allShort =
+    rows.every(r => isShortText(r.value, 80)) &&
+    (steps.length === 0 || (steps.length <= 4 && steps.every(s => isShortText(s, 50))));
+  const expandable = !allShort;
+
+  return (
+    <StructuredCard
+      title="Unternehmensprofil"
+      icon={<Building2 size={15} className="text-indigo-500" />}
+      tone="indigo"
+      onExpand={expandable ? onExpand : undefined}
+      expandable={expandable}
+    >
+      <dl className="space-y-2">
+        {rows.map(r => (
+          <div key={r.label}>
+            <dt className="text-[10px] font-bold uppercase text-gray-400">{r.label}</dt>
+            <dd className={expandable ? 'line-clamp-2' : ''}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {steps.length > 0 && (
+        <ol className={`mt-2 space-y-0.5 list-decimal list-inside text-gray-600 ${expandable ? '' : ''}`}>
+          {(expandable ? steps.slice(0, PREVIEW_BULLETS) : steps).map((s, i) => (
+            <li key={i} className={expandable ? 'line-clamp-1' : ''}>{toDisplayText(s)}</li>
+          ))}
+          {expandable && steps.length > PREVIEW_BULLETS && (
+            <li className="text-gray-400 list-none">… {steps.length - PREVIEW_BULLETS} weitere Schritte</li>
+          )}
+        </ol>
+      )}
+    </StructuredCard>
+  );
+}
+
+function PainPointInlineCard({
+  painPoint: p,
+  onExpand,
+}: {
+  painPoint: PainPoint;
+  onExpand: () => void;
+}) {
+  const title = cleanTitle(toDisplayText(p.title));
+  const desc = toDisplayText(p.description);
+  const expandable = !isShortText(desc, 90);
+
+  return (
+    <StructuredCard
+      title={title}
+      icon={<AlertTriangle size={15} className="text-rose-400" />}
+      tone="rose"
+      onExpand={expandable ? onExpand : undefined}
+      expandable={expandable}
+    >
+      <p className={expandable ? 'line-clamp-3' : ''}>{desc}</p>
+      {(p.frequency || p.effort) && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {p.frequency && <Chip icon={<Clock size={10} />}>{toDisplayText(p.frequency)}</Chip>}
+          {p.effort && <Chip>{toDisplayText(p.effort)}</Chip>}
+        </div>
+      )}
+    </StructuredCard>
+  );
+}
+
+function UseCaseInlineCard({ useCase: uc, onExpand }: { useCase: UseCase; onExpand: () => void }) {
+  const tools = uc.tools?.length ? uc.tools : parseToolList(uc.tool);
+  const title = cleanTitle(uc.title) || 'Use Case';
+  const expandable = tools.length > PREVIEW_BULLETS || tools.some(t => t.length > 40);
+  const visible = expandable ? tools.slice(0, PREVIEW_BULLETS) : tools;
+
+  return (
+    <StructuredCard
+      title={title}
+      icon={<Target size={15} className="text-indigo-500" />}
+      tone="indigo"
+      onExpand={expandable ? onExpand : undefined}
+      expandable={expandable}
+    >
+      {tools.length === 0 ? (
+        <p className="italic text-gray-400">Noch keine Tools erfasst</p>
+      ) : (
+        <ul className="space-y-1">
+          {visible.map((t, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="text-indigo-400 shrink-0">•</span>
+              <span className={expandable ? 'line-clamp-1' : ''}>{t}</span>
+            </li>
+          ))}
+          {expandable && tools.length > PREVIEW_BULLETS && (
+            <li className="text-gray-400">… {tools.length - PREVIEW_BULLETS} weitere</li>
+          )}
+        </ul>
+      )}
+    </StructuredCard>
+  );
+}
+
+function ImplementerInlineCard({
+  implementer,
+  changeAppetite,
+  onExpand,
+}: {
+  implementer?: CanvasData['implementer'];
+  changeAppetite?: string;
+  onExpand: () => void;
+}) {
+  if (!implementer) {
+    return (
+      <StructuredCard title="Umsetzer-Profil" icon={<User size={15} className="text-violet-500" />} tone="violet">
+        <p className="italic text-gray-400">Wird am Ende von Phase 2 im Chat geklärt.</p>
+      </StructuredCard>
+    );
+  }
+  const lines = [
+    `Wer: ${toDisplayText(implementer.who)}`,
+    `Skill: ${toDisplayText(implementer.skill_level)}`,
+    implementer.automation_experience ? `Erfahrung: ${toDisplayText(implementer.automation_experience)}` : '',
+  ].filter(Boolean);
+  const expandable = lines.some(l => l.length > 70) || !!changeAppetite;
+
+  return (
+    <StructuredCard
+      title="Umsetzer-Profil"
+      icon={<User size={15} className="text-violet-500" />}
+      tone="violet"
+      onExpand={expandable ? onExpand : undefined}
+      expandable={expandable}
+    >
+      <ul className="space-y-1">
+        {lines.map((l, i) => (
+          <li key={i} className={expandable ? 'line-clamp-2' : ''}>{l}</li>
+        ))}
+      </ul>
+      {changeAppetite && (
+        <p className="mt-2 pt-2 border-t border-gray-100 text-gray-500">
+          {changeAppetiteLabel(changeAppetite)}
+        </p>
+      )}
+    </StructuredCard>
+  );
+}
+
+function WorkflowInlineCard({
+  workflow: wf,
+  linkedTitle,
+  onExpand,
+}: {
+  workflow: Workflow;
+  linkedTitle?: string;
+  onExpand: () => void;
+}) {
+  const steps = wf.steps ?? [];
+  const labels = steps.map(s => toDisplayText(s.label)).filter(Boolean);
+  const expandable = labels.length > PREVIEW_BULLETS || labels.some(l => l.length > 45);
+  const visible = expandable ? labels.slice(0, PREVIEW_BULLETS) : labels;
+
+  return (
+    <StructuredCard
+      title={cleanTitle(wf.title)}
+      icon={<GitBranch size={15} className="text-amber-600" />}
+      tone="amber"
+      onExpand={expandable || !!linkedTitle ? onExpand : undefined}
+      expandable={expandable || !!linkedTitle}
+    >
+      {linkedTitle && <p className="text-gray-400 mb-1.5">↳ {linkedTitle}</p>}
+      <ul className="space-y-0.5">
+        {visible.map((l, i) => (
+          <li key={i} className="flex gap-1.5">
+            <span className="text-amber-500">{i + 1}.</span>
+            <span className={expandable ? 'line-clamp-1' : ''}>{l}</span>
+          </li>
+        ))}
+        {expandable && labels.length > PREVIEW_BULLETS && (
+          <li className="text-gray-400">… {labels.length - PREVIEW_BULLETS} Schritte</li>
+        )}
+      </ul>
+    </StructuredCard>
+  );
+}
+
+function DocStack({
+  docs,
+  onOpen,
+}: {
+  docs: CanvasDocument[];
+  onOpen: (doc: CanvasDocument) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {docs.map(doc => (
+        <DocInlineCard key={doc.id} doc={doc} onOpen={() => onOpen(doc)} />
+      ))}
+    </div>
+  );
+}
+
+function DocInlineCard({ doc, onOpen }: { doc: CanvasDocument; onOpen: () => void }) {
+  const plain = doc.content.replace(/[#*`_>-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const expandable = !isShortText(plain, 100);
+  const preview = expandable ? plain.slice(0, 100).trim() + '…' : plain;
+
+  if (!expandable) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm text-sm">
+        <div className="flex items-center gap-2 mb-1.5">
+          <FileText size={14} className="text-blue-500 shrink-0" />
+          <p className="font-semibold text-gray-900">{cleanTitle(doc.title)}</p>
+        </div>
+        <p className="text-xs text-gray-600 leading-relaxed">{preview}</p>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm text-sm text-left hover:border-indigo-300 hover:shadow-md transition-all w-full"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <FileText size={14} className="text-blue-500 shrink-0" />
+        <p className="font-semibold text-gray-900">{cleanTitle(doc.title)}</p>
+      </div>
+      <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">{preview}</p>
+      <span className="text-xs font-medium text-indigo-600 mt-2 inline-block">… alle Details</span>
+    </button>
+  );
 }
 
 function Chip({ children, icon }: { children: React.ReactNode, icon?: React.ReactNode }) {
@@ -471,7 +831,7 @@ function WorkflowModal({ workflow, painPoints, onClose }: { workflow: Workflow |
           </div>
 
           {/* Node canvas */}
-          <div className="overflow-x-auto bg-[radial-gradient(#d1d5db_1px,transparent_1px)] [background-size:24px_24px] p-10">
+          <div className="overflow-x-auto bg-slate-50 p-10">
             <div className="flex items-start min-w-max mx-auto">
               {workflow.steps.map((step, i) => (
                 <React.Fragment key={step.id || i}>
@@ -497,6 +857,96 @@ function WorkflowModal({ workflow, painPoints, onClose }: { workflow: Workflow |
               ))}
             </div>
           </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function UseCaseModal({ useCase, onClose }: { useCase: UseCase | null; onClose: () => void }) {
+  if (!useCase) return null;
+  const tools = useCase.tools?.length ? useCase.tools : parseToolList(useCase.tool);
+  return (
+    <DetailShell title={cleanTitle(useCase.title) || 'Use Case'} onClose={onClose}>
+      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Status quo — genutzte Tools</p>
+      {tools.length > 0 ? (
+        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">{tools.map((t, i) => <li key={i}>{t}</li>)}</ul>
+      ) : (
+        <p className="text-sm text-gray-400 italic">Noch keine Tools erfasst</p>
+      )}
+    </DetailShell>
+  );
+}
+
+function PainPointModal({ painPoint, onClose }: { painPoint: PainPoint | null; onClose: () => void }) {
+  if (!painPoint) return null;
+  return (
+    <DetailShell title={cleanTitle(toDisplayText(painPoint.title))} onClose={onClose}>
+      <p className="text-sm text-gray-600 leading-relaxed">{toDisplayText(painPoint.description)}</p>
+      <div className="flex flex-wrap gap-2 mt-3">
+        {painPoint.frequency && <Chip icon={<Clock size={10} />}>{toDisplayText(painPoint.frequency)}</Chip>}
+        {painPoint.effort && <Chip>{toDisplayText(painPoint.effort)}</Chip>}
+        {painPoint.rank != null && <Chip>Priorität #{painPoint.rank}</Chip>}
+      </div>
+    </DetailShell>
+  );
+}
+
+function CompanyModal({ company, open, onClose }: { company?: CanvasData['company']; open: boolean; onClose: () => void }) {
+  if (!open || !company) return null;
+  const c = normalizeCompanyProfile(company) ?? company;
+  return (
+    <DetailShell title="Unternehmensprofil" onClose={onClose}>
+      <dl className="space-y-3 text-sm">
+        {c.offer && <div><dt className="text-xs font-bold text-gray-500">Angebot</dt><dd>{toDisplayText(c.offer)}</dd></div>}
+        {c.target_customers && <div><dt className="text-xs font-bold text-gray-500">Zielkunden</dt><dd>{toDisplayText(c.target_customers)}</dd></div>}
+        {c.acquisition && <div><dt className="text-xs font-bold text-gray-500">Akquise</dt><dd>{toDisplayText(c.acquisition)}</dd></div>}
+      </dl>
+      {c.process_steps && c.process_steps.length > 0 && (
+        <ol className="list-decimal list-inside mt-4 text-sm text-gray-600 space-y-1">
+          {c.process_steps.map((s, i) => <li key={i}>{toDisplayText(s)}</li>)}
+        </ol>
+      )}
+    </DetailShell>
+  );
+}
+
+function ImplementerModal({
+  implementer, changeAppetite, open, onClose,
+}: {
+  implementer?: CanvasData['implementer']; changeAppetite?: string; open: boolean; onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <DetailShell title="Umsetzer-Profil" onClose={onClose}>
+      {implementer ? (
+        <dl className="space-y-3 text-sm">
+          <div><dt className="text-xs font-bold text-gray-500">Wer setzt um</dt><dd>{toDisplayText(implementer.who)}</dd></div>
+          <div><dt className="text-xs font-bold text-gray-500">Skill-Level</dt><dd className="capitalize">{toDisplayText(implementer.skill_level)}</dd></div>
+          {implementer.automation_experience && (
+            <div><dt className="text-xs font-bold text-gray-500">Erfahrung</dt><dd>{toDisplayText(implementer.automation_experience)}</dd></div>
+          )}
+        </dl>
+      ) : (
+        <p className="text-sm text-gray-400 italic">Noch nicht geklärt — Klaro fragt das am Ende von Phase 2.</p>
+      )}
+      {changeAppetite && (
+        <p className="text-xs text-gray-500 mt-4 pt-3 border-t"><span className="font-semibold">Veränderungsbereitschaft: </span>{changeAppetiteLabel(changeAppetite)}</p>
+      )}
+    </DetailShell>
+  );
+}
+
+function DetailShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+        <motion.div initial={{ opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.97 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-4 border-b">
+            <h2 className="font-bold text-gray-900">{title}</h2>
+            <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><X size={18} /></button>
+          </div>
+          <div className="overflow-y-auto px-5 py-4">{children}</div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -574,77 +1024,147 @@ function DocumentModal({ doc, onClose }: { doc: CanvasDocument | null, onClose: 
   );
 }
 
-function PhaseNode({
-  phase, title, desc, nodeConfig, isAccessible, isActive, isCompleted, onClick
+function PhaseCircle({
+  phase, isAccessible, isActive, isCompleted, onClick,
 }: {
-  phase: string, title: string, desc: string, nodeConfig: any,
-  isAccessible: boolean, isActive: boolean, isCompleted: boolean, onClick: () => void
+  phase: string; isAccessible: boolean; isActive: boolean; isCompleted: boolean; onClick: () => void;
 }) {
   const num = numMap[phase];
   return (
-    <div className="absolute flex items-center group" style={{ top: nodeConfig.top, left: nodeConfig.left, transform: 'translate(-50%, -50%)' }}>
-      {nodeConfig.boxSide === 'left' && <TitleBox phase={phase} title={title} desc={desc} side="left" isAccessible={isAccessible} />}
-      <div className="relative">
-        {!isAccessible && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-slate-800 text-white text-xs p-2 rounded-lg text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-            Diese Phase wurde noch nicht erreicht.
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
-          </div>
-        )}
-        <motion.button
-          onClick={isAccessible ? onClick : undefined}
-          layout initial={false}
-          animate={{
-            backgroundColor: !isAccessible ? '#f1f5f9' : isActive ? '#eef2ff' : '#ffffff',
-            borderColor: !isAccessible ? '#e2e8f0' : isActive ? '#818cf8' : '#c7d2fe',
-            opacity: !isAccessible ? 0.6 : 1
-          }}
-          transition={{ duration: 0.6 }}
-          className={`w-28 h-28 rounded-full flex items-center justify-center relative z-10
-            ${!isAccessible ? 'cursor-not-allowed border-2' : isActive ? 'border-[3px] shadow-[0_0_0_6px_rgba(99,102,241,0.1)]' : 'border-2 hover:border-indigo-400 hover:shadow-lg cursor-pointer'}`}
-        >
-          <motion.div animate={{ borderColor: isAccessible ? '#a5b4fc' : '#cbd5e1' }} transition={{ duration: 0.6 }} className="absolute inset-2 rounded-full border border-dashed"></motion.div>
-          <div className="text-3xl font-bold text-slate-700 z-10 flex items-center justify-center overflow-hidden">
-            <AnimatePresence mode="wait">
-              {!isAccessible ? (
-                <motion.div key="lock" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                  <Lock size={28} className="text-slate-400" />
-                </motion.div>
-              ) : isCompleted ? (
-                <motion.div key="check" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                  <Check size={36} className="text-indigo-500" strokeWidth={3} />
-                </motion.div>
-              ) : (
-                <motion.span key="num" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="text-indigo-600">
-                  {num}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.button>
-      </div>
-      {nodeConfig.boxSide === 'right' && <TitleBox phase={phase} title={title} desc={desc} side="right" isAccessible={isAccessible} />}
+    <div className="relative">
+      {!isAccessible && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-slate-800 text-white text-xs p-2 rounded-lg text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+          Diese Phase wurde noch nicht erreicht.
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+        </div>
+      )}
+      <motion.button
+        onClick={isAccessible ? onClick : undefined}
+        layout initial={false}
+        animate={{
+          backgroundColor: !isAccessible ? '#f1f5f9' : isActive ? '#eef2ff' : '#ffffff',
+          borderColor: !isAccessible ? '#e2e8f0' : isActive ? '#818cf8' : '#c7d2fe',
+          opacity: !isAccessible ? 0.6 : 1,
+        }}
+        transition={{ duration: 0.6 }}
+        className={`w-28 h-28 rounded-full flex items-center justify-center relative z-10
+          ${!isAccessible ? 'cursor-not-allowed border-2' : isActive ? 'border-[3px] shadow-[0_0_0_6px_rgba(99,102,241,0.1)]' : 'border-2 hover:border-indigo-400 hover:shadow-lg cursor-pointer'}`}
+      >
+        <motion.div animate={{ borderColor: isAccessible ? '#a5b4fc' : '#cbd5e1' }} transition={{ duration: 0.6 }} className="absolute inset-2 rounded-full border border-dashed" />
+        <div className="text-3xl font-bold text-slate-700 z-10 flex items-center justify-center overflow-hidden">
+          <AnimatePresence mode="wait">
+            {!isAccessible ? (
+              <motion.div key="lock" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                <Lock size={28} className="text-slate-400" />
+              </motion.div>
+            ) : isCompleted ? (
+              <motion.div key="check" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                <Check size={36} className="text-indigo-500" strokeWidth={3} />
+              </motion.div>
+            ) : (
+              <motion.span key="num" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="text-indigo-600">
+                {num}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.button>
     </div>
   );
 }
 
-function TitleBox({ phase, title, desc, side, isAccessible }: { phase: string, title: string, desc: string, side: 'left' | 'right', isAccessible: boolean }) {
+function PhaseNode({
+  phase, title, desc, nodeConfig, isAccessible, isActive, isCompleted, onClick,
+}: {
+  phase: string, title: string, desc: string, nodeConfig: { top: string; left: string; boxSide: 'left' | 'right'; svgY: number; svgX: number },
+  isAccessible: boolean, isActive: boolean, isCompleted: boolean, onClick: () => void,
+}) {
+  return (
+    <div className="absolute group z-20" style={{ top: nodeConfig.top, left: nodeConfig.left, transform: 'translate(-50%, -50%)' }}>
+      {/* ≥1536px: horizontal — title beside circle (classic roadmap, enough room so it won't hit the side cards) */}
+      <div className="hidden @[1536px]:flex items-center">
+        {nodeConfig.boxSide === 'left' && <TitleBox phase={phase} title={title} desc={desc} side="left" isAccessible={isAccessible} />}
+        <PhaseCircle phase={phase} isAccessible={isAccessible} isActive={isActive} isCompleted={isCompleted} onClick={onClick} />
+        {nodeConfig.boxSide === 'right' && <TitleBox phase={phase} title={title} desc={desc} side="right" isAccessible={isAccessible} />}
+      </div>
+      {/* <1536px: stacked — title above circle (avoids horizontal collision when space is tight) */}
+      <div className="flex @[1536px]:hidden flex-col items-center gap-2">
+        <TitleBoxStacked phase={phase} title={title} desc={desc} isAccessible={isAccessible} />
+        <PhaseCircle phase={phase} isAccessible={isAccessible} isActive={isActive} isCompleted={isCompleted} onClick={onClick} />
+      </div>
+    </div>
+  );
+}
+
+/** Horizontal title beside the circle — used on large screens where there's room. */
+function TitleBox({ phase, title, desc, side, isAccessible }: { phase: string; title: string; desc: string; side: 'left' | 'right'; isAccessible: boolean }) {
   return (
     <div className={`flex items-center ${side === 'left' ? 'flex-row-reverse mr-1' : 'ml-1'}`}>
-      <motion.div animate={{ backgroundColor: isAccessible ? '#c7d2fe' : '#e2e8f0' }} transition={{ duration: 0.6 }} className="w-12 h-[2px]"></motion.div>
+      <motion.div animate={{ backgroundColor: isAccessible ? '#c7d2fe' : '#e2e8f0' }} transition={{ duration: 0.6 }} className="w-8 h-[2px]" />
       <motion.div
-        animate={{ borderColor: isAccessible ? '#e0e7ff' : '#e2e8f0', backgroundColor: isAccessible ? 'rgba(238, 242, 255, 0.8)' : '#f8fafc', opacity: isAccessible ? 1 : 0.5 }}
+        animate={{ borderColor: isAccessible ? '#e0e7ff' : '#e2e8f0', backgroundColor: isAccessible ? 'rgba(238,242,255,0.85)' : '#f8fafc', opacity: isAccessible ? 1 : 0.5 }}
         transition={{ duration: 0.6 }}
-        className="w-64 backdrop-blur-sm border p-4 rounded-2xl shadow-sm"
+        className="w-48 backdrop-blur-sm border p-4 rounded-2xl shadow-sm"
       >
         <motion.div animate={{ color: isAccessible ? '#818cf8' : '#94a3b8' }} transition={{ duration: 0.6 }} className="text-[10px] font-bold uppercase tracking-widest mb-1">
           {PHASE_NAMES[phase]}
         </motion.div>
-        <motion.h4 animate={{ color: isAccessible ? '#312e81' : '#475569' }} transition={{ duration: 0.6 }} className="font-bold mb-1">
+        <motion.h4 animate={{ color: isAccessible ? '#312e81' : '#475569' }} transition={{ duration: 0.6 }} className="font-bold mb-1 leading-tight">
           {title}
         </motion.h4>
         <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
       </motion.div>
     </div>
+  );
+}
+
+/** Compact phase header for the mobile single-column layout. */
+function MobilePhaseHeader({
+  phase, title, isAccessible, isActive, isCompleted, onClick,
+}: {
+  phase: string; title: string; isAccessible: boolean; isActive: boolean; isCompleted: boolean; onClick: () => void;
+}) {
+  const num = numMap[phase];
+  return (
+    <button
+      type="button"
+      onClick={isAccessible ? onClick : undefined}
+      disabled={!isAccessible}
+      className={`flex items-center gap-3 mb-3 w-full text-left ${isAccessible ? '' : 'opacity-60 cursor-not-allowed'}`}
+    >
+      <div className={`w-11 h-11 rounded-full border-2 flex items-center justify-center shrink-0
+        ${isActive ? 'border-indigo-400 bg-indigo-50 shadow-[0_0_0_4px_rgba(99,102,241,0.1)]' : isAccessible ? 'border-indigo-200 bg-white' : 'border-slate-200 bg-slate-100'}`}
+      >
+        {!isAccessible ? <Lock size={16} className="text-slate-400" />
+          : isCompleted ? <Check size={20} className="text-indigo-500" strokeWidth={3} />
+          : <span className="text-indigo-600 font-bold text-lg">{num}</span>}
+      </div>
+      <div className="min-w-0">
+        <div className={`text-[9px] font-bold uppercase tracking-widest ${isAccessible ? 'text-indigo-400' : 'text-slate-400'}`}>{PHASE_NAMES[phase]}</div>
+        <div className={`font-bold text-sm leading-tight ${isAccessible ? 'text-slate-800' : 'text-slate-500'}`}>{title}</div>
+      </div>
+    </button>
+  );
+}
+
+function TitleBoxStacked({ phase, title, desc, isAccessible }: { phase: string; title: string; desc: string; isAccessible: boolean }) {
+  return (
+    <motion.div
+      animate={{
+        borderColor: isAccessible ? '#e0e7ff' : '#e2e8f0',
+        backgroundColor: isAccessible ? 'rgba(238,242,255,0.85)' : '#f8fafc',
+        opacity: isAccessible ? 1 : 0.5,
+      }}
+      transition={{ duration: 0.6 }}
+      className="w-44 backdrop-blur-sm border p-3 rounded-2xl shadow-sm text-center"
+    >
+      <motion.div animate={{ color: isAccessible ? '#818cf8' : '#94a3b8' }} transition={{ duration: 0.6 }} className="text-[9px] font-bold uppercase tracking-widest mb-0.5">
+        {PHASE_NAMES[phase]}
+      </motion.div>
+      <motion.h4 animate={{ color: isAccessible ? '#312e81' : '#475569' }} transition={{ duration: 0.6 }} className="font-semibold text-sm mb-0.5 leading-tight">
+        {title}
+      </motion.h4>
+      <p className="text-[11px] text-slate-500 leading-snug">{desc}</p>
+    </motion.div>
   );
 }

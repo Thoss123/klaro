@@ -52,7 +52,14 @@ Wenn es absolut NICHTS Neues gibt und die bestehende Memory aktuell ist, antwort
       ]
     });
 
-    const newMemory = (response.choices?.[0]?.message?.content || '').trim() || currentMemory || '';
+    // Mistral content is `string | ContentChunk[]` — flatten to plain text.
+    const rawContent = response.choices?.[0]?.message?.content;
+    const contentStr = typeof rawContent === 'string'
+      ? rawContent
+      : Array.isArray(rawContent)
+        ? rawContent.map(c => (c.type === 'text' ? c.text : '')).join('')
+        : '';
+    const newMemory = contentStr.trim() || currentMemory || '';
     const normalizedCurrent = (currentMemory || '').trim();
 
     if (!newMemory || newMemory === normalizedCurrent) {

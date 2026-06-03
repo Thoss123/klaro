@@ -44,10 +44,29 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 - **Route:** `/api/memory-update`
 
 ### 2.4 Der Industry Playbook Agent (n8n + NotebookLM)
-- **Aufgabe:** Sobald der Nutzer im Onboarding seine Branche eingibt, triggert dieser Agent eine Recherche. Er pumpt etabliertes Branchenwissen (häufige Probleme in dieser Branche) in das Gedächtnis des Coaches, noch bevor die erste Nachricht geschrieben wurde.
+- **Aufgabe:** Branchenwissen **vor** dem ersten Chat (Onboarding → n8n Webhook → `industry_playbooks`).
+- **Umsetzung:** Sprint 3 in `roadmap.md`.
 
-### 2.5 Der Critic Agent (Mistral Small) *(In Entwicklung)*
-- **Aufgabe:** Prüft in Phase 3/4 den Entwurf des Workflows auf technische Fehler oder Logiklücken, bevor er dem Nutzer präsentiert wird.
+### 2.5 Topic Research Agent (Mistral Small) *(Sprint 3)*
+- **Aufgabe:** Session-spezifische Recherche für Phase Plan (z. B. YouTube/Reels, Trends) — Output `ResearchBrief` für Canvas-Worker.
+- **Route:** `lib/agents/topic-research.ts` via `lib/agent-orchestration.ts`.
+
+### 2.6 Supervisor Agent (Mistral Small) *(Sprint 3)*
+- **Aufgabe:** Thema-Treue, ein Pain Point pro Update, Merge statt Duplikat-Workflow — Gate vor Canvas-Worker.
+
+### 2.7 Workflow QA Agent / Critic (Mistral Small) *(Sprint 3)*
+- **Aufgabe:** Schritt-Reihenfolge, Automatisierungsgrad, Human-in-the-loop nur an den richtigen Stellen, Titel 3–5 Wörter.
+- **Route:** `lib/agents/workflow-qa.ts` (ggf. zusammen mit Supervisor ein Call).
+
+### 2.8 Phase Summarizer (Mistral Small)
+- **Aufgabe:** Phasen-Zusammenfassung bei Übergang.
+- **Route:** `/api/summarize`
+
+> **Orchestrierung:** Alle Hintergrund-Agenten (2.2–2.7) laufen in **Sprint 3** über `runCanvasPipeline()` — Details und QA in **`roadmap.md`**.
+
+### 2.9 Coach Advisor (Backlog, optional v1.1+)
+- **Aufgabe:** Proaktives Session-Briefing für den Haupt-Coach (aktives Thema, nächster Schritt) — **nicht** Canvas-Gate (das ist Supervisor) und **nicht** sichtbar für den Nutzer.
+- **Siehe:** Backlog-Abschnitt in **`roadmap.md`**.
 
 ---
 

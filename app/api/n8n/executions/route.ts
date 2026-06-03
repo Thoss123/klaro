@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   const { data: wf } = await supabase
     .from('workflows')
-    .select('n8n_workflow_id')
+    .select('n8n_workflow_id, execution_count')
     .eq('id', workflow_id)
     .eq('user_id', user.id)
     .single();
@@ -46,8 +46,12 @@ export async function POST(req: NextRequest) {
 
     await supabase
       .from('workflows')
-      .update({ last_execution_at: new Date().toISOString(), execution_count: supabase.rpc('increment', { x: 1 }) as any })
-      .eq('id', workflow_id);
+      .update({
+        last_execution_at: new Date().toISOString(),
+        execution_count: (wf.execution_count ?? 0) + 1,
+      })
+      .eq('id', workflow_id)
+      .eq('user_id', user.id);
 
     return NextResponse.json({ executionId: result.executionId });
   } catch (e: any) {

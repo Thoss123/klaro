@@ -7,7 +7,7 @@ import { resolveDiagnosePath } from '@/lib/onboarding-multi'
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, onboarding, phase, canvas } = await req.json()
+    const { messages, onboarding, phase, canvas, attachments } = await req.json()
 
     const currentPhase = phase || 'diagnose'
     let systemPrompt = getSystemPrompt(currentPhase)
@@ -89,10 +89,15 @@ export async function POST(req: NextRequest) {
       canvas?.pain_points?.length
         ? JSON.stringify(canvas.pain_points, null, 2)
         : '[]';
+    const workflowsJson =
+      canvas?.workflows?.length
+        ? JSON.stringify(canvas.workflows, null, 2)
+        : '[]';
     const companyJson = canvas?.company
       ? JSON.stringify(canvas.company, null, 2)
       : '{}';
     systemPrompt = systemPrompt.replace(/{{pain_points}}/g, painPointsJson);
+    systemPrompt = systemPrompt.replace(/{{workflows}}/g, workflowsJson);
     systemPrompt = systemPrompt.replace(/{{company}}/g, companyJson);
 
     if (canvas) {
@@ -149,7 +154,8 @@ export async function POST(req: NextRequest) {
                  return { status: 'pending', message: 'User has been prompted for credentials in the UI. Await confirmation.' };
                }
                return { status: 'unknown_tool' };
-            }
+            },
+            Array.isArray(attachments) ? attachments : undefined
           );
         } catch (err: any) {
            console.error('Provider Stream Error:', err);

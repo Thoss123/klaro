@@ -68,6 +68,8 @@ export type UseCase = {
   priority?: 'quick_win' | 'medium_term' | 'long_term' | 'not_recommended'
   /** Phase 3 hint: minimal = current tools only, balanced = light add-on, bold = rethink */
   automation_level?: 'minimal' | 'balanced' | 'bold'
+  /** Parsed Ist-Tools list (Phase 2 status quo) */
+  tools?: string[]
 }
 
 // Functional workflow (Phase 2) — steps with arrows, no tech yet
@@ -99,6 +101,8 @@ export type CanvasDocument = {
   title: string
   content: string
   format?: 'markdown' | 'text'
+  /** Canvas zone where this doc is shown (inferred from title if missing) */
+  phase?: Phase
 }
 
 /** Unternehmensprofil aus Phase 1 (Angebot, Akquise, Ablauf) */
