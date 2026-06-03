@@ -124,6 +124,36 @@ const PHASE_LABELS: Record<string, string> = {
 
 const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
 
+function getChatBackgroundStatus(
+  agentActions: AgentAction[],
+  opts: { isPreparingNextPhase: boolean; sessionPhase: string },
+): string | null {
+  const running = agentActions.filter(a => a.status === 'running');
+  const phaseIdx = PHASE_ORDER.indexOf(opts.sessionPhase);
+  const nextPhaseKey =
+    phaseIdx >= 0 && phaseIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[phaseIdx + 1] : null;
+  const nextLabel = nextPhaseKey ? PHASE_LABELS[nextPhaseKey] : null;
+
+  const phasePrepRunning =
+    opts.isPreparingNextPhase ||
+    running.some(
+      a =>
+        a.type === 'phase_summary' ||
+        a.type === 'phase_prepare' ||
+        a.type === 'memory_save',
+    );
+
+  if (phasePrepRunning && nextLabel) {
+    return `${nextLabel} wird vorbereitet (Zusammenfassung, Memory, Canvas). Du kannst schon weiterschreiben — der Button „${nextLabel} starten“ erscheint gleich darunter.`;
+  }
+
+  if (running.length > 0) {
+    return 'Canvas und Memory werden im Hintergrund aktualisiert — du kannst schon weiterschreiben.';
+  }
+
+  return null;
+}
+
 /** Tracks whether the viewport is below the `md` breakpoint (mobile). */
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false);
@@ -1458,8 +1488,10 @@ function ChatPageContent() {
      }
   };
 
-  // Only show chats that belong to the current project
-  const hasRunningBackgroundWork = agentActions.some(a => a.status === 'running');
+  const chatBackgroundStatus = getChatBackgroundStatus(agentActions, {
+    isPreparingNextPhase,
+    sessionPhase,
+  });
 
   const projectSessions = currentProject
     ? sessions.filter(s => s.project_id === currentProject.id)
@@ -1705,39 +1737,67 @@ function ChatPageContent() {
                 !!preparedNextSessionId ||
                 projectSessions.some(s => s.phase === nextPhase);
 
-              if (!hasPhaseComplete && !hasNextSession) return null;
+              if (!hasPhaseComplete && !hasNextSession && !isPreparingNextPhase) return null;
+
+              const currentPhaseLabel = PHASE_LABELS[sPhase];
+              const nextPhaseLabel = PHASE_LABELS[nextPhase];
 
               return (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="shrink-0 px-5 py-3 bg-indigo-50 border-t border-indigo-100 flex items-center justify-between shadow-[0_-4px_20px_-10px_rgba(99,102,241,0.3)] z-10"
+                  className="shrink-0 px-4 sm:px-5 py-3 bg-indigo-50 border-t border-indigo-100 shadow-[0_-4px_20px_-10px_rgba(99,102,241,0.3)] z-10"
                 >
-                  <span className="text-xs text-indigo-700 font-bold uppercase tracking-wider flex items-center gap-2">
-                    {isPreparingNextPhase ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        Phase wird vorbereitet…
-                      </>
-                    ) : (
-                      <>
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                        </span>
-                        Phase abgeschlossen!
-                      </>
-                    )}
-                  </span>
-                  <motion.button 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    disabled={isPreparingNextPhase || !hasNextSession}
-                    className="bg-indigo-600 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed" 
-                    onClick={handleNextPhase}
-                  >
-                    {PHASE_LABELS[nextPhase]} starten <ChevronRight size={14} />
-                  </motion.button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      {isPreparingNextPhase ? (
+                        <>
+                          <p className="text-xs text-indigo-700 font-bold uppercase tracking-wider flex items-center gap-2">
+                            <Loader2 size={14} className="animate-spin shrink-0" />
+                            Nächste Phase wird vorbereitet
+                          </p>
+                          <p className="text-sm text-indigo-800 mt-1.5 leading-snug">
+                            Klaro fasst <strong>{currentPhaseLabel}</strong> zusammen und richtet{' '}
+                            <strong>{nextPhaseLabel}</strong> ein (Memory, Canvas, neue Session).
+                            Das läuft im Hintergrund — du kannst weiter im Chat schreiben.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-indigo-700 font-bold uppercase tracking-wider flex items-center gap-2">
+                            <span className="relative flex h-2 w-2 shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                            {currentPhaseLabel} abgeschlossen
+                          </p>
+                          <p className="text-sm text-indigo-700/90 mt-1">
+                            {hasNextSession
+                              ? `${nextPhaseLabel} ist bereit — tippe auf den Button, um fortzufahren.`
+                              : `Sobald ${nextPhaseLabel} fertig vorbereitet ist, kannst du hier weitermachen.`}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <motion.button 
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      disabled={isPreparingNextPhase || !hasNextSession}
+                      className="shrink-0 w-full sm:w-auto bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed" 
+                      onClick={handleNextPhase}
+                    >
+                      {isPreparingNextPhase ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Wird vorbereitet…
+                        </>
+                      ) : (
+                        <>
+                          {nextPhaseLabel} starten <ChevronRight size={14} />
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
                 </motion.div>
               );
             })()}
@@ -1754,11 +1814,7 @@ function ChatPageContent() {
                 onAttachmentsChange={setPendingAttachments}
                 sessionId={currentSessionId}
                 compact={isMobile}
-                backgroundStatus={
-                  hasRunningBackgroundWork
-                    ? 'Canvas und Memory werden im Hintergrund aktualisiert — du kannst schon weiterschreiben.'
-                    : null
-                }
+                backgroundStatus={chatBackgroundStatus}
               />
             )}
         </div>
