@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import ChatWindow from '@/components/chat/ChatWindow';
 import ChatInput from '@/components/chat/ChatInput';
+import OptionsCard, { parseOptionsTag } from '@/components/chat/OptionsCard';
 import RoadmapCanvas from '@/components/canvas/RoadmapCanvas';
-import { Message, CanvasData, OnboardingData, AgentAction, WorkflowStep } from '@/lib/types';
+import { Message, CanvasData, OnboardingData, AgentAction, WorkflowStep, StepConfig, WorkflowStepConfigs, Workflow } from '@/lib/types';
 import {
   createSession,
   loadSessions,
@@ -27,9 +28,12 @@ import {
   saveProjectMemory,
 } from '@/lib/supabase-chat';
 import ProjectMenu from '@/components/chat/ProjectMenu';
+import SidebarAccountOverview from '@/components/chat/SidebarAccountOverview';
+import { getAccountDisplayInfo } from '@/lib/account-display';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
+import type { User } from '@supabase/supabase-js';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Menu, MoreHorizontal, Maximize2, Minimize2, X, Plus, Settings, Home as HomeIcon, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database } from 'lucide-react';
+import { Menu, MoreHorizontal, Maximize2, Minimize2, X, Plus, Settings, Home as HomeIcon, MessageCircle, ChevronRight, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { detectCompletedPhase } from '@/lib/detect-phase-transition';
@@ -47,9 +51,14 @@ import {
 } from '@/lib/chat-attachments';
 import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
 import { canvasSkipUserLabel, evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
+import { healUmsetzungCanvas, splitPlansForUmsetzung } from '@/lib/workflow-plans';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
 import { titleFromUserMessage } from '@/lib/session-title';
+import {
+  mainChatHistoryForEditor,
+  type WorkflowEditorCoachContext,
+} from '@/lib/workflow-editor-context';
 
 // ---- Agent Actions Feed Component ----
 // Renders inline in the chat flow like a real AI-agent tool call:
@@ -66,6 +75,10 @@ function AgentActionsFeed({ actions, inline = false }: { actions: AgentAction[],
     request_credential: <Key size={13} />,
     deploy_workflow: <Rocket size={13} />,
     test_workflow: <Activity size={13} />,
+    research_solutions: <Search size={13} />,
+    build_workflow: <Rocket size={13} />,
+    edit_workflow: <Rocket size={13} />,
+    create_workflow_plan: <Sparkles size={13} />,
   };
 
   return (
@@ -149,6 +162,10 @@ function getChatBackgroundStatus(
   }
 
   if (running.length > 0) {
+    const researching = running.some(a => a.type === 'research_solutions');
+    if (researching) {
+      return 'Klaro recherchiert Lösungsansätze — du kannst schon weiterschreiben.';
+    }
     return 'Canvas und Memory werden im Hintergrund aktualisiert — du kannst schon weiterschreiben.';
   }
 
@@ -432,19 +449,29 @@ function ChatPageContent() {
   const searchParams = useSearchParams();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
 
   // ---- Core state ----
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionMemory, setSessionMemory] = useState<string>('');
   const [input, setInput] = useState('');
+  const [dismissedOptionsId, setDismissedOptionsId] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
+  const [isResettingPhase, setIsResettingPhase] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const activeTurnRef = useRef(0);
   const lastCoachStatusKeyRef = useRef<string | null>(null);
   const [canvasData, setCanvasData] = useState<CanvasData>(emptyCanvas);
+  // Mirror of canvasData so sendMessage always reads the latest canvas at execution
+  // time — a stale closure (e.g. the kickoff fired 400ms after a phase reset) must not
+  // re-persist the pre-reset workflows back into project_canvas.
+  const canvasDataRef = useRef<CanvasData>(emptyCanvas);
+  useEffect(() => {
+    canvasDataRef.current = canvasData;
+  }, [canvasData]);
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   /** Chat/API phase — always follows the active session, not project_canvas.progress */
   const [sessionPhase, setSessionPhase] = useState<string>('diagnose');
@@ -474,6 +501,18 @@ function ChatPageContent() {
 
   // ---- Phase 4 state ----
   const [credentialRequest, setCredentialRequest] = useState<{ tool: string; label: string; type: string } | null>(null);
+  // Interactive deploy cards: workflowId → stepId → StepConfig
+  const [workflowStepConfigs, setWorkflowStepConfigs] = useState<WorkflowStepConfigs>({});
+  // workflowId → deployed DB workflow id (drives the card's deployed/run state)
+  const [deployedWorkflowIds, setDeployedWorkflowIds] = useState<Record<string, string>>({});
+  const [openDeployWorkflowId, setOpenDeployWorkflowId] = useState<string | null>(null);
+
+  const handleStepConfigSave = useCallback((workflowId: string, stepId: string, config: StepConfig) => {
+    setWorkflowStepConfigs(prev => ({
+      ...prev,
+      [workflowId]: { ...(prev[workflowId] ?? {}), [stepId]: config },
+    }));
+  }, []);
 
   // ---- Dev state ----
   const [isDevContextOpen, setIsDevContextOpen] = useState(false);
@@ -490,6 +529,19 @@ function ChatPageContent() {
   // ---- Project state ----
   const [currentProject, setCurrentProject] = useState<{ id: string, name: string } | null>(null);
 
+  const handleWorkflowPersist = useCallback((updated: Workflow) => {
+    setCanvasData(prev => {
+      const workflows = (prev.workflows ?? []).map(w =>
+        w.id === updated.id ? { ...w, steps: updated.steps, edges: updated.edges } : w,
+      );
+      const next = { ...prev, workflows };
+      if (currentProject?.id) {
+        saveProjectCanvas(currentProject.id, next).catch(console.error);
+      }
+      return next;
+    });
+  }, [currentProject?.id]);
+
   const maxReachedPhase = React.useMemo(() => {
     let maxIdx = PHASE_ORDER.indexOf(canvasData.phase || 'diagnose');
     if (currentProject) {
@@ -501,6 +553,42 @@ function ChatPageContent() {
     }
     return PHASE_ORDER[Math.max(0, maxIdx)] || 'diagnose';
   }, [sessions, currentProject, canvasData.phase]);
+
+  const accountDisplay = useMemo(
+    () => (authUser ? getAccountDisplayInfo(authUser, onboarding) : null),
+    [authUser, onboarding],
+  );
+
+  const editorCoachContext = useMemo((): WorkflowEditorCoachContext => {
+    const phase =
+      sessions.find(s => s.id === currentSessionId)?.phase
+      || sessionPhase
+      || canvasData.phase
+      || 'diagnose';
+    const memoryParts: string[] = [];
+    if (sessionMemory && sessionMemory !== 'Noch keine.') {
+      memoryParts.push(`--- AKTUELLER SESSION-KONTEXT ---\n${sessionMemory}`);
+    }
+    if (onboarding?.memory?.trim() && onboarding.memory !== 'Bisher keine Historie.') {
+      memoryParts.push(onboarding.memory.trim());
+    }
+    const obWithMemory = onboarding
+      ? { ...onboarding, memory: memoryParts.join('\n\n') || onboarding.memory }
+      : undefined;
+    return {
+      phase,
+      onboarding: obWithMemory,
+      canvas: canvasData,
+      mainChatHistory: mainChatHistoryForEditor(messages),
+    };
+  }, [sessions, currentSessionId, sessionPhase, canvasData, sessionMemory, onboarding, messages]);
+
+  const handleLogout = useCallback(async () => {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    setIsSidebarOpen(false);
+    router.push('/');
+  }, [router]);
 
   // ---- Agent action helpers ----
   // Actions render inline in the chat like real agent tool calls:
@@ -723,6 +811,7 @@ function ChatPageContent() {
         setMessages(newMessages);
         setInput('');
         setPendingAttachments([]);
+        setDismissedOptionsId(null);
       }
     }
 
@@ -807,9 +896,10 @@ function ChatPageContent() {
         body: JSON.stringify({
           messages: payloadMessages,
           session_id: sessionId,
+          project_id: projId ?? currentProject?.id ?? null,
           onboarding: obWithMemory,
           phase: chatPhase,
-          canvas: withSessionPhase(canvasData, chatPhase),
+          canvas: withSessionPhase(canvasDataRef.current, chatPhase),
           attachments: attachmentsForApi(turnAttachments),
         })
       });
@@ -830,7 +920,7 @@ function ChatPageContent() {
       streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       let assistantContent = '';
-      let streamCanvasData = withSessionPhase(canvasData, chatPhase);
+      let streamCanvasData = withSessionPhase(canvasDataRef.current, chatPhase);
       const shownCanvasActions = new Set<string>();
       // Holder object (not a bare `let`) so TS keeps the Promise|null type:
       // the assignment happens inside the startCanvasWorker closure, which a
@@ -954,6 +1044,25 @@ function ChatPageContent() {
           void appendCoachStatusExplanation(sessionId, canvasEval.reason, chatPhase, streamCanvasData);
         }
 
+        // <canvas_built> — Server signalisiert: Build FERTIG + gespeichert. Karte SOFORT laden
+        // (kein Warten auf Supabase-Realtime). Tag kommt garantiert nach dem Build → kein Race.
+        if (assistantContent.includes('</canvas_built>') && !shownCanvasActions.has('canvas_built')) {
+          shownCanvasActions.add('canvas_built');
+          const builtMatch = assistantContent.match(/<canvas_built>([\s\S]*?)<\/canvas_built>/);
+          const builtProjId = currentProject?.id;
+          if (builtMatch && builtProjId) {
+            try {
+              const built = JSON.parse(builtMatch[1]) as { workflow_id?: string };
+              loadProjectCanvas(builtProjId)
+                .then(pc => {
+                  if (pc) setCanvasData(withSessionPhase(pc, chatPhase));
+                  if (built.workflow_id) setOpenDeployWorkflowId(built.workflow_id);
+                })
+                .catch(console.error);
+            } catch { /* ignore malformed tag */ }
+          }
+        }
+
         // Process tool calls from the stream
         const toolMatches = Array.from(assistantContent.matchAll(/<tool_call>([\s\S]*?)<\/tool_call>/g));
         if (toolMatches.length > 0) {
@@ -972,26 +1081,52 @@ function ChatPageContent() {
                 } else if (toolCall.type === 'request_credential') {
                   const aid = addAction('request_credential', `Fordere Anmeldedaten an...`);
                   setTimeout(() => completeAction(aid, `Credential-Aufforderung an Nutzer gesendet`), 800);
+                } else if (toolCall.type === 'research_solutions') {
+                  const aid = addAction('research_solutions', `Recherchiere Lösungsansätze…`);
+                  setTimeout(() => completeAction(aid, `Recherche abgeschlossen`), 4000);
+                } else if (toolCall.type === 'create_workflow_plan') {
+                  const aid = addAction('create_workflow_plan', `Erstelle Workflow-Plan…`);
+                  setTimeout(() => completeAction(aid, `Plan erfolgreich auf dem Canvas platziert`), 2500);
+                } else if (toolCall.type === 'build_workflow') {
+                  const wfId = toolCall.args?.workflow_id as string | undefined;
+                  const aid = addAction('build_workflow', `Baue Workflow live…`);
+                  // Kein loadProjectCanvas hier — der Server baut & speichert, Supabase Realtime
+                  // liefert das fertige Canvas (Race vermeiden). Nur das Auto-Open-Ziel merken.
+                  if (wfId) setOpenDeployWorkflowId(wfId);
+                  setTimeout(() => completeAction(aid, `Workflow auf Canvas`), 1200);
+                } else if (toolCall.type === 'edit_workflow') {
+                  const wfId = toolCall.args?.workflow_id as string | undefined;
+                  const aid = addAction('edit_workflow', `Passe Workflow an…`);
+                  const builtProjId = currentProject?.id;
+                  if (builtProjId) {
+                    loadProjectCanvas(builtProjId)
+                      .then(pc => {
+                        if (pc) setCanvasData(withSessionPhase(pc, chatPhase));
+                        if (wfId) setOpenDeployWorkflowId(wfId);
+                      })
+                      .catch(console.error);
+                  }
+                  setTimeout(() => completeAction(aid, `Workflow angepasst`), 1200);
                 }
               }
             } catch (e) {}
           });
         }
 
-        const visibleContent = stripInternalTags(assistantContent);
+        // Raw content keeps <options> etc. for OptionsCard; MessageBubble strips for display.
         setMessages(prev =>
-          prev.map(m => m.id === assistantId ? { ...m, content: visibleContent } : m)
+          prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
         );
       }
 
       const aborted = abortControllerRef.current?.signal.aborted || activeTurnRef.current !== turnId;
       const rawAssistantContent = assistantContent;
-      assistantContent = stripInternalTags(assistantContent);
+      const strippedAssistantContent = stripInternalTags(assistantContent);
       setMessages(prev =>
-        prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m)
+        prev.map(m => m.id === assistantId ? { ...m, content: rawAssistantContent } : m)
       );
-      if (assistantContent.trim()) {
-        await saveMessage(sessionId, 'assistant', assistantContent);
+      if (strippedAssistantContent.trim()) {
+        await saveMessage(sessionId, 'assistant', strippedAssistantContent);
       } else if (aborted) {
         setMessages(prev => prev.filter(m => m.id !== assistantId));
       }
@@ -1112,12 +1247,24 @@ function ChatPageContent() {
               PHASE_ORDER.indexOf(chatPhase)
             );
             const progressPhase = PHASE_ORDER[progressIdx] || chatPhase;
+            // Falls der Server zwischenzeitlich gebaut hat (build_workflow), hat existingPc
+            // mehr Workflows als unser Snapshot → existingPc als Basis, sonst überschreiben
+            // wir die gerade gebaute Deploy-Karte mit einem veralteten Stand.
+            const existingWfCount = existingPc?.workflows?.length ?? 0;
+            const snapshotWfCount = canvasSnapshot.workflows?.length ?? 0;
+            const saveBase = existingPc && existingWfCount > snapshotWfCount ? existingPc : canvasSnapshot;
+            if (saveBase !== canvasSnapshot) {
+              canvasSnapshot = withSessionPhase(saveBase, chatPhase);
+            }
             await saveProjectCanvas(projId, {
-              ...canvasSnapshot,
+              ...saveBase,
               phase: progressPhase as CanvasData['phase'],
             });
           }
-          await saveCanvas(sessionId, canvasSnapshot);
+          // Legacy session canvas — only when no project-bound canvas exists
+          if (!projId) {
+            await saveCanvas(sessionId, canvasSnapshot);
+          }
         } catch (syncErr) {
           console.error('Post-turn sync error:', syncErr);
         }
@@ -1156,6 +1303,7 @@ function ChatPageContent() {
       }
       
       setUserId(session.user.id);
+      setAuthUser(session.user);
 
       const pending = localStorage.getItem('pending_onboarding');
       if (pending) {
@@ -1180,8 +1328,12 @@ function ChatPageContent() {
       } else {
          const list = await refreshSessions();
          const targetId = searchParams.get('id');
-         if (targetId) {
+         if (targetId && list.some(s => s.id === targetId)) {
             await switchToSession(targetId);
+         } else if (targetId) {
+            console.warn('[chat] ?id= gehört nicht zum Account, Fallback:', targetId);
+            if (list.length > 0) await switchToSession(list[0].id);
+            else setIsLoadingSession(false);
          } else if (list.length > 0) {
             await switchToSession(list[0].id);
          } else {
@@ -1191,6 +1343,15 @@ function ChatPageContent() {
     };
     initAuth();
   }, [router]); // Only run on mount
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+      if (session?.user) setUserId(session.user.id);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // ---- Realtime Canvas Subscription ----
   useEffect(() => {
@@ -1234,12 +1395,17 @@ function ChatPageContent() {
         supabase.from('sessions').select('project_id, phase, memory').eq('id', sessionId).maybeSingle(),
         isWelcomeSent(sessionId)
       ]);
+      if (!sessionRes.data) {
+        console.warn('[chat] Session nicht zugreifbar (RLS):', sessionId);
+        return;
+      }
+
       setMessages(msgs.filter(m => !(m.role === 'user' && isHiddenSystemMessage(m.content))));
       if (ob) setOnboarding(ob);
-      setSessionMemory(sessionRes.data?.memory || '');
+      setSessionMemory(sessionRes.data.memory || '');
       setCurrentSessionId(sessionId);
 
-      const phase = sessionRes.data?.phase || 'diagnose';
+      const phase = sessionRes.data.phase || 'diagnose';
       setSessionPhase(phase);
 
       // Load the project directly — no stale closure risk
@@ -1253,11 +1419,18 @@ function ChatPageContent() {
         if (projectCanvas) {
           const sessionPhaseIdx = PHASE_ORDER.indexOf(phase as typeof PHASE_ORDER[number]);
           const projectPhaseIdx = PHASE_ORDER.indexOf(projectCanvas.phase as typeof PHASE_ORDER[number]);
+          let merged = projectCanvas;
           if (sessionPhaseIdx > projectPhaseIdx) {
-            const healed = { ...projectCanvas, phase: phase as CanvasData['phase'] };
-            saveProjectCanvas(projectId, healed).catch(console.error);
+            merged = { ...projectCanvas, phase: phase as CanvasData['phase'] };
+            saveProjectCanvas(projectId, merged).catch(console.error);
           }
-          setCanvasData(withSessionPhase(projectCanvas, phase));
+          if (phase === 'umsetzung') {
+            merged = healUmsetzungCanvas(merged);
+            if (merged !== projectCanvas) {
+              saveProjectCanvas(projectId, merged).catch(console.error);
+            }
+          }
+          setCanvasData(withSessionPhase(merged, phase));
         } else {
           const sessionCanvas = await loadSessionCanvas(sessionId);
           setCanvasData(withSessionPhase(sessionCanvas || emptyCanvas, phase));
@@ -1334,7 +1507,10 @@ function ChatPageContent() {
       await saveProjectMemory(currentProject.id, phase, summary);
       completeAction(memoryActionId, 'Projekt-Wissen gespeichert');
 
-      const nextCanvasData = { ...canvasData, phase: nextPhase as CanvasData['phase'] };
+      const nextCanvasData =
+        nextPhase === 'umsetzung'
+          ? splitPlansForUmsetzung({ ...canvasData, phase: nextPhase as CanvasData['phase'] })
+          : { ...canvasData, phase: nextPhase as CanvasData['phase'] };
       const canvasActionId = addAction('canvas_update', 'Aktualisiere Projekt-Canvas...');
       await saveProjectCanvas(currentProject.id, nextCanvasData);
       setCanvasData(nextCanvasData);
@@ -1451,6 +1627,17 @@ function ChatPageContent() {
     sendMessage(input);
   };
 
+  // Quick-reply options: derived from the latest assistant message's <options> tag.
+  // Disappears automatically once the user replies (a user message becomes last)
+  // or when explicitly dismissed. Only in phase `plan`.
+  const activeOptions = useMemo(() => {
+    if (isStreaming || sessionPhase !== 'plan') return null;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant' || last.id === dismissedOptionsId) return null;
+    const parsed = parseOptionsTag(last.content);
+    return parsed ? { options: parsed, messageId: last.id } : null;
+  }, [messages, isStreaming, sessionPhase, dismissedOptionsId]);
+
   const stopChat = () => {
     activeTurnRef.current += 1;
     abortControllerRef.current?.abort();
@@ -1510,6 +1697,66 @@ function ChatPageContent() {
     await saveProjectCanvas(currentProject.id, targetCanvas);
     await refreshSessions();
     await switchToSession(newId);
+  };
+
+  const handleResetCurrentPhase = async () => {
+    if (!currentSessionId || !currentProject || isResettingPhase || isStreaming) return;
+
+    const phaseLabel = PHASE_LABELS[sessionPhase] || sessionPhase;
+    if (
+      !window.confirm(
+        `Phase „${phaseLabel}“ zurücksetzen?\n\nChat, Session-Memory, Projekt-Memory und Canvas-Inhalte dieser Phase werden gelöscht. Frühere Phasen bleiben erhalten.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsResettingPhase(true);
+    try {
+      const res = await fetch('/api/dev/reset-phase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          projectId: currentProject.id,
+          phase: sessionPhase,
+          canvas: withSessionPhase(canvasData, sessionPhase),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = typeof err.error === 'string' ? err.error : `HTTP ${res.status}`;
+        throw new Error(detail || 'Reset fehlgeschlagen');
+      }
+
+      const { canvas: resetCanvas } = await res.json();
+      const nextCanvas = withSessionPhase(resetCanvas as CanvasData, sessionPhase);
+
+      setMessages([]);
+      setSessionMemory('');
+      setDismissedOptionsId(null);
+      setCanvasData(nextCanvas);
+      canvasDataRef.current = nextCanvas;
+      setPreparedNextSessionId(null);
+      setAgentActions([]);
+      setWorkflowStepConfigs({});
+      setDeployedWorkflowIds({});
+      deployedWorkflowIdsRef.current = {};
+      phasePrepTriggeredForRef.current.delete(currentSessionId);
+      welcomeInProgressRef.current.delete(currentSessionId);
+      lastCoachStatusKeyRef.current = null;
+
+      const kick = getSessionKickoff(sessionPhase, onboarding?.intro_message);
+      setTimeout(() => {
+        sendMessage(kick.content, kick.hidden, [], currentSessionId, onboarding || undefined);
+      }, 400);
+    } catch (err) {
+      console.error('[dev] phase reset failed:', err);
+      window.alert(err instanceof Error ? err.message : 'Reset fehlgeschlagen');
+    } finally {
+      setIsResettingPhase(false);
+    }
   };
 
   const handlePhaseCircleClick = async (clickedPhase: string) => {
@@ -1572,6 +1819,15 @@ function ChatPageContent() {
       currentPhase={sessions.find(s => s.id === currentSessionId)?.phase || canvasData.phase || 'diagnose'}
       maxReachedPhase={maxReachedPhase}
       onPhaseClick={handlePhaseCircleClick}
+      projectId={currentProject?.id}
+      workflowStepConfigs={workflowStepConfigs}
+      onStepConfigSave={handleStepConfigSave}
+      deployedWorkflowIds={deployedWorkflowIds}
+      onWorkflowDeployed={(workflowId, dbId) => setDeployedWorkflowIds(prev => ({ ...prev, [workflowId]: dbId }))}
+      openDeployWorkflowId={openDeployWorkflowId}
+      onDeployModalOpened={(id) => setOpenDeployWorkflowId(prev => (prev === id ? null : prev))}
+      onWorkflowPersist={handleWorkflowPersist}
+      editorCoachContext={editorCoachContext}
     />
   );
 
@@ -1666,6 +1922,17 @@ function ChatPageContent() {
                  );
                })}
              </div>
+
+             {accountDisplay && (
+               <SidebarAccountOverview
+                 account={accountDisplay}
+                 onSettings={() => {
+                   router.push('/dashboard');
+                   setIsSidebarOpen(false);
+                 }}
+                 onLogout={handleLogout}
+               />
+             )}
            </motion.div>
          )}
         </AnimatePresence>
@@ -1719,7 +1986,7 @@ function ChatPageContent() {
 
         {/* DEV: phase-skip toolbar — only in development */}
         {process.env.NODE_ENV === 'development' && !isLoadingSession && currentProject && (
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] font-medium text-amber-700 shrink-0">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] font-medium text-amber-700 shrink-0 flex-wrap">
             <span className="opacity-60">⚡ dev</span>
             {PHASE_ORDER.filter((_, i) => i !== PHASE_ORDER.indexOf(sessionPhase)).map(ph => (
               <button
@@ -1730,6 +1997,17 @@ function ChatPageContent() {
                 {ph === sessionPhase ? '↺' : PHASE_ORDER.indexOf(ph) > PHASE_ORDER.indexOf(sessionPhase) ? '→' : '←'} {PHASE_LABELS[ph]}
               </button>
             ))}
+            <span className="opacity-40">|</span>
+            <button
+              type="button"
+              onClick={handleResetCurrentPhase}
+              disabled={!currentSessionId || isResettingPhase || isStreaming}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-200 hover:bg-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-red-900"
+              title="Chat, Memory und Canvas der aktuellen Phase leeren"
+            >
+              {isResettingPhase ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+              Phase zurücksetzen
+            </button>
           </div>
         )}
 
@@ -1836,19 +2114,37 @@ function ChatPageContent() {
             })()}
 
             {!isLoadingSession && (
-              <ChatInput
-                value={input}
-                onChange={setInput}
-                onSubmit={handleSubmit}
-                disabled={isStreaming}
-                isStreaming={isStreaming}
-                onStop={stopChat}
-                attachments={pendingAttachments}
-                onAttachmentsChange={setPendingAttachments}
-                sessionId={currentSessionId}
-                compact={isMobile}
-                backgroundStatus={chatBackgroundStatus}
-              />
+              <>
+                {activeOptions && (
+                  <div className={isMobile ? 'px-2' : 'px-4'}>
+                    <OptionsCard
+                      options={activeOptions.options}
+                      onSelect={(label) => {
+                        setDismissedOptionsId(activeOptions.messageId);
+                        sendMessage(label);
+                      }}
+                      onCustomSubmit={(text) => {
+                        setDismissedOptionsId(activeOptions.messageId);
+                        sendMessage(text);
+                      }}
+                      onDismiss={() => setDismissedOptionsId(activeOptions.messageId)}
+                    />
+                  </div>
+                )}
+                <ChatInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSubmit}
+                  disabled={isStreaming}
+                  isStreaming={isStreaming}
+                  onStop={stopChat}
+                  attachments={pendingAttachments}
+                  onAttachmentsChange={setPendingAttachments}
+                  sessionId={currentSessionId}
+                  compact={isMobile}
+                  backgroundStatus={chatBackgroundStatus}
+                />
+              </>
             )}
         </div>
 

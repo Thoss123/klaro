@@ -1,26 +1,37 @@
-import React from 'react';
+import { section, sectionY } from './landing-styles';
 
 const PROBLEMS = [
-  'Du hast ChatGPT ausprobiert — aber drei Wochen später nutzt es niemand mehr.',
-  'Du weißt dass Prozesse automatisierbar wären — aber welche zuerst?',
-  'Du willst deiner IT ein Briefing geben — aber du weißt nicht was du hineinschreiben sollst.',
+  {
+    title: 'ChatGPT ja — Automatisierung nein',
+    text: 'Im Team wird gechattet, aber wiederkehrende Aufgaben laufen weiter manuell. KI hilft beim Formulieren, nicht beim Ablauf.',
+  },
+  {
+    title: 'Automatisierung ohne Priorität',
+    text: 'Du weißt, dass Prozesse automatisierbar wären — aber welche zuerst, mit welchem Tool?',
+  },
+  {
+    title: 'Kein Einstieg, kein Know-how',
+    text: 'Du weißt nicht, wo du anfangen sollst — und ohne technischen Hintergrund wirkt jedes Tool wie ein weiteres Baustellen-Projekt.',
+  },
 ];
 
 export default function Problems() {
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16 sm:py-24">
-      <div className="grid md:grid-cols-3 gap-4 sm:gap-5">
-        {PROBLEMS.map((text, i) => (
+    <section className={`${section} ${sectionY}`}>
+      <p className="text-center text-sm font-semibold uppercase tracking-wider text-indigo-600 mb-10">
+        Kennst du das?
+      </p>
+      <div className="grid md:grid-cols-3 gap-5">
+        {PROBLEMS.map((item, i) => (
           <div
-            key={i}
-            className="border border-gray-200 rounded-2xl p-7 bg-white"
+            key={item.title}
+            className="group rounded-2xl border border-gray-200 bg-white p-8 shadow-sm hover:shadow-md hover:border-indigo-200/60 transition-all"
           >
-            <span className="text-sm font-mono text-gray-300">
-              0{i + 1}
+            <span className="text-4xl font-bold text-gray-100 group-hover:text-indigo-100 transition-colors">
+              {String(i + 1).padStart(2, '0')}
             </span>
-            <p className="mt-4 text-lg text-gray-800 leading-snug font-medium">
-              {text}
-            </p>
+            <h3 className="mt-4 text-xl font-bold text-gray-900">{item.title}</h3>
+            <p className="mt-3 text-gray-600 leading-relaxed">{item.text}</p>
           </div>
         ))}
       </div>

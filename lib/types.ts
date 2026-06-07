@@ -76,8 +76,37 @@ export type UseCase = {
 export type WorkflowStep = {
   id: string
   label: string
-  type?: 'trigger' | 'action' | 'ai' | 'decision' | 'output'
+  type?: 'trigger' | 'action' | 'ai' | 'decision' | 'human' | 'output'
   tool?: string // filled in Phase 3
+  /** Resolved n8n node type, e.g. n8n-nodes-base.gmail */
+  n8nType?: string
+  n8nTypeVersion?: number
+  /** n8n-native parameters from nodes.json */
+  parameters?: Record<string, unknown>
+  credentialType?: string
+  /** Canvas position (React Flow) */
+  position?: { x: number; y: number }
+  /** Node im Workflow deaktiviert (n8n: disabled — wird übersprungen). */
+  disabled?: boolean
+  /** Deutsche Klartext-Beschreibung was dieser Schritt IM Workflow tut (statt generischer n8n-Doku). */
+  note?: string
+  /** AI sub-connections (ai_languageModel/ai_memory/ai_tool) — Slot id → angehängte Sub-Node step-ids. */
+  aiSubNodes?: Record<string, string[]>
+  /** Markiert eine Sub-Node (Chat Model/Memory/Tool), die an einen Agent/Chain hängt. */
+  subNodeOf?: { parentId: string; slot: string }
+}
+
+/** Edge between workflow steps — IF, Switch outputs, Merge inputs */
+export type WorkflowEdge = {
+  id: string
+  source: string
+  target: string
+  /** Source output: default | true | false | switch-0 … switch-N */
+  branch?: 'default' | 'true' | 'false' | string
+  /** Target input index (Merge node) */
+  targetInput?: number
+  /** AI sub-connection (ai_languageModel/ai_memory/ai_tool) — sonst Main-Connection. */
+  connectionType?: string
 }
 
 export type Workflow = {
@@ -85,6 +114,7 @@ export type Workflow = {
   title: string
   linked_pain_point: string
   steps: WorkflowStep[]
+  edges?: WorkflowEdge[]
 }
 
 // Implementer profile (Phase 2/3)
@@ -120,6 +150,8 @@ export type CanvasData = {
   pain_points: PainPoint[]
   use_cases: UseCase[]
   workflows: Workflow[]
+  /** Phase-3 sketches; in Phase 4 deploy list starts empty until build_workflow. */
+  workflow_plans?: Workflow[]
   documents: CanvasDocument[]
   company?: CompanyProfile
   implementer?: ImplementerProfile
@@ -164,10 +196,41 @@ export type WorkflowStepMapped = WorkflowStep & {
   credential_tool?: string   // which credential is needed, e.g. "gmail"
 }
 
+// Phase 4 — interactive deployment: per-step user configuration (n8n-native)
+export type StepConfigType = 'credential' | 'ai' | 'human' | 'schedule' | 'webhook' | 'n8n'
+
+export interface StepConfig {
+  configType: StepConfigType
+  /** n8n node type from catalog */
+  n8nType?: string
+  n8nTypeVersion?: number
+  /** n8n-native parameters */
+  parameters?: Record<string, unknown>
+  credentialType?: string
+  credentialValue?: string
+  // legacy — kept for migration
+  provider?: string
+  systemPrompt?: string
+  userPrompt?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  channel?: 'email' | 'whatsapp' | 'telegram'
+  address?: string
+  messageTemplate?: string
+  cronExpression?: string
+  timezone?: string
+  httpMethod?: string
+  httpUrl?: string
+}
+
+/** workflowId → stepId → StepConfig */
+export type WorkflowStepConfigs = Record<string, Record<string, StepConfig>>
+
 // Agent-style action feedback
 export interface AgentAction {
   id: string
-  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow'
+  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow' | 'research_solutions' | 'build_workflow' | 'edit_workflow'
   status: 'running' | 'done' | 'error'
   label: string
   detail?: string

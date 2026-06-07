@@ -8,7 +8,8 @@ import {
   isValidWorkflow,
   normalizeCanvasData,
 } from '@/lib/canvas-normalize';
-import type { Workflow } from '@/lib/types';
+import { stripPhaseFromCanvas } from '@/lib/phase-reset';
+import type { CanvasData } from '@/lib/types';
 
 describe('toDisplayText', () => {
   it('handles primitives, arrays and nested objects', () => {
@@ -73,6 +74,51 @@ describe('isValidWorkflow', () => {
     const ok: Workflow = { id: 'w', title: 'T', linked_pain_point: 'p', steps: [{ id: 's', label: 'L' }] };
     expect(isValidWorkflow(ok)).toBe(true);
     expect(isValidWorkflow({ ...ok, steps: [] })).toBe(false);
+  });
+});
+
+describe('stripPhaseFromCanvas', () => {
+  const base: CanvasData = {
+    phase: 'plan',
+    pain_points: [{ id: 'pp_1', title: 'P', description: 'd', priority: 'hoch' }],
+    use_cases: [{ id: 'uc_1', title: 'U', linked_pain_point: 'pp_1', effort: 'x', impact: 'y' }],
+    workflows: [{ id: 'wf_1', title: 'W', linked_pain_point: 'pp_1', steps: [{ id: 's1', label: 'Go' }] }],
+    documents: [
+      { id: 'd1', title: 'Diag', content: 'allgemein diagnose text here enough', phase: 'diagnose' },
+      { id: 'd2', title: 'Plan', content: 'workflow blaupause text here enough', phase: 'plan' },
+    ],
+    company: { offer: 'Beratung', change_appetite: 'balanced' },
+    implementer: { id: 'i1', is_chatter: true, who: 'Chef', skill_level: 'grundkenntnisse', automation_experience: 'nein' },
+  };
+
+  it('clears diagnose blobs but keeps later phases', () => {
+    const c = stripPhaseFromCanvas(base, 'diagnose');
+    expect(c.pain_points).toHaveLength(0);
+    expect(c.company).toBeUndefined();
+    expect(c.use_cases).toHaveLength(1);
+    expect(c.documents.map(d => d.id)).toEqual(['d2']);
+  });
+
+  it('clears analyse blobs but keeps pain points', () => {
+    const c = stripPhaseFromCanvas(base, 'analyse');
+    expect(c.use_cases).toHaveLength(0);
+    expect(c.implementer).toBeUndefined();
+    expect(c.pain_points).toHaveLength(1);
+    expect(c.company?.offer).toBe('Beratung');
+    expect(c.company?.change_appetite).toBeUndefined();
+  });
+
+  it('clears plan workflows and docs', () => {
+    const c = stripPhaseFromCanvas(base, 'plan');
+    expect(c.workflows).toHaveLength(0);
+    expect(c.documents.map(d => d.id)).toEqual(['d1']);
+  });
+
+  it('clears umsetzung workflows and docs', () => {
+    const c = stripPhaseFromCanvas(base, 'umsetzung');
+    expect(c.workflows).toHaveLength(0);
+    expect(c.documents.map(d => d.id)).toEqual(['d1', 'd2']);
+    expect(c.pain_points).toHaveLength(1);
   });
 });
 

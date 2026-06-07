@@ -78,6 +78,48 @@ describe('buildN8nWorkflow', () => {
     expect(json.nodes[2].type).toBe(NODE_TYPE.decision.type); // decision step
     expect(json.nodes[1].type).toBe(NODE_TYPE.set.type); // unmapped → set
   });
+
+  it('wires IF true/false branches to correct output indices', () => {
+    const branchWf: Workflow = {
+      ...wf,
+      steps: [
+        { id: 's1', label: 'Start', type: 'trigger', n8nType: 'n8n-nodes-base.manualTrigger' },
+        { id: 's2', label: 'IF', type: 'decision', n8nType: 'n8n-nodes-base.if' },
+        { id: 's3', label: 'Ja', type: 'action' },
+        { id: 's4', label: 'Nein', type: 'action' },
+      ],
+      edges: [
+        { id: 'e1', source: 's1', target: 's2', branch: 'default' },
+        { id: 'e2', source: 's2', target: 's3', branch: 'true' },
+        { id: 'e3', source: 's2', target: 's4', branch: 'false' },
+      ],
+    };
+    const json = buildN8nWorkflow(branchWf, [], 'Branch') as any;
+    const ifName = json.nodes[1].name;
+    expect(json.connections[ifName].main[0][0].node).toBe(json.nodes[2].name);
+    expect(json.connections[ifName].main[1][0].node).toBe(json.nodes[3].name);
+  });
+
+  it('wires Merge inputs with target index', () => {
+    const mergeWf: Workflow = {
+      ...wf,
+      steps: [
+        { id: 's1', label: 'A', type: 'action' },
+        { id: 's2', label: 'B', type: 'action' },
+        { id: 's3', label: 'Merge', type: 'output', n8nType: 'n8n-nodes-base.merge' },
+      ],
+      edges: [
+        { id: 'e1', source: 's1', target: 's3', branch: 'default', targetInput: 0 },
+        { id: 'e2', source: 's2', target: 's3', branch: 'default', targetInput: 1 },
+      ],
+    };
+    const json = buildN8nWorkflow(mergeWf, [], 'Merge') as any;
+    const aName = json.nodes[0].name;
+    const bName = json.nodes[1].name;
+    const mergeName = json.nodes[2].name;
+    expect(json.connections[aName].main[0][0]).toEqual({ node: mergeName, type: 'main', index: 0 });
+    expect(json.connections[bName].main[0][0]).toEqual({ node: mergeName, type: 'main', index: 1 });
+  });
 });
 
 describe('getRequiredCredentials', () => {

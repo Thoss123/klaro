@@ -1,4 +1,4 @@
-# Klaro – Project Documentation (Stand: Mai 2026)
+# Klaro – Project Documentation (Stand: Juni 2026)
 
 Dieses Dokument ist die **Single Source of Truth** für die gesamte Architektur, das Datenmodell und die Vision von Klaro. Es ersetzt alte Spezifikationen und spiegelt den realen Code-Stand wider.
 
@@ -77,7 +77,43 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 - **Datenbank & Auth:** Supabase (PostgreSQL), Magic-Link / OAuth.
 - **Echtzeit-Updates:** Supabase Realtime Channels (für Canvas-Updates).
 - **KI-Provider:** `@mistralai/mistralai` SDK.
-- **Automatisierungs-Engine:** n8n Community Edition (Self-Hosted auf Hetzner via Docker).
+- **RAG / Embeddings:** Supabase `pgvector` + Mistral `mistral-embed` (1024-dim).
+- **Automatisierungs-Engine:** n8n Community Edition (Self-Hosted auf **Hostinger VPS** via Docker) — **eine geteilte Instanz für alle Nutzer**, isoliert über n8n Projects + `company_id`.
+
+### 3.1 Zentrale Infrastruktur (Shared Services)
+
+**Prinzip:** Nutzer richten **keine** eigenen Cloud-Setups ein. Klaro betreibt die Infrastruktur zentral; der Nutzer klickt im Zweifel nur „Erlauben".
+
+- **Zentrale OAuth-Apps:** Eine Klaro-OAuth-App pro Anbieter für Google (Gmail, Calendar, Drive, Sheets) und Microsoft (Outlook, Teams, OneDrive). Der Nutzer autorisiert per Klick — **kein** Google-Cloud-Console-Setup, keine eigenen Client-IDs.
+- **Twilio:** Eine zentrale Nummer für WhatsApp + SMS, von allen Nutzern geteilt.
+- **Resend:** Eine zentrale Domain für System-Mails (`notifications@klaro.ai`).
+- **Mistral (Free Tier):** Coach, Memory-Updates und Embeddings laufen zentral, solange die Rate Limits reichen.
+- **n8n CE (Hostinger VPS):** Kostenlos, eine geteilte Instanz; Mandantentrennung über n8n Projects + `company_id`.
+
+### 3.2 Webhook-Routing (zentraler Router)
+
+Kein manuelles Webhook-Setup für Nutzer. Klaro betreibt einen zentralen Router:
+
+- Jede Company erhält eine Sub-URL: `/webhook/{company_id}/{event_type}`.
+- Ein zentraler n8n-Router leitet eingehende Events automatisch an den richtigen Nutzer-Workflow weiter.
+- Webhook-URLs werden beim Deployment automatisch generiert — der Nutzer sieht davon nichts.
+
+### 3.3 Workflow-Builder mit Node-Map
+
+Die KI sieht **nie** n8n-Node-Typen, sondern nur logische Baustein-Namen (`email_senden`, `crm_updaten`, …).
+
+- Eine **Node-Map** (`node_map.json` im Root) übersetzt *Baustein + Tool → exaktes n8n-Node-JSON*.
+- Das eliminiert KI-Halluzinationen bei der Workflow-Generierung (die KI kann keine falschen Node-Typen/Parameter erfinden).
+
+### 3.4 RAG Knowledge Base (gebaut)
+
+Wissensdatenbank für den Coach mit **atomaren Dateien**: Jede Datei = eine vollständige, abgeschlossene Wissenseinheit (kein Token-Split). Jede Datei wird als Ganzes embedded und indexiert.
+
+- **Ordner** (`/knowledge`): `use-cases/` (branche & funktion), `tools/`, `templates/bausteine/`, `templates/workflows/`, `branchen/`, `ui-guides/`.
+- **Speicher:** Supabase-Tabelle `knowledge_base` (`pgvector`, `vector(1024)`), `source_type` aus dem Ordnerpfad abgeleitet. **Global / admin-kuratiert** (kein `company_id`-Scoping): öffentlich lesbar, Schreiben nur für eingeloggte Admins (RLS). RPC `search_knowledge` mit Phase-Filter.
+- **Code:** `lib/rag.ts` (Retrieval, phasenabhängig), `lib/knowledge-index.ts` (Server-Reindex), `scripts/index-knowledge.mjs` (CLI: `npm run index-knowledge`, braucht `SUPABASE_SERVICE_ROLE_KEY`).
+- **Admin-Interface:** `/admin/knowledge` (Übersicht, Reindex pro Sektion, Such-Test, Löschen).
+- **Coach-Integration:** `app/api/chat/route.ts` injiziert relevantes Wissen phasenabhängig in den System-Prompt.
 
 ---
 
@@ -88,8 +124,10 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 - `messages`: Chat-Historie (User/Assistant).
 - `project_canvas`: Die Source of Truth für das rechte UI-Fenster. Speichert als JSONB die `pain_points`, `use_cases`, `workflows` und `documents`.
 - `project_memory`: Aggregierte Zusammenfassungen abgeschlossener Phasen.
-- `user_credentials` *(in Planung)*: Verschlüsselt gespeicherte API-Keys des Nutzers (AES-256-GCM).
-- `workflows` *(in Planung)*: Verwaltung der in n8n deployten Workflows inkl. Ausführungsstatus.
+- `user_credentials`: Verschlüsselt gespeicherte API-Keys des Nutzers (AES-256-GCM). _Tabelle deployed (RLS aktiv)._
+- `workflows`: Verwaltung der in n8n deployten Workflows inkl. Ausführungsstatus. _Tabelle deployed (RLS aktiv)._
+- `knowledge_base`: RAG-Wissensdatenbank (`pgvector`, atomare Dateien, global/admin-kuratiert). _Deployed inkl. `pgvector`-Extension + RPC `search_knowledge`._
+- `events` *(Post-MVP, Data Layer)*: Loggt jede Workflow-Execution. Basis für spätere KI-Insights & Selbstverbesserung (siehe Abschnitt 6).
 
 ---
 
@@ -97,9 +135,13 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 
 ### Onboarding (Adaptive Pfad-Logik)
 Basierend auf den Antworten im Onboarding ändert der Coach seine Strategie:
+Vier Pfade je nach Onboarding-Ziel (`{{ziel}}`-Variable):
 - **Pfad A (Von Null):** Klassischer Diagnose-Flow.
 - **Pfad B (Konkrete Ideen):** Überspringt Diagnose, geht direkt in die Analyse der mitgebrachten Idee und evaluiert den ROI.
 - **Pfad C (Ist KI sinnvoll?):** Stark evaluativ, filtert unsinnige Use-Cases heraus.
+- **Pfad D (Briefing-Export):** Diagnose normal, aber am Ende wird **kein** Workflow deployed, sondern ein architektonisches Briefing/Konzept zur Übergabe an die IT-Abteilung oder Agentur erzeugt.
+
+> Status: Die Pfad-Logik ist im Coach-Prompt angelegt; die vollständige Ausdifferenzierung der vier Pfade (inkl. Pfad-D-Export) ist im Sprint „Qualität" eingeplant (siehe `roadmap.md`).
 
 ### Phase 1: Diagnose
 Klärt ab, wo die größten Engpässe und Zeitfresser im Unternehmen liegen. Speichert dies als "Pain Points".
@@ -116,6 +158,33 @@ Das Herzstück der Plattform.
 2. **Credential Collection:** Fragt über Popups die nötigen Logins (z.B. Gmail, Slack) ab und speichert sie verschlüsselt.
 3. **Deployment:** Generiert das JSON für n8n und pushed es über `/api/n8n/*` Routen heimlich in die n8n Instanz.
 4. **Test & Live:** Führt Test-Trigger aus und schaltet den Workflow auf "Active".
+
+---
+
+## 6. Data Layer & Selbstverbesserung (Post-MVP)
+
+Während die Phasen laufen, baut Klaro **automatisch im Hintergrund** einen Data Layer auf — kein manueller Schritt für den Nutzer.
+
+- **`events`-Tabelle:** Jede Workflow-Execution wird geloggt (Basis für Auswertung).
+- **Vier Reifestufen:**
+  1. **Einzelworkflows** — isolierte Automatisierungen laufen & werden geloggt.
+  2. **Vernetzte Workflows** — Workflows greifen ineinander, gemeinsamer Daten-Kontext.
+  3. **KI-Intelligenz** — Insights aus den Event-Daten (Muster, Engpässe, ROI-Auswertung).
+  4. **Selbstverbesserung** — Klaro schlägt auf Basis der Daten eigenständig Optimierungen vor.
+
+## 7. Dashboard Builder (Post-MVP)
+
+Ein Dashboard wird **automatisch** aus den deployten Workflows + dem Data Layer generiert — **nicht** manuell konfiguriert. Kein MVP-Feature; gemerkt für nach dem MVP.
+
+---
+
+## 8. Aktueller Build-Status (Juni 2026)
+
+- **Phase 1 (Diagnose) Chat + Canvas:** funktioniert.
+- **Onboarding:** funktioniert (inkl. Pfad-Variable `{{ziel}}`).
+- **Supabase-Schema:** deployed, **inkl. `pgvector`**.
+- **RAG-Struktur:** Knowledge-Ordner `/knowledge` + `knowledge_base`-Tabelle + Indexierung + Admin-UI angelegt und getestet.
+- **n8n-Anbindung:** Live-Instanz auf Hostinger VPS erreichbar; Deploy-/Execution-Routen vorhanden.
 
 ---
 

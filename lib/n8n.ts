@@ -1,7 +1,15 @@
 /**
  * n8n REST API client — server-only.
  * Set MOCK_N8N=true in .env.local to skip real n8n calls during development.
+ * Workflow tests prefer instance-level MCP when N8N_MCP_* is configured.
  */
+
+import {
+  isN8nMcpConfigured,
+  mcpPublishWorkflow,
+  mcpRunWorkflowTest,
+  mcpUnpublishWorkflow,
+} from '@/lib/n8n-mcp-bridge';
 
 const BASE = () => process.env.N8N_API_URL || 'http://localhost:5678/api/v1';
 const KEY  = () => process.env.N8N_API_KEY  || '';
@@ -58,16 +66,42 @@ export async function createN8nWorkflow(workflowJson: object): Promise<{ id: str
 
 export async function updateN8nWorkflow(n8nId: string, workflowJson: object): Promise<void> {
   if (MOCK()) return;
-  await n8nFetch(`/workflows/${n8nId}`, { method: 'PATCH', body: JSON.stringify(workflowJson) });
+  const payload = {
+    ...workflowJson,
+    settings: {
+      executionOrder: 'v1',
+      ...((workflowJson as { settings?: Record<string, unknown> }).settings ?? {}),
+      availableInMCP: true,
+    },
+  };
+  await n8nFetch(`/workflows/${n8nId}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 
 export async function activateN8nWorkflow(n8nId: string): Promise<void> {
   if (MOCK()) return;
+
+  if (isN8nMcpConfigured()) {
+    const result = await mcpPublishWorkflow(n8nId);
+    if (!result.success) {
+      throw new Error(result.error || 'n8n MCP publish_workflow fehlgeschlagen');
+    }
+    return;
+  }
+
   await n8nFetch(`/workflows/${n8nId}/activate`, { method: 'POST' });
 }
 
 export async function deactivateN8nWorkflow(n8nId: string): Promise<void> {
   if (MOCK()) return;
+
+  if (isN8nMcpConfigured()) {
+    const result = await mcpUnpublishWorkflow(n8nId);
+    if (!result.success) {
+      throw new Error(result.error || 'n8n MCP unpublish_workflow fehlgeschlagen');
+    }
+    return;
+  }
+
   await n8nFetch(`/workflows/${n8nId}/deactivate`, { method: 'POST' });
 }
 
@@ -99,8 +133,33 @@ export async function getExecutions(n8nWorkflowId: string): Promise<N8nExecution
   return res?.data || [];
 }
 
-export async function triggerTestExecution(n8nWorkflowId: string): Promise<{ executionId: string }> {
-  if (MOCK()) return { executionId: `mock_exec_${Date.now()}` };
-  // n8n doesn't have a direct "test run" endpoint in v1 — use webhook or manual trigger
-  return n8nFetch(`/workflows/${n8nWorkflowId}/run`, { method: 'POST', body: JSON.stringify({}) });
+export interface N8nTestExecutionResult {
+  executionId: string;
+  status?: string;
+  error?: string;
+  via?: 'mcp' | 'rest';
+}
+
+export async function triggerTestExecution(n8nWorkflowId: string): Promise<N8nTestExecutionResult> {
+  if (MOCK()) return { executionId: `mock_exec_${Date.now()}`, status: 'success', via: 'mcp' };
+
+  if (isN8nMcpConfigured()) {
+    const result = await mcpRunWorkflowTest(n8nWorkflowId);
+    return {
+      executionId: result.executionId ?? '',
+      status: result.status,
+      error: result.error,
+      via: 'mcp',
+    };
+  }
+
+  // Fallback wenn MCP nicht konfiguriert (veralteter REST-Endpunkt)
+  const rest = await n8nFetch(`/workflows/${n8nWorkflowId}/run`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  return {
+    executionId: rest?.executionId ?? rest?.id ?? '',
+    via: 'rest',
+  };
 }

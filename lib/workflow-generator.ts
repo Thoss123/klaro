@@ -4,7 +4,9 @@
  * This generator takes the step-level tool decisions and builds valid n8n JSON.
  */
 
-import { Workflow, WorkflowStep } from './types';
+import { Workflow, WorkflowStep, StepConfigType } from './types';
+import { branchOutputIndex, edgeTargetInput, resolveWorkflowEdges } from './workflow-graph';
+import type { WorkflowEdge } from './types';
 
 // Maps tool name → n8n credential type key (null = no credential needed)
 export const CREDENTIAL_TYPE: Record<string, string | null> = {
@@ -45,9 +47,12 @@ export const NODE_TYPE: Record<string, { type: string; version: number }> = {
 
 export interface StepMapping {
   step_id: string;
-  tool: string;           // from NODE_TYPE map
-  credential_id?: string; // n8n credential id (after creation)
-  parameters?: Record<string, any>;
+  tool?: string;           // legacy Klaro tool key
+  n8n_type?: string;       // n8n node type, e.g. n8n-nodes-base.gmail
+  type_version?: number;
+  credential_id?: string;
+  credential_type?: string;
+  parameters?: Record<string, unknown>;
 }
 
 /** All Klaro-deployed n8n workflows are namespaced with this prefix so they are
@@ -75,56 +80,120 @@ export function buildN8nWorkflow(
 ): object {
   const nodes: any[] = [];
   const connections: Record<string, any> = {};
+  const edges = resolveWorkflowEdges(workflow.steps, workflow.edges);
 
   workflow.steps.forEach((step, i) => {
     const mapping = mappings.find(m => m.step_id === step.id);
-    const toolKey = mapping?.tool || (step.type === 'decision' ? 'decision' : 'set');
-    const nodeDef = NODE_TYPE[toolKey] || NODE_TYPE.set;
+
+    let nodeType: string;
+    let typeVersion: number;
+    let parameters: Record<string, unknown>;
+
+    if (mapping?.n8n_type || step.n8nType) {
+      nodeType = mapping?.n8n_type || step.n8nType!;
+      typeVersion = mapping?.type_version ?? step.n8nTypeVersion ?? 1;
+      parameters = mapping?.parameters || step.parameters || getDefaultParameters('', step);
+    } else {
+      const toolKey = mapping?.tool || (step.type === 'decision' ? 'decision' : 'set');
+      const nodeDef = NODE_TYPE[toolKey] || NODE_TYPE.set;
+      nodeType = nodeDef.type;
+      typeVersion = nodeDef.version;
+      parameters = mapping?.parameters || getDefaultParameters(toolKey, step);
+    }
 
     const nodeName = sanitizeName(step.label, i);
     const x = 200 + i * 250;
     const y = 300;
 
-    const credentialKey = CREDENTIAL_TYPE[toolKey];
-    const credentials: Record<string, any> = {};
+    const credentialKey = mapping?.credential_type
+      || (mapping?.tool ? CREDENTIAL_TYPE[mapping.tool] : undefined)
+      || step.credentialType
+      || undefined;
+    const credentials: Record<string, unknown> = {};
     if (credentialKey && mapping?.credential_id) {
       credentials[credentialKey] = {
         id: mapping.credential_id,
-        name: `${toolKey}-credential`,
+        name: `${credentialKey}-credential`,
       };
     }
 
     nodes.push({
       id: step.id,
       name: nodeName,
-      type: nodeDef.type,
-      typeVersion: nodeDef.version,
-      position: [x, y],
-      parameters: mapping?.parameters || getDefaultParameters(toolKey, step),
+      type: nodeType,
+      typeVersion,
+      position: [step.position?.x ?? x, step.position?.y ?? y],
+      parameters,
       ...(Object.keys(credentials).length ? { credentials } : {}),
     });
+  });
 
-    // Wire connection from previous node
-    if (i > 0) {
+  for (const edge of edges) {
+    const sourceStep = workflow.steps.find(s => s.id === edge.source);
+    const targetStep = workflow.steps.find(s => s.id === edge.target);
+    if (!sourceStep || !targetStep) continue;
+    const sourceIdx = workflow.steps.indexOf(sourceStep);
+    const targetStepIdx = workflow.steps.indexOf(targetStep);
+    const sourceName = sanitizeName(sourceStep.label, sourceIdx);
+    const targetName = sanitizeName(targetStep.label, targetStepIdx);
+
+    // LangChain-Sub-Connections (Chat Model/Memory/Tool → Agent)
+    if (edge.connectionType) {
+      const connType = edge.connectionType;
+      if (!connections[sourceName]) connections[sourceName] = {};
+      if (!connections[sourceName][connType]) connections[sourceName][connType] = [[]];
+      const slotEdges = connections[sourceName][connType][0] ?? [];
+      const toolIdx = slotEdges.length;
+      connections[sourceName][connType][0] = [
+        ...slotEdges,
+        { node: targetName, type: connType, index: toolIdx },
+      ];
+      continue;
+    }
+
+    const outIdx = branchOutputIndex(edge.branch, sourceStep);
+    const mergeInputIdx = edgeTargetInput(edge);
+    if (!connections[sourceName]) connections[sourceName] = { main: [[]] };
+    while (connections[sourceName].main.length <= outIdx) {
+      connections[sourceName].main.push([]);
+    }
+    if (!connections[sourceName].main[outIdx]) connections[sourceName].main[outIdx] = [];
+    connections[sourceName].main[outIdx].push({
+      node: targetName,
+      type: 'main',
+      index: mergeInputIdx,
+    });
+  }
+
+  // Fallback: linear chain if no edges defined
+  if (!edges.length) {
+    workflow.steps.forEach((step, i) => {
+      if (i === 0) return;
       const prevName = sanitizeName(workflow.steps[i - 1].label, i - 1);
+      const nodeName = sanitizeName(step.label, i);
       if (!connections[prevName]) connections[prevName] = { main: [[]] };
       if (!connections[prevName].main[0]) connections[prevName].main[0] = [];
       connections[prevName].main[0].push({ node: nodeName, type: 'main', index: 0 });
-    }
-  });
+    });
+  }
 
   return {
     // n8n workflows are namespaced so they're identifiable in the shared instance.
     name: withKlaroPrefix(workflowName),
     nodes,
     connections,
-    settings: { executionOrder: 'v1' },
+    settings: { executionOrder: 'v1', availableInMCP: true },
     active: false,
   };
 }
 
-function sanitizeName(label: string, index: number): string {
+/** n8n-Node-Name aus Schritt-Label (muss mit buildN8nWorkflow übereinstimmen). */
+export function n8nNodeNameForStep(label: string, index: number): string {
   return label.replace(/[^a-zA-Z0-9äöüÄÖÜß\s\-_]/g, '').trim() || `Step ${index + 1}`;
+}
+
+function sanitizeName(label: string, index: number): string {
+  return n8nNodeNameForStep(label, index);
 }
 
 function getDefaultParameters(tool: string, step: WorkflowStep): Record<string, any> {
@@ -150,13 +219,30 @@ function getDefaultParameters(tool: string, step: WorkflowStep): Record<string, 
   }
 }
 
+/**
+ * Phase 4: decide which configuration panel a step needs in the WorkflowDeployCard.
+ * Single source of truth shared by WorkflowDeployCard and StepConfigModal.
+ */
+export function resolveStepConfigType(step: WorkflowStep): StepConfigType {
+  if (step.type === 'human') return 'human';
+  if (step.type === 'ai') return 'ai';
+  const tool = step.tool?.toLowerCase() ?? '';
+  if (['openai', 'gemini', 'mistral'].includes(tool)) return 'ai';
+  if (step.type === 'trigger' && tool === 'schedule') return 'schedule';
+  if (step.type === 'trigger') return 'webhook';
+  if (CREDENTIAL_TYPE[tool] != null) return 'credential';
+  return 'credential';
+}
+
 /** Return list of unique tools that need credentials */
 export function getRequiredCredentials(mappings: StepMapping[]): string[] {
   const tools = new Set<string>();
   for (const m of mappings) {
-    if (CREDENTIAL_TYPE[m.tool] !== null && CREDENTIAL_TYPE[m.tool] !== undefined) {
-      tools.add(m.tool);
+    const key = m.tool || m.credential_type;
+    if (key && CREDENTIAL_TYPE[key] !== null && CREDENTIAL_TYPE[key] !== undefined) {
+      tools.add(key);
     }
+    if (m.credential_type) tools.add(m.credential_type);
   }
   return Array.from(tools);
 }

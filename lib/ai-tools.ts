@@ -67,8 +67,118 @@ export const KLARO_TOOLS: AITool[] = [
       },
       required: ["workflow_id"]
     }
+  },
+  {
+    name: "edit_workflow",
+    description: "Bearbeitet einen bereits gebauten Workflow auf dem Canvas (z.B. OpenAI → Mistral, Schritt tauschen, IF einfügen). Nur wenn der Workflow schon in {{workflows}} steht — NICHT für den ersten Build.",
+    schema: {
+      type: "object",
+      properties: {
+        workflow_id: {
+          type: "string",
+          description: "Die id des gebauten Workflows (z.B. wf_1)"
+        },
+        instruction: {
+          type: "string",
+          description: "Was geändert werden soll, z.B. 'OpenAI zu Mistral ändern' oder 'Schritt 2 soll Gmail sein'"
+        }
+      },
+      required: ["workflow_id", "instruction"]
+    }
+  },
+  {
+    name: "build_workflow",
+    description: "Baut einen Phase-3-Workflow-Plan live im Workflow-Editor auf dem Canvas (n8n-Nodes, React-Flow-Graph). Nur in Phase 4 — nachdem der Nutzer gewählt hat, womit er anfangen will.",
+    schema: {
+      type: "object",
+      properties: {
+        workflow_id: {
+          type: "string",
+          description: "Die id des Workflow-Plans aus workflow_plans (z.B. wf_1)"
+        },
+        title: {
+          type: "string",
+          description: "Alternativ: Titel des Plans, falls id unklar"
+        }
+      },
+      required: ["workflow_id"]
+    }
+  },
+  {
+    name: "research_solutions",
+    description: "Recherchiert (Phase 3) Lösungsansätze für einen Pain Point: was andere mit welchen Tools machen, Automatisierungsniveau, Vor- und Nachteile. Liefert 2–3 strukturierte Ansätze zurück, die du dem Nutzer zur Auswahl vorstellst.",
+    schema: {
+      type: "object",
+      properties: {
+        pain_point_id: {
+          type: "string",
+          description: "Die id des Pain Points aus dem Canvas (z.B. 'pp_1')"
+        },
+        pain_point_title: {
+          type: "string",
+          description: "Der Titel / das Thema des Pain Points"
+        },
+        tools_mentioned: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tools, die der Nutzer für diesen Prozess bereits nutzt"
+        },
+        context: {
+          type: "string",
+          description: "1–2 Sätze, was der Nutzer über diesen Prozess gesagt hat"
+        }
+      },
+      required: ["pain_point_title"]
+    }
+  },
+  {
+    name: "create_workflow_plan",
+    description: "Erstellt den konkreten Ablaufplan für einen Workflow und legt ihn live auf dem Canvas ab. Nutze dieses Tool in Phase 3, sobald sich der Nutzer für eine spezifische Automatisierungs-Lösung entschieden hat.",
+    schema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Titel des Workflows (z.B. 'Lead Qualifizierung')"
+        },
+        description: {
+          type: "string",
+          description: "Kurze Beschreibung des Workflows"
+        },
+        pain_point_id: {
+          type: "string",
+          description: "ID des zugehörigen Pain Points (z.B. 'pp_1')"
+        },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Name des Schritts (z.B. 'Neue E-Mail', 'Daten extrahieren')" },
+              tool: { type: "string", description: "Verwendetes Tool (z.B. 'gmail', 'openai', 'slack', 'webhook', 'schedule', 'if')" },
+              type: { type: "string", enum: ["trigger", "action", "ai", "human", "decision"], description: "Kategorie des Schritts" },
+              description: { type: "string", description: "Was genau in diesem Schritt passiert" }
+            },
+            required: ["label", "tool", "type"]
+          },
+          description: "Die einzelnen Workflow-Schritte in chronologischer Reihenfolge."
+        }
+      },
+      required: ["title", "description", "pain_point_id", "steps"]
+    }
   }
 ];
+
+/** Phase-gated tool list — research_solutions is Phase 3 only; build_workflow is Phase 4 only. */
+export function getToolsForPhase(phase: string): AITool[] {
+  if (phase === 'plan') {
+    return KLARO_TOOLS.filter(t => t.name !== 'build_workflow');
+  }
+  if (phase === 'umsetzung') {
+    return KLARO_TOOLS.filter(t => t.name !== 'research_solutions');
+  }
+  return KLARO_TOOLS.filter(t => t.name !== 'research_solutions' && t.name !== 'build_workflow');
+}
 
 // Helper for Gemini
 function mapToGeminiType(type: string): SchemaType {

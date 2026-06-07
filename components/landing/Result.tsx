@@ -1,123 +1,122 @@
-import React from 'react';
+import { Zap, Cpu, User, Check } from 'lucide-react';
+import { SiGmail as GmailIcon, SiGooglesheets } from 'react-icons/si';
+import { section, sectionY, h2, lead } from './landing-styles';
 
 const PAIN_POINTS = [
   {
-    title: 'Angebote manuell erstellen',
-    description:
-      'Jedes Angebot wird von Hand zusammengestellt — kostet Zeit und ist fehleranfällig.',
-    effort: '3–4h/Woche',
+    title: 'Angebote manuell',
+    description: 'Jedes Angebot von Hand — fehleranfällig, 3–4h/Woche.',
     priority: 'Hoch',
   },
   {
-    title: 'E-Mails sortieren & beantworten',
-    description:
-      'Der Posteingang läuft über, Wichtiges geht zwischen Routine-Anfragen unter.',
-    effort: '5h/Woche',
+    title: 'E-Mail-Flut',
+    description: 'Wichtiges geht in Routine-Anfragen unter.',
     priority: 'Hoch',
   },
   {
-    title: 'Wissen ist auf Köpfe verteilt',
-    description:
-      'Bei Urlaub oder Krankheit fehlt der Zugriff auf wichtiges Know-how.',
-    effort: '2h/Woche',
+    title: 'Wissen auf Köpfen',
+    description: 'Bei Ausfall fehlt Zugriff auf Know-how.',
     priority: 'Mittel',
   },
 ];
 
-const USE_CASES = [
-  {
-    title: 'KI-gestützte Angebotsvorlagen',
-    impact: 'Spart ~3h pro Woche',
-  },
-  {
-    title: 'Automatische E-Mail-Triage',
-    impact: 'Schnellere Reaktionszeit',
-  },
-];
-
-const STEPS = [
-  'Angebots-Vorlagen mit KI-Textbausteinen aufsetzen',
-  'E-Mail-Posteingang mit Auto-Kategorisierung testen',
-  'Internes Wissen in einer durchsuchbaren Basis bündeln',
+const WORKFLOW_STEPS = [
+  { type: 'trigger', label: 'Formular', icon: Zap, color: '#f59e0b' },
+  { type: 'data', label: 'Sheets', icon: SiGooglesheets, color: '#34A853', brand: true },
+  { type: 'ai', label: 'KI-Entwurf', icon: Cpu, color: '#6366f1' },
+  { type: 'human', label: 'Freigabe', icon: User, color: '#8b5cf6' },
+  { type: 'send', label: 'Gmail', icon: GmailIcon, color: '#EA4335', brand: true },
 ];
 
 const priorityStyle: Record<string, string> = {
-  Hoch: 'text-red-600 bg-red-50',
-  Mittel: 'text-amber-600 bg-amber-50',
-  Niedrig: 'text-gray-600 bg-gray-100',
+  Hoch: 'text-red-700 bg-red-50 border-red-100',
+  Mittel: 'text-amber-700 bg-amber-50 border-amber-100',
 };
 
 export default function Result() {
   return (
-    <section className="max-w-5xl mx-auto px-6 py-16 sm:py-24">
-      <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight text-center mb-12">
-        Das kommt raus.
-      </h2>
+    <section className={`${section} ${sectionY} bg-white`}>
+      <h2 className={h2}>Das kommt raus — nicht nur Folien.</h2>
+      <p className={lead}>
+        Roadmap mit Prioritäten, konkrete Abläufe und am Ende eine umsetzbare
+        Automatisierung — aus dem, was du wirklich gesagt hast.
+      </p>
 
-      <div className="bg-slate-50 bg-grid border border-gray-200 rounded-3xl p-5 sm:p-8">
-        {/* Pain points */}
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-          Erkannte Pain Points
-        </p>
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
-          {PAIN_POINTS.map((p) => (
-            <div
-              key={p.title}
-              className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <h3 className="text-sm font-semibold text-gray-900 leading-snug">
-                  {p.title}
-                </h3>
-                <span
-                  className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${priorityStyle[p.priority]}`}
+      <div className="mt-14 rounded-3xl border border-gray-200 bg-slate-50 p-6 sm:p-10 shadow-sm">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Roadmap · Erkannte Engpässe
+            </p>
+            <div className="space-y-3">
+              {PAIN_POINTS.map((p) => (
+                <div
+                  key={p.title}
+                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
                 >
-                  {p.priority}
-                </span>
+                  <div className="flex justify-between gap-2 mb-1">
+                    <h3 className="text-sm font-semibold text-gray-900">{p.title}</h3>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${priorityStyle[p.priority]}`}
+                    >
+                      {p.priority}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">{p.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Phase 4 · Fertige Automatisierung
+            </p>
+            <div className="rounded-xl border border-gray-200 bg-slate-50 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                {WORKFLOW_STEPS.map((s, i) => {
+                  const Icon = s.icon;
+                  return (
+                    <div key={s.label} className="flex items-center gap-2">
+                      <div
+                        className="flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-2.5 py-2 shadow-sm"
+                        style={{ borderLeftWidth: 3, borderLeftColor: s.color }}
+                      >
+                        <Icon size={14} style={{ color: s.color }} />
+                        <span className="text-[11px] font-medium text-gray-800">
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < WORKFLOW_STEPS.length - 1 && (
+                        <span className="text-gray-300 text-xs">→</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <p className="text-xs text-gray-500 leading-relaxed mb-4">
-                {p.description}
-              </p>
-              <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md">
-                {p.effort}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Use cases */}
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-          Mögliche Use Cases
-        </p>
-        <div className="grid sm:grid-cols-2 gap-4 mb-8">
-          {USE_CASES.map((u) => (
-            <div
-              key={u.title}
-              className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center justify-between gap-4"
-            >
-              <h3 className="text-sm font-semibold text-gray-900">{u.title}</h3>
-              <span className="shrink-0 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full">
-                {u.impact}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* First steps */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm font-bold text-gray-900 mb-4">Erste 3 Schritte</p>
-          <ol className="space-y-3">
-            {STEPS.map((s, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-600 text-white text-xs font-bold">
-                  {i + 1}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-200">
+                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                  <Check size={14} />
+                  Bereit zur Umsetzung
                 </span>
-                <span className="text-sm text-gray-700 leading-relaxed pt-0.5">
-                  {s}
-                </span>
-              </li>
-            ))}
-          </ol>
+                <span className="text-[11px] text-gray-400 font-mono">KLARO: Angebots-Flow</span>
+              </div>
+            </div>
+            <ol className="mt-5 space-y-2.5">
+              {[
+                'Schritte im Chat konfigurieren (Zugang, Freigabe-Kanal)',
+                'Automatisierung starten — läuft bei dir',
+                'Testlauf mit einem Klick',
+              ].map((line, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm text-gray-700">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-600 text-white text-xs font-bold">
+                    {i + 1}
+                  </span>
+                  {line}
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
       </div>
     </section>

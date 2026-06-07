@@ -17,6 +17,7 @@ export function coachStatusMessageForCanvas(
   switch (reason) {
     case 'plan_awaiting_workflow_chat':
     case 'thin_user_context':
+      if (phase === 'umsetzung') return null;
       if (phase === 'plan') {
         return (
           'Kurz zur Roadmap rechts: Den Workflow-Plan lege ich an, sobald wir hier einen ' +

@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CanvasData, CanvasDocument, PainPoint, UseCase, Workflow } from '@/lib/types';
 import { inferDocumentPhase, isValidWorkflow, normalizeCompanyProfile, parseToolList, toDisplayText } from '@/lib/canvas-normalize';
-import { Check, Lock, FileText, Target, AlertTriangle, ArrowRight, Cpu, Zap, GitBranch, Send, Wrench, User, Download, X, Clock, Euro, Building2 } from 'lucide-react';
+import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
+import { Check, Lock, FileText, Target, AlertTriangle, ArrowRight, Cpu, Zap, GitBranch, Send, Wrench, User, Download, X, Clock, Euro, Building2, Rocket } from 'lucide-react';
+import type { StepConfig, WorkflowStepConfigs } from '@/lib/types';
+import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
+import WorkflowDeployCard from './WorkflowDeployCard';
+import WorkflowNodeGraph from './WorkflowNodeGraph';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 
@@ -75,12 +80,34 @@ export default function RoadmapCanvas({
   currentPhase,
   maxReachedPhase,
   onPhaseClick,
+  // Phase 4 deploy card props (optional — only used when phase=umsetzung)
+  projectId,
+  workflowStepConfigs,
+  onStepConfigSave,
+  deployedWorkflowIds,
+  onWorkflowDeployed,
+  openDeployWorkflowId,
+  onDeployModalOpened,
+  onWorkflowPersist,
+  editorCoachContext,
 }: {
   data: CanvasData
   currentPhase: string
   /** Highest phase ever reached in this project (keeps later phases unlocked) */
   maxReachedPhase?: string
   onPhaseClick: (phase: string) => void
+  /** Phase 4 interactive deploy */
+  projectId?: string
+  workflowStepConfigs?: WorkflowStepConfigs
+  onStepConfigSave?: (workflowId: string, stepId: string, config: StepConfig) => void
+  deployedWorkflowIds?: Record<string, string>
+  onWorkflowDeployed?: (workflowId: string, dbId: string) => void
+  /** Auto-open editor modal for this workflow id (after build_workflow). */
+  openDeployWorkflowId?: string | null
+  onDeployModalOpened?: (workflowId: string) => void
+  onWorkflowPersist?: (workflow: Workflow) => void
+  /** Gleicher Coach-Kontext wie Haupt-Chat für Workflow-Editor. */
+  editorCoachContext?: WorkflowEditorCoachContext
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [openDoc, setOpenDoc] = useState<CanvasDocument | null>(null);
@@ -122,7 +149,8 @@ export default function RoadmapCanvas({
 
   const painPoints = data.pain_points || [];
   const useCases   = data.use_cases   || [];
-  const workflows  = (data.workflows || []).filter(isValidWorkflow);
+  const planWorkflows = getWorkflowPlans(data).filter(isValidWorkflow);
+  const builtWorkflows = getBuiltWorkflows(data).filter(isValidWorkflow);
   const documents  = data.documents   || [];
   const docsByPhase = (phase: string) =>
     documents.filter(d => inferDocumentPhase(d) === phase);
@@ -237,13 +265,13 @@ export default function RoadmapCanvas({
         )}
 
         {/* Phase 3 — links */}
-        {((workflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0) && (
+        {((planWorkflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0) && (
           <ContentRail side="left" top={railTop('plan')}>
-            {workflows.length > 0 && maxReachedIdx >= 2 && (
+            {planWorkflows.length > 0 && maxReachedIdx >= 2 && (
               <>
                 <SectionLabel>Workflows</SectionLabel>
                 <div className={twoColGrid}>
-                  {workflows.map(wf => {
+                  {planWorkflows.map(wf => {
                     const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
                     return (
                       <WorkflowInlineCard
@@ -259,18 +287,49 @@ export default function RoadmapCanvas({
             )}
             {planDocs.length > 0 && (
               <>
-                <SectionLabel className={workflows.length > 0 && maxReachedIdx >= 2 ? 'mt-5' : ''}>Dokumente</SectionLabel>
+                <SectionLabel className={planWorkflows.length > 0 && maxReachedIdx >= 2 ? 'mt-5' : ''}>Dokumente</SectionLabel>
                 <DocStack docs={planDocs} onOpen={setOpenDoc} />
               </>
             )}
           </ContentRail>
         )}
 
-        {/* Phase 4 — rechts */}
-        {umsetzungDocs.length > 0 && (
-          <ContentRail side="right" top={railTop('umsetzung')}>
-            <SectionLabel>Dokumente</SectionLabel>
-            <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
+        {/* Phase 4 — Umsetzung: alle Deploy-Karten in der Phase-4-Rail */}
+        {(umsetzungDocs.length > 0 || (builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId)) && (
+          <ContentRail side="right" top={railTop('umsetzung')} className="!w-[min(52%,400px)]">
+            {builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId && (
+              <>
+                <SectionLabel>Deployment</SectionLabel>
+                <div className="grid grid-cols-1 gap-4 min-w-0">
+                  {builtWorkflows.map(wf => {
+                    const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
+                    return (
+                      <WorkflowDeployCard
+                        key={wf.id}
+                        workflow={wf}
+                        projectId={projectId}
+                        compact
+                        autoOpen={openDeployWorkflowId === wf.id}
+                        onAutoOpen={() => onDeployModalOpened?.(wf.id)}
+                        linkedTitle={linkedPP ? cleanTitle(linkedPP.title) : undefined}
+                        stepConfigs={workflowStepConfigs?.[wf.id] ?? {}}
+                        onStepConfigSave={(stepId, config) => onStepConfigSave?.(wf.id, stepId, config)}
+                        deployedWorkflowId={deployedWorkflowIds?.[wf.id]}
+                        onDeployed={(dbId) => onWorkflowDeployed?.(wf.id, dbId)}
+                        onWorkflowPersist={onWorkflowPersist}
+                        editorCoachContext={editorCoachContext}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            {umsetzungDocs.length > 0 && (
+              <>
+                <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId ? 'mt-5' : ''}>Dokumente</SectionLabel>
+                <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
+              </>
+            )}
           </ContentRail>
         )}
 
@@ -335,11 +394,11 @@ export default function RoadmapCanvas({
         {/* Phase 3 — Workflows */}
         <section>
           <MobilePhaseHeader phase="plan" title="Workflows" isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
-          {workflows.length > 0 && maxReachedIdx >= 2 && (
+          {planWorkflows.length > 0 && maxReachedIdx >= 2 && (
             <>
               <SectionLabel className="mb-2">Workflows</SectionLabel>
               <div className="grid grid-cols-1 gap-3">
-                {workflows.map(wf => {
+                {planWorkflows.map(wf => {
                   const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
                   return (
                     <WorkflowInlineCard key={wf.id} workflow={wf} linkedTitle={linkedPP ? cleanTitle(linkedPP.title) : undefined} onExpand={() => setOpenWorkflow(wf)} />
@@ -350,7 +409,7 @@ export default function RoadmapCanvas({
           )}
           {planDocs.length > 0 && (
             <>
-              <SectionLabel className={workflows.length > 0 && maxReachedIdx >= 2 ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
+              <SectionLabel className={planWorkflows.length > 0 && maxReachedIdx >= 2 ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
               <DocStack docs={planDocs} onOpen={setOpenDoc} />
             </>
           )}
@@ -359,9 +418,35 @@ export default function RoadmapCanvas({
         {/* Phase 4 — Umsetzung */}
         <section>
           <MobilePhaseHeader phase="umsetzung" title="Umsetzung" isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
+          {builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId && (
+            <>
+              <SectionLabel className="mb-2">Deployment</SectionLabel>
+              <div className="space-y-3">
+                {builtWorkflows.map(wf => {
+                  const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
+                  return (
+                    <WorkflowDeployCard
+                      key={wf.id}
+                      workflow={wf}
+                      projectId={projectId}
+                      autoOpen={openDeployWorkflowId === wf.id}
+                      onAutoOpen={() => onDeployModalOpened?.(wf.id)}
+                      linkedTitle={linkedPP ? cleanTitle(linkedPP.title) : undefined}
+                      stepConfigs={workflowStepConfigs?.[wf.id] ?? {}}
+                      onStepConfigSave={(stepId, config) => onStepConfigSave?.(wf.id, stepId, config)}
+                      deployedWorkflowId={deployedWorkflowIds?.[wf.id]}
+                      onDeployed={(dbId) => onWorkflowDeployed?.(wf.id, dbId)}
+                      onWorkflowPersist={onWorkflowPersist}
+                      editorCoachContext={editorCoachContext}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          )}
           {umsetzungDocs.length > 0 && (
             <>
-              <SectionLabel className="mb-2">Dokumente</SectionLabel>
+              <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
               <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
             </>
           )}
@@ -415,10 +500,12 @@ function ContentRail({
   side,
   top,
   children,
+  className = '',
 }: {
   side: 'left' | 'right';
   top: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <motion.div
@@ -427,7 +514,7 @@ function ContentRail({
       className={`absolute z-10 flex flex-col gap-3 pointer-events-auto
         -translate-y-1/2 @max-[1200px]:translate-y-0 @max-[1200px]:mt-36
         ${side === 'left' ? 'left-[2%]' : 'right-[2%]'}
-        w-[min(44%,320px)]`}
+        w-[min(44%,320px)] ${className}`}
       style={{ top }}
     >
       {children}
@@ -648,32 +735,22 @@ function WorkflowInlineCard({
   linkedTitle?: string;
   onExpand: () => void;
 }) {
-  const steps = wf.steps ?? [];
-  const labels = steps.map(s => toDisplayText(s.label)).filter(Boolean);
-  const expandable = labels.length > PREVIEW_BULLETS || labels.some(l => l.length > 45);
-  const visible = expandable ? labels.slice(0, PREVIEW_BULLETS) : labels;
-
   return (
-    <StructuredCard
-      title={cleanTitle(wf.title)}
-      icon={<GitBranch size={15} className="text-amber-600" />}
-      tone="amber"
-      onExpand={expandable || !!linkedTitle ? onExpand : undefined}
-      expandable={expandable || !!linkedTitle}
+    <button
+      type="button"
+      onClick={onExpand}
+      className="rounded-lg border border-amber-200 bg-amber-50/40 p-3.5 shadow-sm text-sm text-left hover:border-amber-300 hover:shadow-md transition-all w-full"
     >
-      {linkedTitle && <p className="text-gray-400 mb-1.5">↳ {linkedTitle}</p>}
-      <ul className="space-y-0.5">
-        {visible.map((l, i) => (
-          <li key={i} className="flex gap-1.5">
-            <span className="text-amber-500">{i + 1}.</span>
-            <span className={expandable ? 'line-clamp-1' : ''}>{l}</span>
-          </li>
-        ))}
-        {expandable && labels.length > PREVIEW_BULLETS && (
-          <li className="text-gray-400">… {labels.length - PREVIEW_BULLETS} Schritte</li>
-        )}
-      </ul>
-    </StructuredCard>
+      <div className="flex items-start gap-2.5 mb-2">
+        <GitBranch size={15} className="text-amber-600 mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 leading-snug text-sm">{cleanTitle(wf.title)}</p>
+          {linkedTitle && <p className="text-[11px] text-gray-400 mt-0.5">↳ {linkedTitle}</p>}
+        </div>
+      </div>
+      <WorkflowNodeGraph steps={wf.steps ?? []} compact tileSize={32} showTrailingPlus={false} />
+      <span className="text-xs font-medium text-indigo-600 mt-2 inline-block">Workflow öffnen</span>
+    </button>
   );
 }
 
@@ -734,131 +811,46 @@ function Chip({ children, icon }: { children: React.ReactNode, icon?: React.Reac
   );
 }
 
-function WorkflowCard({ workflow, painPoints }: { workflow: Workflow, painPoints: PainPoint[] }) {
-  const linkedPP = painPoints.find(p => p.id === workflow.linked_pain_point);
-
-  const renderIcon = (type: string) => {
-    const size = 28;
-    switch(type) {
-      case 'trigger':  return <Zap size={size} className="text-orange-500" />;
-      case 'action':   return <Cpu size={size} className="text-indigo-500" />;
-      case 'ai':       return <Cpu size={size} className="text-violet-500" />;
-      case 'decision': return <GitBranch size={size} className="text-amber-500" />;
-      case 'output':   return <Send size={size} className="text-emerald-500" />;
-      default:         return <Cpu size={size} className="text-indigo-500" />;
-    }
-  };
-
-  // Node and label share the same width so connector -mx math is exact.
-  // Circle: w-3.5 = 14px → half = 7px → -mx-[7px]
-  // Node h-[90px] → center = 45px → mt = 45 - 7 = 38px
-  const NODE_W = 'w-[120px]';
-
-  return (
-    <div className="flex items-start">
-      {workflow.steps.map((step, i) => (
-        <React.Fragment key={step.id || i}>
-          {/* Node */}
-          <div className={`flex flex-col items-center ${NODE_W}`}>
-            <div className="relative w-full">
-              {step.type === 'trigger' && (
-                <div className="absolute -left-0.5 -top-0.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white z-30" />
-              )}
-              <div className="w-full h-[90px] bg-white rounded-xl border-2 border-gray-200 shadow-sm flex items-center justify-center hover:border-indigo-300 hover:shadow-md transition-all">
-                {renderIcon(step.type || 'action')}
-              </div>
-            </div>
-            <div className="mt-2.5 w-full text-[11px] text-gray-600 font-medium text-center leading-snug px-1">
-              {step.label}
-            </div>
-          </div>
-
-          {/* Connector: plain line, centered on node height (90/2 - 1 = 44) */}
-          {i < workflow.steps.length - 1 && (
-            <div className="h-[2px] w-12 bg-gray-300 flex-shrink-0 mt-[44px]" />
-          )}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
 function WorkflowModal({ workflow, painPoints, onClose }: { workflow: Workflow | null, painPoints: PainPoint[], onClose: () => void }) {
-  if (!workflow) return null;
-  const linkedPP = painPoints.find(p => p.id === workflow.linked_pain_point);
-
-  const renderIcon = (type: string) => {
-    const size = 30;
-    switch(type) {
-      case 'trigger':  return <Zap size={size} className="text-orange-500" />;
-      case 'action':   return <Cpu size={size} className="text-indigo-500" />;
-      case 'ai':       return <Cpu size={size} className="text-violet-500" />;
-      case 'decision': return <GitBranch size={size} className="text-amber-500" />;
-      case 'output':   return <Send size={size} className="text-emerald-500" />;
-      default:         return <Cpu size={size} className="text-indigo-500" />;
-    }
-  };
+  const linkedPP = workflow ? painPoints.find(p => p.id === workflow.linked_pain_point) : undefined;
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
-        onClick={onClose}
-      >
+      {workflow && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          key="workflow-modal-overlay"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden"
-          onClick={e => e.stopPropagation()}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+          onClick={onClose}
         >
-          {/* Header */}
-          <div className="flex items-start justify-between p-6 border-b border-gray-100">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <GitBranch size={16} className="text-amber-600" />
-                <h2 className="font-bold text-gray-900 text-lg">{cleanTitle(workflow.title)}</h2>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <GitBranch size={16} className="text-amber-600" />
+                  <h2 className="font-bold text-gray-900 text-lg">{cleanTitle(workflow.title)}</h2>
+                </div>
+                {linkedPP && (
+                  <p className="text-sm text-gray-500 pl-6">Löst Pain Point: {cleanTitle(linkedPP.title)}</p>
+                )}
               </div>
-              {linkedPP && (
-                <p className="text-sm text-gray-500 pl-6">Löst Pain Point: {cleanTitle(linkedPP.title)}</p>
-              )}
+              <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors ml-4 flex-shrink-0">
+                <X size={18} />
+              </button>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors ml-4 flex-shrink-0">
-              <X size={18} />
-            </button>
-          </div>
 
-          {/* Node canvas */}
-          <div className="overflow-x-auto bg-slate-50 p-10">
-            <div className="flex items-start min-w-max mx-auto">
-              {workflow.steps.map((step, i) => (
-                <React.Fragment key={step.id || i}>
-                  <div className="flex flex-col items-center w-[130px]">
-                    <div className="relative w-full">
-                      {step.type === 'trigger' && (
-                        <div className="absolute -left-0.5 -top-0.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white z-30" />
-                      )}
-                      <div className="w-full h-[96px] bg-white rounded-xl border-2 border-gray-200 shadow-sm flex items-center justify-center hover:border-indigo-300 transition-all">
-                        {renderIcon(step.type || 'action')}
-                      </div>
-                    </div>
-                    <div className="mt-3 w-full text-xs text-gray-700 font-medium text-center leading-snug px-1">
-                      {step.label}
-                    </div>
-                  </div>
-
-                  {/* Connector: plain line, centered on node height (96/2 - 1 = 47) */}
-                  {i < workflow.steps.length - 1 && (
-                    <div className="h-[2px] w-14 bg-gray-300 flex-shrink-0 mt-[47px]" />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
+            <WorkflowNodeGraph steps={workflow.steps} showTrailingPlus />
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 }

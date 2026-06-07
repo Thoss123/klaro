@@ -1,42 +1,41 @@
-import React from 'react';
 import { Briefcase, Wrench, Users } from 'lucide-react';
+import { section, sectionY, h2, lead } from './landing-styles';
 
 const PERSONAS = [
   {
     icon: Briefcase,
-    title: 'Geschäftsführer',
-    text: 'Für den der weiß dass KI wichtig ist — aber keine Zeit hat sich einzuarbeiten.',
+    title: 'Geschäftsführung',
+    text: 'KI ist wichtig — aber keine Zeit für Tool-Chaos. Klaro liefert Plan und optional die erste laufende Automatisierung.',
   },
   {
     icon: Wrench,
-    title: 'IT / Umsetzer',
-    text: 'Für die IT-Person die ein klares Briefing braucht bevor sie loslegt.',
+    title: 'IT & Umsetzung',
+    text: 'Klares Briefing und konkrete Schritte — statt „mach mal was mit KI“.',
   },
   {
     icon: Users,
-    title: 'Agentur',
-    text: 'Für die Agentur die ihren Kunden zeigen will wo KI wirklich hilft.',
+    title: 'Agentur & Beratung',
+    text: 'Kunden von der Diagnose bis zur Umsetzung führen — mit nachvollziehbarer Roadmap, nicht nur Slides.',
   },
 ];
 
 export default function ForWho() {
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16 sm:py-24">
-      <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight text-center mb-16">
-        Für wen ist Klaro?
-      </h2>
+    <section className={`${section} ${sectionY} bg-slate-50 border-y border-gray-200/80`}>
+      <h2 className={h2}>Für wen ist Klaro?</h2>
+      <p className={lead}>KMU und Teams, die vom Gespräch bis zur Automatisierung kommen wollen.</p>
 
-      <div className="grid md:grid-cols-3 gap-5">
+      <div className="mt-14 grid md:grid-cols-3 gap-5">
         {PERSONAS.map(({ icon: Icon, title, text }) => (
           <div
             key={title}
-            className="bg-white border border-gray-200 rounded-2xl p-7"
+            className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow"
           >
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-50 text-indigo-600 mb-5">
-              <Icon size={22} />
+            <span className="grid h-12 w-12 place-items-center rounded-xl bg-indigo-600 text-white mb-5 shadow-lg shadow-indigo-500/20">
+              <Icon size={24} />
             </span>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-            <p className="text-gray-500 leading-relaxed">{text}</p>
+            <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+            <p className="mt-3 text-gray-600 leading-relaxed">{text}</p>
           </div>
         ))}
       </div>

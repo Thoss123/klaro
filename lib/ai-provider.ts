@@ -1,6 +1,29 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Mistral } from '@mistralai/mistralai';
-import { AITool, toGeminiTools, toMistralTools, KLARO_TOOLS } from './ai-tools';
+import { AITool, toGeminiTools, toMistralTools, getToolsForPhase } from './ai-tools';
+import { stripLeakedToolFragments } from './strip-internal-tags';
+
+type MistralPendingToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+function mergeMistralToolCallDelta(
+  pending: Map<number, MistralPendingToolCall>,
+  call: {
+    index?: number;
+    id?: string;
+    function?: { name?: string; arguments?: string };
+  },
+) {
+  const idx = call.index ?? 0;
+  const entry = pending.get(idx) ?? { id: call.id ?? '', name: '', arguments: '' };
+  if (call.id) entry.id = call.id;
+  if (call.function?.name) entry.name = call.function.name;
+  if (call.function?.arguments) entry.arguments += call.function.arguments;
+  pending.set(idx, entry);
+}
 
 export type VisionAttachment = { mimeType: string; base64: string };
 
@@ -11,7 +34,8 @@ export interface AIProvider {
     message: string,
     onChunk: (chunk: string) => void,
     onToolCall?: (toolCall: any) => Promise<any>,
-    attachments?: VisionAttachment[]
+    attachments?: VisionAttachment[],
+    phase?: string
   ): Promise<void>;
 }
 
@@ -39,8 +63,10 @@ export class GeminiProvider implements AIProvider {
     message: string,
     onChunk: (chunk: string) => void,
     onToolCall?: (toolCall: any) => Promise<any>,
-    attachments?: VisionAttachment[]
+    attachments?: VisionAttachment[],
+    phase?: string
   ) {
+    const tools = getToolsForPhase(phase || 'diagnose');
     const geminiHistory = history.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content || ' ' }]
@@ -67,7 +93,7 @@ export class GeminiProvider implements AIProvider {
     const model = this.genAI.getGenerativeModel({ 
       model: "gemini-3.5-flash",
       systemInstruction: systemPrompt,
-      tools: [{ functionDeclarations: toGeminiTools(KLARO_TOOLS) }]
+      tools: [{ functionDeclarations: toGeminiTools(tools) }]
     });
 
     let chat = model.startChat({ history: normalizedHistory });
@@ -126,7 +152,7 @@ export class GeminiProvider implements AIProvider {
             const fallbackModel = this.genAI.getGenerativeModel({
                model: "gemini-3.1-flash-lite",
                systemInstruction: systemPrompt,
-               tools: [{ functionDeclarations: toGeminiTools(KLARO_TOOLS) }]
+               tools: [{ functionDeclarations: toGeminiTools(tools) }]
             });
             const fallbackChat = fallbackModel.startChat({ history: normalizedHistory });
             const fallbackResult = await fallbackChat.sendMessageStream(this.userParts(message, attachments));
@@ -149,63 +175,93 @@ export class MistralProvider implements AIProvider {
     message: string,
     onChunk: (chunk: string) => void,
     onToolCall?: (toolCall: any) => Promise<any>,
-    attachments?: VisionAttachment[]
+    attachments?: VisionAttachment[],
+    phase?: string
   ) {
     if (!process.env.MISTRAL_API_KEY) {
         throw new Error('MISTRAL_API_KEY is missing');
     }
 
+    const tools = getToolsForPhase(phase || 'diagnose');
     const messages: any[] = [
        { role: 'system', content: systemPrompt },
        ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content || ' ' })),
        { role: 'user', content: message }
     ];
 
-    try {
-      let result = await this.client.chat.stream({
-         model: 'mistral-large-latest',
-         messages,
-         tools: toMistralTools(KLARO_TOOLS)
+    const MAX_TOOL_ROUNDS = 6;
+
+    const streamRound = async (round: number): Promise<void> => {
+      if (round >= MAX_TOOL_ROUNDS) return;
+
+      const pending = new Map<number, MistralPendingToolCall>();
+      const result = await this.client.chat.stream({
+        model: 'mistral-large-latest',
+        messages,
+        tools: toMistralTools(tools),
       });
 
       for await (const chunk of result) {
-         const content = chunk.data.choices[0]?.delta?.content;
-         if (content) {
-             onChunk(content as string);
-         }
+        const choice = chunk.data.choices[0];
+        const content = choice?.delta?.content;
+        if (content) {
+          const cleaned = stripLeakedToolFragments(content as string);
+          if (cleaned.trim()) onChunk(cleaned);
+        }
 
-         const toolCalls = chunk.data.choices[0]?.delta?.toolCalls;
-         if (toolCalls && toolCalls.length > 0 && onToolCall) {
-            for (const call of toolCalls) {
-               if (call.function?.name && call.function?.arguments) {
-                   const args = typeof call.function.arguments === 'string'
-                       ? JSON.parse(call.function.arguments)
-                       : call.function.arguments;
-
-                   let toolResult;
-                   try {
-                       toolResult = await onToolCall({ name: call.function.name, args });
-                   } catch (e: any) {
-                       toolResult = { error: e.message };
-                   }
-
-                   messages.push({ role: 'assistant', content: '', toolCalls: [call] });
-                   messages.push({ role: 'tool', name: call.function.name, toolCallId: call.id, content: JSON.stringify(toolResult) });
-
-                   const nextResult = await this.client.chat.stream({
-                      model: 'mistral-large-latest',
-                      messages,
-                      tools: toMistralTools(KLARO_TOOLS)
-                   });
-
-                   for await (const nextChunk of nextResult) {
-                       const nextContent = nextChunk.data.choices[0]?.delta?.content;
-                       if (nextContent) onChunk(nextContent as string);
-                   }
-               }
-            }
-         }
+        const toolCalls = choice?.delta?.toolCalls;
+        if (toolCalls?.length) {
+          for (const call of toolCalls) mergeMistralToolCallDelta(pending, call);
+        }
       }
+
+      if (!pending.size || !onToolCall) return;
+
+      const sorted = [...pending.entries()].sort((a, b) => a[0] - b[0]);
+      const assistantToolCalls: Array<{
+        id: string;
+        type: 'function';
+        function: { name: string; arguments: string };
+      }> = [];
+
+      for (const [, tc] of sorted) {
+        if (!tc.name) continue;
+        let args: Record<string, unknown> = {};
+        try {
+          args = tc.arguments ? JSON.parse(tc.arguments) : {};
+        } catch (e: unknown) {
+          console.warn('[Mistral] tool args parse failed:', tc.name, e);
+          continue;
+        }
+
+        let toolResult;
+        try {
+          toolResult = await onToolCall({ name: tc.name, args });
+        } catch (e: unknown) {
+          toolResult = { error: e instanceof Error ? e.message : 'tool failed' };
+        }
+
+        assistantToolCalls.push({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: tc.arguments || '{}' },
+        });
+        messages.push({
+          role: 'tool',
+          name: tc.name,
+          toolCallId: tc.id,
+          content: JSON.stringify(toolResult),
+        });
+      }
+
+      if (!assistantToolCalls.length) return;
+
+      messages.push({ role: 'assistant', content: '', toolCalls: assistantToolCalls });
+      await streamRound(round + 1);
+    };
+
+    try {
+      await streamRound(0);
     } catch (error: any) {
       // 429 rate limit or any Mistral failure → fall back to Gemini
       const isRateLimit = error?.statusCode === 429 || error?.message?.includes('429') || error?.message?.includes('rate_limit');
@@ -217,7 +273,7 @@ export class MistralProvider implements AIProvider {
         .slice(0, -1) // last message is the current user message
         .map(m => ({ role: m.role, content: m.content }));
       const lastUserMsg = messages.filter(m => m.role === 'user').at(-1)?.content || message;
-      await gemini.streamMessage(systemPrompt, geminiHistory, lastUserMsg, onChunk, onToolCall, attachments);
+      await gemini.streamMessage(systemPrompt, geminiHistory, lastUserMsg, onChunk, onToolCall, attachments, phase);
     }
   }
 }

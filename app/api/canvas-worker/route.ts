@@ -63,8 +63,26 @@ export async function POST(req: NextRequest) {
     }
     workerDirective = pipeline.workerDirective;
 
-    // Format chat history for context
-    const chatContext = history.map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Coach'}: ${m.content}`).join('\n\n');
+    // Format chat history for context.
+    // In Phase `plan` extrahieren wir nur aus dem letzten Gesprächsblock (~7 Turns),
+    // damit der Worker nicht alten Kontext aus früheren Pain Points aufgreift.
+    const extractionHistory =
+      (phase || 'diagnose') === 'plan' ? (history as any[]).slice(-14) : history;
+    const chatContext = extractionHistory
+      .map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Coach'}: ${m.content}`)
+      .join('\n\n');
+
+    // Phase `plan`: der Coach hängt die pain_point_id an den trigger-Tag.
+    // Wir extrahieren sie und fokussieren den Worker hart auf genau diesen Pain Point.
+    let focusPainPointId: string | null = null;
+    if ((phase || 'diagnose') === 'plan') {
+      const triggerMsgs = (history as any[]).filter(
+        m => m.role === 'assistant' && typeof m.content === 'string' && m.content.includes('<trigger_canvas_update'),
+      );
+      const lastTrigger = triggerMsgs[triggerMsgs.length - 1];
+      const ppMatch = lastTrigger?.content?.match(/pain_point_id="([^"]+)"/);
+      if (ppMatch) focusPainPointId = ppMatch[1];
+    }
 
     // System prompt explaining what to extract based on phase
     let extractionInstruction = '';
@@ -91,27 +109,18 @@ Behalte bestehende Einträge, ergänze oder aktualisiere — nichts erfinden.`;
 **workflows:** NICHT setzen (weglassen oder []) — das ist Phase 3.
 Behalte bestehende Einträge, aktualisiere tools nur mit verifizierten Namen — nichts erfinden.`;
     } else if (phase === 'plan') {
-      extractionInstruction = `Du extrahierst NUR in Phase 3 (Workflow-Blaupausen für n8n, später mit Agent-Orchestrierung):
-
-**workflows** — Regeln:
-- **Nur** Pain Points bearbeiten, die im **letzten Gesprächsblock** (letzte Coach- + Nutzer-Nachrichten) klar Thema waren. Kein zweiter Workflow zu einem anderen Pain Point „nebenbei“.
-- **Korrekturen:** Bestehenden Workflow mit gleicher **linked_pain_point** (oder gleicher id) **aktualisieren** — Steps anpassen/ersetzen. **Niemals** zweiten Workflow für denselben Pain Point anlegen.
-- **title:** Deutsch, **max. 3–5 Wörter** (z.B. „YouTube zu Reels“, „Reels Skript & Schnitt“).
-- **linked_pain_point:** exakte id aus Canvas pain_points.
-- **steps[]:** 6–10 Schritte, label + type (trigger | action | ai | decision | output). Nur Tools aus Chat/Canvas use_cases.
-
-**Logik (vollautomatisiert wo möglich):**
-- Ziel: möglichst viel automatisieren (Recherche, Skript, Schnitt, Zusammenbau) — nicht nur ein Teilschritt.
-- Sinnvolle Reihenfolge: Idee/Trigger → KI-Recherche & Skript → **Nutzer-Freigabe Skript** (decision/output) → Aufnahme/Dreh → **KI-Schnitt in CapCut** → Captions/Varianten → **Nutzer-Freigabe vor Publish** (decision) → Veröffentlichen in Meta Suite.
-- **VERBOTEN:** Skript in Business Suite **bevor** Video/Material existiert. Suite erst am Ende für Publish/Scheduling.
-- **Human-in-the-loop** nur bei: strategische Wahl, Skript-Freigabe, Freigabe vor Veröffentlichung — nicht bei jedem KI-Zwischenschritt.
-
-**Thema-Treue:** Wenn der Chat gerade „YouTube-Videos zu Reels“ besprechen — Workflow genau dazu. Kein separater „Skript für Anzeigen“-Workflow, wenn das im Chat nicht aktiv war.
-
+      extractionInstruction = `Du extrahierst in Phase 3 KEINE workflows mehr, da diese jetzt per Tool Call erstellt werden.
+      
 - **documents** (optional): phase:'plan'.
 **use_cases / pain_points / company:** vom bestehenden Canvas übernehmen, nicht neu erfinden.`;
     } else if (phase === 'umsetzung') {
       extractionInstruction = `Phase 4: documents mit phase:'umsetzung' falls Umsetzungsnotizen. Workflows nur ergänzen wenn im Chat besprochen.`;
+    }
+
+    if (focusPainPointId) {
+      extractionInstruction += `
+
+**FOKUS (ZWINGEND):** Bearbeite/aktualisiere AUSSCHLIESSLICH den Workflow mit linked_pain_point="${focusPainPointId}". Lege keinen Workflow für einen anderen Pain Point an. Existiert bereits einer für diese id — aktualisiere ihn, statt einen neuen anzulegen.`;
     }
 
     const globalRules = `
@@ -177,6 +186,10 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
       if (hadNested) {
         logSync('canvas', 'evaluate', 'normalized nested company fields from LLM', { rawKeys });
       }
+    }
+
+    if (phase !== 'umsetzung' && Array.isArray(newCanvas.workflows) && newCanvas.workflows.length > 0) {
+      logSync('canvas', 'skip', `workflows ignored — phase=${phase} (only umsetzung extracts workflows)`);
     }
 
     const diff = summarizeCanvasDiff(

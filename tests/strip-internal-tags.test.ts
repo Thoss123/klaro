@@ -35,4 +35,16 @@ describe('stripInternalTags', () => {
   it('keeps normal prose untouched', () => {
     expect(stripInternalTags('Ganz normaler Satz.')).toBe('Ganz normaler Satz.');
   });
+
+  it('removes tool_call tags and leaked tool name prefixes', () => {
+    const t =
+      'build_workflowprilisiert wurde. Ich starte.\n<tool_call>{"type":"build_workflow","args":{"workflow_id":"wf_1"}}</tool_call>\n<canvas_built>{"workflow_id":"wf_1"}</canvas_built>\nFertig.';
+    expect(stripInternalTags(t)).toBe('prilisiert wurde. Ich starte.\nFertig.');
+  });
+
+  it('removes mistral-leaked edit_workflow json blobs', () => {
+    const t =
+      'edit_workflowব্যক{"workflow_id": "wf_2", "instruction": "Ersetze OpenAI durch Mistral."}\nIch habe alle KI-Schritte umgestellt.';
+    expect(stripInternalTags(t)).toBe('Ich habe alle KI-Schritte umgestellt.');
+  });
 });

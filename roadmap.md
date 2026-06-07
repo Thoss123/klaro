@@ -1,4 +1,4 @@
-# Klaro – Master Project Roadmap (v1.1 Chronologisch)
+# Klaro – Master Project Roadmap (v1.3 Chronologisch)
 
 Dieses Dokument ist die **Single Source of Truth** für alle anstehenden Entwicklungs-, Test- und Business-Schritte bis zum offiziellen Launch der v1.0.
 
@@ -46,6 +46,32 @@ Coach: <trigger_canvas_update>
 
 ---
 
+## RAG Knowledge Base (Erledigt – Juni 2026)
+
+**Ziel:** Der Coach beantwortet Fragen aus einer kuratierten Wissensdatenbank statt nur aus dem Modellwissen. **Atomare Dateien** (1 Datei = 1 vollständige Wissenseinheit, kein Token-Split).
+
+- `[x]` **Ordnerstruktur** `/knowledge`: `use-cases/`, `tools/`, `templates/bausteine/`, `templates/workflows/`, `branchen/`, `ui-guides/`.
+- `[x]` **Supabase:** `pgvector`-Extension + Tabelle `knowledge_base` (`vector(1024)`) + RPC `search_knowledge` (Phase-Filter). **Global/admin-kuratiert** (kein `company_id`), RLS: public read / authenticated write.
+- `[x]` **`lib/rag.ts`:** phasenabhängiges Retrieval; **`lib/knowledge-index.ts`** + **`scripts/index-knowledge.mjs`** (`npm run index-knowledge`, braucht `SUPABASE_SERVICE_ROLE_KEY`).
+- `[x]` **Admin-Interface** `/admin/knowledge`: Übersicht, Reindex pro Sektion, Such-Test, Löschen.
+- `[x]` **Coach-Integration:** `app/api/chat/route.ts` injiziert relevantes Wissen phasenabhängig.
+- `[x]` **Test:** 6 Starter-Dateien (eine pro `source_type`) indexiert; Retrieval über mehrere Phase/Query-Kombinationen verifiziert.
+
+---
+
+## Zentrale Infrastruktur & Shared Services (Juni 2026)
+
+**Entscheidung:** Nutzer richten **keine** eigenen Cloud-Setups ein — Klaro betreibt alles zentral. Details in `project.md` §3.1–3.3.
+
+- `[ ]` **Zentrale OAuth-Apps:** Klaro-App pro Anbieter für Google (Gmail, Calendar, Drive, Sheets) + Microsoft (Outlook, Teams, OneDrive). Nutzer klickt nur „Erlauben" — kein Google-Cloud-Setup. _Ersetzt das per-User-Credential-Setup aus Sprint 6._
+- `[ ]` **Twilio:** eine zentrale Nummer für WhatsApp + SMS, von allen geteilt.
+- `[ ]` **Resend:** zentrale Domain für System-Mails (`notifications@klaro.ai`).
+- `[x]` **Mistral (Free Tier):** Coach, Memory, Embeddings laufen zentral solange Rate Limits reichen.
+- `[x]` **n8n CE (Hostinger):** geteilte Instanz, Isolation per Projects + `company_id`.
+- `[ ]` **Webhook-Router:** zentraler n8n-Router, jede Company bekommt `/webhook/{company_id}/{event_type}`; URLs werden beim Deployment automatisch generiert, Nutzer sieht nichts davon.
+
+---
+
 ## Sprint 2: Core-Engine — n8n API Anbindung
 
 **Ziel:** Eine erreichbare n8n-Instanz + verifizierte Proxy-Routen. Ohne das kein Playbook-Webhooks und kein Phase-4-Deploy.
@@ -85,7 +111,9 @@ create table if not exists user_credentials (
 
 - `[ ]` **RLS später** (Sprint 6) — für Sprint 2 reicht Service-Role-Test oder eingeloggter Dev-User.
 
-### 2.1 Infrastruktur (Hetzner)
+### 2.1 Infrastruktur (Hostinger VPS — geteilte Instanz)
+
+> **Entscheidung (Juni 2026):** n8n läuft als **eine geteilte CE-Instanz** für alle Nutzer (nicht pro Nutzer), Mandantentrennung über **n8n Projects + `company_id`**. Host: **Hostinger VPS** (statt ursprünglich Hetzner). VPS, Docker und API-Key sind live; `MOCK_N8N=false`.
 
 - `[ ]` **VPS:** Ubuntu 22/24, Firewall: 22 (SSH), 80/443 (Caddy), **nicht** 5678 öffentlich (nur intern oder VPN).
 - `[ ]` **Docker Compose:** n8n CE + Postgres + Caddy (HTTPS, Domain z. B. `n8n.klaro.de`).
@@ -93,7 +121,7 @@ create table if not exists user_credentials (
 - `[ ]` **Env auf Vercel / lokal:**
 
 ```env
-N8N_API_URL=https://n8n.klaro.de/api/v1
+N8N_API_URL=https://n8n.srv1046571.hstgr.cloud/api/v1
 N8N_API_KEY=<key>
 MOCK_N8N=false
 ```
@@ -246,6 +274,11 @@ MOCK_N8N=false
 
 ## Sprint 5: Phase 4 & Workflow Deployment
 
+> **Neue Architektur (Juni 2026) — Node-Map:** Die KI sieht **nie** n8n-Node-Typen, sondern nur logische Baustein-Namen (`email_senden`, `crm_updaten`, …). Eine **Node-Map** (`node_map.json` im Root) übersetzt *Baustein + Tool → exaktes n8n-Node-JSON*. Das eliminiert KI-Halluzinationen bei der Workflow-Generierung.
+>
+> - `[ ]` `node_map.json` im Root anlegen (Baustein × Tool → Node-JSON-Template).
+> - `[ ]` Generator nutzt die Node-Map statt KI-generierter Node-Typen.
+
 **Ziel:** Canvas-Plan → echtes n8n-JSON → Deploy. Orchestration aus Sprint 3 gilt weiter; hier kommt **Ausführung**.
 
 - `[x]` **`lib/workflow-generator.ts`:** Mapping Canvas-Steps → n8n-Nodes inkl. `KLARO:`-Namespace-Präfix (`withKlaroPrefix`); Unit-getestet. Live verifiziert (`KLARO: Reels Pipeline`).
@@ -257,11 +290,25 @@ MOCK_N8N=false
 
 ## Sprint 6: Security & Credentials (Der Türsteher)
 
+> **Update (Juni 2026):** Durch die **zentralen OAuth-Apps** (Google/Microsoft, siehe „Zentrale Infrastruktur") entfällt das per-User-Cloud-Setup — der Nutzer klickt nur „Erlauben". Dieser Sprint deckt damit primär noch ab: (a) API-Key-Tools ohne zentrale OAuth, (b) verschlüsselte Speicherung, (c) RLS / Mandantentrennung via `company_id`.
+
 - `[ ]` **Tabellen:** `user_credentials`, `workflows` (falls noch nicht in Prod-Migration).
 - `[ ]` **Credential Collection UI** vor Deploy.
 - `[ ]` **`lib/encryption.ts`:** AES-256-GCM für API-Keys.
 - `[x]` **RLS:** Strikt `user_id == auth.uid()`. _RLS aktiviert auf `projects`, `workflows`, `user_credentials` mit SELECT/INSERT/UPDATE/DELETE-Policies (Migration `20260602_enable_rls.sql`, live angewandt). Kritischer `rls_disabled`-Advisory geklärt._
 - `[ ]` **Security-Test:** Cross-User-Zugriff muss fehlschlagen.
+
+---
+
+## Sprint Qualität: Pfad-Logik Phase 1 (geplant)
+
+**Ziel:** Die vier Onboarding-Pfade (`{{ziel}}`-Variable) im Coach sauber ausdifferenzieren — heute nur teilweise im Prompt angelegt.
+
+- `[ ]` **Pfad A (Von Null):** volle Diagnose (weiß nicht wo anfangen).
+- `[ ]` **Pfad B (Konkrete Ideen):** mitgebrachte Idee validieren + ROI evaluieren.
+- `[ ]` **Pfad C (Evaluativ):** prüfen, ob KI überhaupt sinnvoll ist; unsinnige Use-Cases herausfiltern (Grundton trotzdem pro-KI).
+- `[ ]` **Pfad D (Briefing-Export):** kein Deployment, sondern architektonisches Briefing/Konzept zur Übergabe an IT/Agentur.
+- `[ ]` **QA:** je ein Testlauf pro Pfad — Coach verhält sich pfad-konform.
 
 ---
 
@@ -279,6 +326,16 @@ MOCK_N8N=false
 - `[ ]` **Paywall:** Vor Phase-4-Deploy.
 - `[ ]` **Legal:** Impressum, AGB, DSGVO.
 - `[ ]` **Go-Live.**
+
+---
+
+## Post-MVP: Data Layer & Dashboard Builder (gemerkt)
+
+**Nicht Teil von v1.0.** Wird automatisch im Hintergrund aufgebaut während die Phasen laufen.
+
+- `[ ]` **`events`-Tabelle:** jede Workflow-Execution wird geloggt → Basis für KI-Insights & Selbstverbesserung.
+- `[ ]` **Vier Stufen:** Einzelworkflows → vernetzte Workflows → KI-Intelligenz → Selbstverbesserung.
+- `[ ]` **Dashboard Builder:** automatisch generiert aus deployten Workflows + Data Layer (nicht manuell konfiguriert). Kein MVP-Feature.
 
 ---
 
@@ -311,5 +368,6 @@ MOCK_N8N=false
 
 | Version | Änderung |
 |---------|----------|
+| v1.3 | Zentrale Infrastruktur (Shared OAuth/Twilio/Resend/n8n), Webhook-Router, Node-Map-Builder, RAG Knowledge Base (erledigt), Sprint Qualität (Pfad-Logik inkl. Pfad D), Post-MVP Data Layer + Dashboard Builder; n8n Host Hetzner→Hostinger (live) |
 | v1.2 | Backlog Coach Advisor; Sprint 2 Runbook + Supabase 2.0 |
 | v1.1 | Sprint 2 ausgebaut (How-to); Sprint 3 = komplette Agent-Orchestrierung; Critic/Supervisor/Research aus verstreuten Sprints gebündelt; Agent-Tabelle + Pipeline-Diagramm |

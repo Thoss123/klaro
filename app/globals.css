@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -13,6 +19,7 @@
       linear-gradient(to right, #e5e7eb 1px, transparent 1px),
       linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
   }
+
 }
 
 /* Global loader — slow start, then accelerates (cubic) */

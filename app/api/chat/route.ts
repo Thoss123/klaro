@@ -4,10 +4,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { stripInternalTags } from '@/lib/strip-internal-tags'
 import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels'
 import { resolveDiagnosePath } from '@/lib/onboarding-multi'
+import { formatToolRecommendations } from '@/lib/tool-recommendations'
+import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans'
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, onboarding, phase, canvas, attachments } = await req.json()
+    const { messages, onboarding, phase, canvas, attachments, project_id } = await req.json()
 
     const currentPhase = phase || 'diagnose'
     let systemPrompt = getSystemPrompt(currentPhase)
@@ -91,14 +93,20 @@ export async function POST(req: NextRequest) {
         : '[]';
     const workflowsJson =
       canvas?.workflows?.length
-        ? JSON.stringify(canvas.workflows, null, 2)
+        ? JSON.stringify(getBuiltWorkflows(canvas), null, 2)
+        : '[]';
+    const workflowPlansJson =
+      canvas
+        ? JSON.stringify(getWorkflowPlans(canvas), null, 2)
         : '[]';
     const companyJson = canvas?.company
       ? JSON.stringify(canvas.company, null, 2)
       : '{}';
     systemPrompt = systemPrompt.replace(/{{pain_points}}/g, painPointsJson);
     systemPrompt = systemPrompt.replace(/{{workflows}}/g, workflowsJson);
+    systemPrompt = systemPrompt.replace(/{{workflow_plans}}/g, workflowPlansJson);
     systemPrompt = systemPrompt.replace(/{{company}}/g, companyJson);
+    systemPrompt = systemPrompt.replace(/{{tool_recommendations}}/g, formatToolRecommendations());
 
     if (canvas) {
       if (canvas.use_cases) {
@@ -107,6 +115,17 @@ export async function POST(req: NextRequest) {
           JSON.stringify(canvas.use_cases, null, 2)
         );
       }
+    }
+
+    // RAG Retrieval
+    const { retrieveRelevantKnowledge } = await import('@/lib/rag');
+    const ragContext = await retrieveRelevantKnowledge(
+      messages[messages.length - 1]?.content || '',
+      currentPhase,
+    );
+    if (ragContext) {
+      systemPrompt += ragContext;
+      console.log(`[RAG] Injected knowledge context into prompt.`);
     }
 
     // Get AI Provider
@@ -152,10 +171,147 @@ export async function POST(req: NextRequest) {
                } else if (toolCall.name === 'request_credential') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"request_credential","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  return { status: 'pending', message: 'User has been prompted for credentials in the UI. Await confirmation.' };
+               } else if (toolCall.name === 'create_workflow_plan') {
+                 if (currentPhase !== 'plan') {
+                   return { status: 'error', message: 'create_workflow_plan nur in Phase 3 erlaubt.' };
+                 }
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — create_workflow_plan abgebrochen.' };
+                 }
+                 // Ladezustand an UI senden
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"create_workflow_plan","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const origin = new URL(req.url).origin;
+                   const cookie = req.headers.get('cookie') ?? '';
+                   const res = await fetch(`${origin}/api/canvas-worker/create-plan`, {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json', cookie },
+                     body: JSON.stringify({
+                       project_id,
+                       ...toolCall.args
+                     }),
+                   });
+                   const data = await res.json();
+                   if (!res.ok) {
+                     return { status: 'error', message: data.error || 'Erstellen fehlgeschlagen' };
+                   }
+                   return { status: 'success', message: 'Plan erfolgreich auf dem Canvas platziert. Sag dem Nutzer, dass er ihn rechts sehen kann.' };
+                 } catch (e: any) {
+                   console.error('[create_workflow_plan] fetch failed:', e?.message);
+                   return { status: 'error', message: 'Erstellen fehlgeschlagen.' };
+                 }
+               } else if (toolCall.name === 'edit_workflow') {
+                 if (currentPhase !== 'umsetzung') {
+                   return { status: 'error', message: 'edit_workflow nur in Phase 4.' };
+                 }
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — edit_workflow abgebrochen.' };
+                 }
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"edit_workflow","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { editWorkflowOnCanvas } = await import('@/lib/edit-workflow-canvas');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const out = await editWorkflowOnCanvas(
+                     supabase,
+                     user.id,
+                     project_id,
+                     toolCall.args.workflow_id,
+                     toolCall.args.instruction || toolCall.args.message || '',
+                   );
+                   if (!out.ok) {
+                     return { status: 'error', message: out.error };
+                   }
+                   if (out.changed) {
+                     controller.enqueue(new TextEncoder().encode(`\n<canvas_built>${JSON.stringify({ workflow_id: out.workflow.id })}</canvas_built>\n`));
+                   }
+                   return {
+                     status: out.changed ? 'success' : 'unchanged',
+                     workflow_id: out.workflow.id,
+                     title: out.workflow.title,
+                     editor_message: out.editorMessage,
+                     message: out.changed
+                       ? `Workflow „${out.workflow.title}" wurde angepasst: ${out.editorMessage}`
+                       : out.editorMessage,
+                   };
+                 } catch (e: any) {
+                   console.error('[edit_workflow] failed:', e?.message);
+                   return { status: 'error', message: 'Workflow-Anpassung fehlgeschlagen.' };
+                 }
+               } else if (toolCall.name === 'build_workflow') {
+                 if (currentPhase !== 'umsetzung') {
+                   return { status: 'error', message: 'build_workflow nur in Phase 4.' };
+                 }
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — build_workflow abgebrochen.' };
+                 }
+                 // Status-Hinweis im UI ("baue…") — noch KEIN Canvas-Load (Build läuft erst).
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"build_workflow","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const origin = new URL(req.url).origin;
+                   const cookie = req.headers.get('cookie') ?? '';
+                   const res = await fetch(`${origin}/api/n8n/build-workflow`, {
+                     method: 'POST',
+                     headers: {
+                       'Content-Type': 'application/json',
+                       cookie,
+                     },
+                     body: JSON.stringify({
+                       project_id,
+                       workflow_id: toolCall.args.workflow_id,
+                       title: toolCall.args.title,
+                     }),
+                   });
+                   const data = await res.json();
+                   if (!res.ok) {
+                     return { status: 'error', message: data.error || 'Build fehlgeschlagen' };
+                   }
+                   // Build ist FERTIG + in Supabase gespeichert → Client SOFORT signalisieren,
+                   // damit die Karte erscheint, ohne auf Realtime-Latenz zu warten. Das Tag
+                   // kommt garantiert NACH dem Build (kein Race mehr).
+                   const builtId = data.workflow?.id ?? toolCall.args.workflow_id;
+                   controller.enqueue(new TextEncoder().encode(`\n<canvas_built>${JSON.stringify({ workflow_id: builtId })}</canvas_built>\n`));
+                   return {
+                     status: 'success',
+                     workflow_id: data.workflow?.id,
+                     title: data.workflow?.title,
+                     alreadyBuilt: data.alreadyBuilt ?? false,
+                     message: data.alreadyBuilt
+                       ? `Workflow „${data.workflow?.title}" war schon gebaut.`
+                       : `Workflow „${data.workflow?.title}" ist jetzt fertig gebaut und auf dem Canvas sichtbar.`,
+                   };
+                 } catch (e: any) {
+                   console.error('[build_workflow] fetch failed:', e?.message);
+                   return { status: 'error', message: 'Build fehlgeschlagen.' };
+                 }
+               } else if (toolCall.name === 'research_solutions') {
+                 if (currentPhase !== 'plan') {
+                   return { options: [], note: 'Recherche nur in Phase 3 verfügbar.' };
+                 }
+                 // Signal the UI that research is running (shown as a status hint).
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"research_solutions","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const origin = new URL(req.url).origin;
+                   const res = await fetch(`${origin}/api/research`, {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify(toolCall.args),
+                   });
+                   const data = await res.json();
+                   return data; // { options: [...] } back to the coach
+                 } catch (e: any) {
+                   console.error('[research_solutions] fetch failed:', e?.message);
+                   // Fail open: coach falls back to its own knowledge.
+                   return { options: [], note: 'Recherche nicht verfügbar — nutze eigenes Wissen.' };
+                 }
                }
                return { status: 'unknown_tool' };
             },
-            Array.isArray(attachments) ? attachments : undefined
+            Array.isArray(attachments) ? attachments : undefined,
+            currentPhase
           );
         } catch (err: any) {
            console.error('Provider Stream Error:', err);

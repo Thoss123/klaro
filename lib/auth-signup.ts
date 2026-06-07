@@ -1,8 +1,8 @@
-import type { AuthError, SignUpResponse } from '@supabase/supabase-js'
+import type { AuthError, AuthResponse } from '@supabase/supabase-js'
 
 /** True when sign-up was attempted for an email that already has an account. */
 export function isExistingAccountOnSignup(
-  data: SignUpResponse['data'],
+  data: AuthResponse['data'] | null,
   error: AuthError | null,
 ): boolean {
   if (error) {

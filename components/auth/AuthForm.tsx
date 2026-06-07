@@ -86,11 +86,17 @@ export default function AuthForm({
     setLoading(true);
     try {
       const supabase = getSupabase();
+      // Lokale Klaro-Session löschen, damit ein anderer Google-Account nicht an der alten Session hängen bleibt.
+      await supabase.auth.signOut({ scope: 'local' });
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/api/auth/callback`,
-        }
+          // Google-Kontowähler erzwingen (sonst Silent-SSO mit dem im Browser aktiven Google-Konto).
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
       });
       if (error) throw error;
     } catch (err: any) {

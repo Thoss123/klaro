@@ -18,6 +18,7 @@ export type CanvasSkipReason =
   | 'network_error'
   | 'plan_awaiting_workflow_chat'
   | 'orchestration_deferred'
+  | 'umsetzung_no_worker'
   | 'unknown';
 
 export type MemorySkipReason =
@@ -69,6 +70,13 @@ export function evaluateCanvasEligibility(params: {
 
   const userText = userLines.join(' ');
   const chars = userText.length;
+
+  if (phase === 'umsetzung') {
+    // Phase 4: Canvas wird ausschließlich durch build_workflow (Server) gepflegt.
+    // Kein Canvas-Worker (würde die frisch gebaute Deploy-Karte überschreiben) und
+    // KEINE "kein Kontext"-Coach-Meldung (coach-status liefert für umsetzung null).
+    return { eligible: false, reason: 'umsetzung_no_worker', detail: 'phase=umsetzung — canvas via build_workflow only' };
+  }
 
   if (phase === 'plan' && chars < 40) {
     return {

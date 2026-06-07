@@ -305,7 +305,7 @@ export function normalizeCanvasData(
     .map((d, i) => normalizeDocument(d, i))
     .filter((d): d is CanvasDocument => d !== null);
 
-  const canExtractWorkflows = phase === 'plan' || phase === 'umsetzung';
+  const canExtractWorkflows = phase === 'umsetzung';
   const wfFromRaw = canExtractWorkflows && Array.isArray(raw.workflows)
     ? raw.workflows
         .map((w, i) => normalizeWorkflow(w, i))
@@ -341,6 +341,7 @@ export function normalizeCanvasData(
     pain_points: pain_points.length > 0 ? pain_points : (current?.pain_points ?? []),
     use_cases: use_cases.length > 0 ? use_cases : (current?.use_cases ?? []),
     workflows,
+    workflow_plans: Array.isArray(current?.workflow_plans) ? current.workflow_plans : undefined,
     documents: documents.length > 0 ? documents : (current?.documents ?? []).map((d, i) => normalizeDocument(d, i)).filter((d): d is CanvasDocument => d !== null),
     company,
     implementer,

@@ -1,6 +1,46 @@
 import { createSupabaseBrowserClient } from './supabase-browser'
 import { Message, CanvasData, OnboardingData, Project } from './types'
 import { numberedSessionTitle } from './session-title'
+import type { PostgrestError } from '@supabase/supabase-js'
+
+/** PostgrestError serializes poorly in console — use for logs. */
+export function formatSupabaseError(error: PostgrestError | null | undefined): string {
+  if (!error) return 'unknown'
+  const parts = [
+    error.message,
+    error.code ? `code=${error.code}` : '',
+    error.details,
+    error.hint,
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' | ') : String(error)
+}
+
+function isSessionAccessDenied(error: PostgrestError): boolean {
+  const msg = (error.message || '').toLowerCase()
+  return (
+    error.code === '42501' ||
+    msg.includes('row-level security') ||
+    msg.includes('permission denied') ||
+    msg.includes('violates row-level security policy')
+  )
+}
+
+/** True when RLS allows read/write on this session for the current user. */
+export async function canAccessSession(sessionId: string): Promise<boolean> {
+  const supabase = createSupabaseBrowserClient()
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .maybeSingle()
+
+  if (error) {
+    if (error.code === 'PGRST116') return false
+    console.warn('Session access check failed:', formatSupabaseError(error))
+    return false
+  }
+  return !!data?.id
+}
 
 export type SessionSummary = {
   id: string
@@ -213,11 +253,12 @@ export async function loadSessionCanvas(sessionId: string): Promise<CanvasData |
     .from('canvas')
     .select('data')
     .eq('session_id', sessionId)
-    .single()
+    .maybeSingle()
 
   if (error) {
-    if (error.code === 'PGRST116') return null // not found
-    throw error
+    if (error.code === 'PGRST116') return null
+    console.warn('Error loading session canvas:', formatSupabaseError(error))
+    return null
   }
   return data?.data as CanvasData | null
 }
@@ -228,10 +269,12 @@ export async function loadSessionOnboarding(sessionId: string): Promise<Onboardi
     .from('sessions')
     .select('ziel, ki_erfahrung, wer_setzt_um, hindernis, branche, tempo, unternehmensgroesse, vorname, firmenname, rolle_im_unternehmen, memory')
     .eq('id', sessionId)
-    .single()
+    .maybeSingle()
 
   if (error) {
-    console.error('Error loading onboarding:', error)
+    if (error.code !== 'PGRST116') {
+      console.warn('Error loading onboarding:', formatSupabaseError(error))
+    }
     return null
   }
   return data as OnboardingData
@@ -244,7 +287,7 @@ export async function markWelcomeSent(sessionId: string): Promise<void> {
     .update({ welcome_sent: true })
     .eq('id', sessionId)
 
-  if (error) console.error('Error updating welcome_sent:', error)
+  if (error) console.warn('Error updating welcome_sent:', formatSupabaseError(error))
 }
 
 export async function isWelcomeSent(sessionId: string): Promise<boolean> {
@@ -253,8 +296,8 @@ export async function isWelcomeSent(sessionId: string): Promise<boolean> {
     .from('sessions')
     .select('welcome_sent')
     .eq('id', sessionId)
-    .single()
-    
+    .maybeSingle()
+
   if (error) return false
   return data?.welcome_sent || false
 }
@@ -267,13 +310,23 @@ export async function saveMessage(sessionId: string, role: 'user' | 'assistant',
     .from('messages')
     .insert({ session_id: sessionId, role, content })
 
-  if (error) console.error('Error saving message:', error)
+  if (error) {
+    if (isSessionAccessDenied(error)) {
+      console.warn(`Message not saved (session ${sessionId} not writable):`, formatSupabaseError(error))
+      return
+    }
+    console.error('Error saving message:', formatSupabaseError(error))
+    return
+  }
 
-  // Update session timestamp
-  await supabase
+  const { error: touchError } = await supabase
     .from('sessions')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', sessionId)
+
+  if (touchError && !isSessionAccessDenied(touchError)) {
+    console.warn('Error updating session timestamp:', formatSupabaseError(touchError))
+  }
 }
 
 // ---- Canvas (Session-level, legacy) ----
@@ -284,7 +337,13 @@ export async function saveCanvas(sessionId: string, canvasData: CanvasData): Pro
     .from('canvas')
     .upsert({ session_id: sessionId, data: canvasData, updated_at: new Date().toISOString() }, { onConflict: 'session_id' })
 
-  if (error) console.error('Error saving canvas:', error)
+  if (error) {
+    if (isSessionAccessDenied(error)) {
+      console.warn(`Canvas not saved (session ${sessionId} not writable):`, formatSupabaseError(error))
+      return
+    }
+    console.error('Error saving canvas:', formatSupabaseError(error))
+  }
 }
 
 // ---- Project Canvas (project-bound, persists across all chats) ----
@@ -295,11 +354,11 @@ export async function loadProjectCanvas(projectId: string): Promise<CanvasData |
     .from('project_canvas')
     .select('data')
     .eq('project_id', projectId)
-    .single()
+    .maybeSingle()
 
   if (error) {
     if (error.code === 'PGRST116') return null
-    console.error('Error loading project canvas:', error)
+    console.warn('Error loading project canvas:', formatSupabaseError(error))
     return null
   }
   return data?.data as CanvasData | null
@@ -307,14 +366,28 @@ export async function loadProjectCanvas(projectId: string): Promise<CanvasData |
 
 export async function saveProjectCanvas(projectId: string, canvasData: CanvasData): Promise<void> {
   const supabase = createSupabaseBrowserClient()
-  const { error } = await supabase
-    .from('project_canvas')
-    .upsert(
-      { project_id: projectId, data: canvasData, updated_at: new Date().toISOString() },
-      { onConflict: 'project_id' }
-    )
+  const attempt = async () =>
+    supabase
+      .from('project_canvas')
+      .upsert(
+        { project_id: projectId, data: canvasData, updated_at: new Date().toISOString() },
+        { onConflict: 'project_id' }
+      )
 
-  if (error) console.error('Error saving project canvas:', error)
+  let { error } = await attempt()
+  // Transiente Netzwerkfehler ("Failed to fetch") einmal wiederholen — Edits dürfen nicht verloren gehen.
+  if (error && /failed to fetch|network|fetch failed/i.test(error.message || '')) {
+    await new Promise(r => setTimeout(r, 400))
+    ;({ error } = await attempt())
+  }
+
+  if (error) {
+    if (isSessionAccessDenied(error)) {
+      console.warn(`Project canvas not saved (project ${projectId} not writable):`, formatSupabaseError(error))
+      return
+    }
+    console.error('Error saving project canvas:', formatSupabaseError(error))
+  }
 }
 
 // ---- Project Memory ----

@@ -59,3 +59,6 @@ create table project_memory (
   summary text not null,
   created_at timestamp default now()
 );
+
+-- RLS: messages DELETE required for /api/dev/reset-phase
+-- policy "Users can delete own messages" — session_id in own sessions

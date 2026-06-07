@@ -10,7 +10,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:n8n": "node scripts/test-n8n.mjs"
+    "test:n8n": "node scripts/test-n8n.mjs",
+    "icons:n8n": "node scripts/copy-n8n-icons.mjs",
+    "index-knowledge": "node scripts/index-knowledge.mjs",
+    "index-tools": "node scripts/index-knowledge.mjs tools",
+    "index-branchen": "node scripts/index-knowledge.mjs branchen",
+    "index-templates": "node scripts/index-knowledge.mjs templates"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",
@@ -18,6 +23,7 @@
     "@mistralai/mistralai": "^2.2.5",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@xyflow/react": "^12.11.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
     "lottie-react": "^2.4.1",
@@ -25,6 +31,7 @@
     "next": "^16.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-icons": "^5.6.0",
     "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.6.0"
   },

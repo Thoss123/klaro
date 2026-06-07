@@ -53,7 +53,19 @@ export async function POST(req: NextRequest) {
       .eq('id', workflow_id)
       .eq('user_id', user.id);
 
-    return NextResponse.json({ executionId: result.executionId });
+    if (result.status === 'error' || result.status === 'crashed') {
+      return NextResponse.json(
+        { error: result.error || 'Test-Ausführung fehlgeschlagen', ...result },
+        { status: 422 },
+      );
+    }
+
+    return NextResponse.json({
+      executionId: result.executionId,
+      status: result.status,
+      via: result.via,
+      ok: result.status === 'success',
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
