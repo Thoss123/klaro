@@ -319,6 +319,9 @@ export async function mcpGetNodeTypes(
 }
 
 export async function mcpUpdateWorkflow(workflowId: string, operations: McpWorkflowOperation[]) {
+  // n8n MCP `update_workflow` erwartet `type` als Discriminator, intern heißt das Feld `operation`.
+  // Am Wire-Rand umbenennen, sonst: „Invalid discriminator value … path operations.N.type".
+  const wireOps = operations.map(({ operation, ...rest }) => ({ type: operation, ...rest }));
   return n8nMcpCall<{
     workflowId: string;
     name: string;
@@ -326,5 +329,5 @@ export async function mcpUpdateWorkflow(workflowId: string, operations: McpWorkf
     appliedOperations: number;
     validationWarnings?: Array<{ code: string; message: string; nodeName?: string }>;
     note?: string;
-  }>('update_workflow', { workflowId, operations });
+  }>('update_workflow', { workflowId, operations: wireOps });
 }

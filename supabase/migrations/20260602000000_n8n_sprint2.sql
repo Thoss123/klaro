@@ -15,6 +15,8 @@ create table if not exists workflows (
   linked_use_case text,
   n8n_workflow_id text,
   n8n_project_id text,
+  -- Stable id of the canvas workflow this row deploys (see 20260609_..._canvas_workflow_id.sql).
+  canvas_workflow_id text,
   name text not null,
   description text,
   workflow_json jsonb,

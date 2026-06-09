@@ -1,0 +1,44 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]:
+    - img [ref=e36]
+  - alert [ref=e39]
+  - generic [ref=e40]:
+    - navigation [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]: K
+        - generic [ref=e44]: Klaro
+      - generic [ref=e45]:
+        - button "Workflows" [ref=e46]:
+          - img [ref=e47]
+          - generic [ref=e51]: Workflows
+        - button "Ausloggen" [ref=e52]:
+          - img [ref=e53]
+    - generic [ref=e56]:
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - heading "Deine Projekte" [level=1] [ref=e59]
+          - paragraph [ref=e60]: 2 Projekte
+        - button "Neues Projekt" [ref=e61]:
+          - img [ref=e62]
+          - text: Neues Projekt
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - button "Diagnose Mein Projekt 0 Chats" [ref=e65]:
+            - generic [ref=e66]: Diagnose
+            - heading "Mein Projekt" [level=2] [ref=e67]
+            - paragraph [ref=e68]: 0 Chats
+          - button [ref=e70]:
+            - img [ref=e71]
+          - button "Öffnen" [active] [ref=e76]:
+            - text: Öffnen
+            - img [ref=e77]
+        - generic [ref=e81]:
+          - button "Diagnose Mein Projekt 0 Chats" [ref=e82]:
+            - generic [ref=e83]: Diagnose
+            - heading "Mein Projekt" [level=2] [ref=e84]
+            - paragraph [ref=e85]: 0 Chats
+          - button [ref=e87]:
+            - img [ref=e88]
+          - button "Öffnen" [ref=e93]:
+            - text: Öffnen
+            - img [ref=e94]

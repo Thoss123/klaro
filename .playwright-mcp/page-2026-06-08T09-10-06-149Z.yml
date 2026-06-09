@@ -1,0 +1,33 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - button [ref=e5] [cursor=pointer]
+      - button [ref=e6] [cursor=pointer]
+      - button [ref=e7] [cursor=pointer]
+      - button [disabled] [ref=e8]
+      - button [disabled] [ref=e9]
+      - button [disabled] [ref=e10]
+      - button [disabled] [ref=e11]
+      - button [disabled] [ref=e12]
+      - button [disabled] [ref=e13]
+      - button [disabled] [ref=e14]
+      - button [disabled] [ref=e15]
+    - generic [ref=e103]:
+      - button "Zurück" [ref=e105]:
+        - img [ref=e106]
+        - text: Zurück
+      - generic [ref=e108]:
+        - heading "Was beschreibt deine Situation am besten?" [level=2] [ref=e109]
+        - paragraph [ref=e110]: Eine Antwort reicht — wähle, was am ehesten auf euch zutrifft.
+      - generic [ref=e111]:
+        - button "Wir wissen noch nicht, wo wir mit KI und Automatisierung anfangen sollen" [ref=e112]:
+          - generic [ref=e114]: Wir wissen noch nicht, wo wir mit KI und Automatisierung anfangen sollen
+        - button "Wir haben schon konkrete Ideen — brauchen einen klaren Umsetzungsplan" [ref=e115]:
+          - generic [ref=e117]: Wir haben schon konkrete Ideen — brauchen einen klaren Umsetzungsplan
+        - button "Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt" [ref=e118]:
+          - generic [ref=e120]: Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt
+        - button "Wir wollen unserer IT oder einem Dienstleister ein klares Briefing geben" [ref=e121]:
+          - generic [ref=e123]: Wir wollen unserer IT oder einem Dienstleister ein klares Briefing geben
+  - button "Open Next.js Dev Tools" [ref=e50] [cursor=pointer]:
+    - img [ref=e51]
+  - alert [ref=e54]

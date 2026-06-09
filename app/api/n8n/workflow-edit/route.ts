@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
     message: string;
     step_configs?: Record<string, StepConfig>;
     workflow_db_id?: string;
+    input_schema?: Record<string, { path: string; sample: string }[]>;
+    node_errors?: { node: string; error: string }[];
+    coach_context?: Partial<WorkflowEditorCoachContext>;
   };
 
   if (!body.workflow?.steps || !body.message?.trim()) {
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
   let complete;
   if (process.env.MISTRAL_API_KEY) {
     const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-    complete = mistralCompleteJson(client);
+    complete = mistralCompleteJson(client, 'mistral-large-latest');
   }
 
   const mergedConfigs = { ...(body.step_configs ?? {}) };
@@ -48,6 +51,8 @@ export async function POST(req: NextRequest) {
       message: body.message.trim(),
       stepConfigs: mergedConfigs,
       coachContext,
+      inputSchema: body.input_schema,
+      nodeErrors: body.node_errors,
     },
     complete,
   );
@@ -58,9 +63,9 @@ export async function POST(req: NextRequest) {
       if (result.stepConfigUpdates) {
         for (const [id, partial] of Object.entries(result.stepConfigUpdates)) {
           mergedConfigs[id] = {
-            configType: 'n8n',
             ...mergedConfigs[id],
             ...partial,
+            configType: 'n8n',
             parameters: { ...mergedConfigs[id]?.parameters, ...partial.parameters },
           };
         }

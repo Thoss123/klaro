@@ -13,6 +13,8 @@ export type WorkflowEditorChatTurn = {
 
 export type WorkflowEditorCoachContext = {
   phase?: string;
+  /** Aktuelle Session-ID — für Datei-/Bild-Uploads im Editor-Chat. */
+  sessionId?: string | null;
   onboarding?: OnboardingData;
   canvas?: CanvasData;
   /** Aktuell geöffneter Workflow — andere Builds nur als Kontext. */

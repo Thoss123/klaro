@@ -6,6 +6,7 @@ describe('workflowStructureChanged', () => {
   const base: Workflow = {
     id: 'wf1',
     title: 'T',
+    linked_pain_point: 'pp1',
     steps: [
       { id: 'a', label: 'A', type: 'trigger', n8nType: 'n8n-nodes-base.webhook' },
       { id: 'b', label: 'B', type: 'action', n8nType: 'n8n-nodes-base.set' },
@@ -14,14 +15,14 @@ describe('workflowStructureChanged', () => {
   };
 
   it('false bei nur Parameter-Update', () => {
-    expect(workflowStructureChanged(base, { steps: base.steps, edges: base.edges })).toBe(false);
+    expect(workflowStructureChanged(base, { steps: base.steps, edges: base.edges ?? [] })).toBe(false);
   });
 
   it('true wenn Schritt hinzugefügt', () => {
     expect(
       workflowStructureChanged(base, {
         steps: [...base.steps, { id: 'c', label: 'C', type: 'action', n8nType: 'n8n-nodes-base.slack' }],
-        edges: base.edges,
+        edges: base.edges ?? [],
       }),
     ).toBe(true);
   });

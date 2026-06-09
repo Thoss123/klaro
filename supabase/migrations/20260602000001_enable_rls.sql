@@ -14,7 +14,7 @@ create policy "Users can create own projects" on public.projects for insert with
 create policy "Users can update own projects" on public.projects for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users can delete own projects" on public.projects for delete using (auth.uid() = user_id);
 
--- ── workflows ───────────────────────────────────────────────────────────────
+-- ── workflows ────────────────────────────────────────────────────────────────
 alter table public.workflows enable row level security;
 create policy "Users can view own workflows"   on public.workflows for select using (auth.uid() = user_id);
 create policy "Users can create own workflows" on public.workflows for insert with check (auth.uid() = user_id);

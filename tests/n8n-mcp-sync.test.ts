@@ -7,6 +7,7 @@ describe('buildMcpParameterOperations', () => {
     const wf: Workflow = {
       id: 'wf1',
       title: 'Test',
+      linked_pain_point: 'pp1',
       steps: [
         { id: 's1', label: 'Webhook', type: 'trigger', n8nType: 'n8n-nodes-base.webhook' },
       ],

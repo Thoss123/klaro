@@ -49,6 +49,20 @@ export function isAiConnection(connectionType?: string | null): boolean {
   return !!connectionType && AI_CONNECTION_TYPES.has(connectionType);
 }
 
+/**
+ * Sub-Node-only Typen (Chat Models, Memory, Tools, Embeddings) — geben KEINEN main-Output aus,
+ * dürfen also NICHT als eigenständige Haupt-Node verwendet werden (z.B. Mistral „lmChatMistralCloud"
+ * funktioniert nur als Chat Model an einem Agent/Basic LLM Chain).
+ */
+export function isSubNodeOnlyType(n8nType?: string | null): boolean {
+  if (!n8nType) return false;
+  const short = n8nType.split('.').pop() || '';
+  return /^(lm[A-Z]|lmChat|memory|tool[A-Z]|embeddings|outputParser|retriever|vectorStore|textSplitter|documentDefaultDataLoader)/.test(short);
+}
+
+/** Standalone-Ersatz für einen Haupt-AI-Schritt, der fälschlich auf einen Sub-Node zeigt. */
+export const STANDALONE_AI_NODE = '@n8n/n8n-nodes-langchain.openAi';
+
 /** Kurzer deutscher Default-Name für eine Sub-Node. */
 export function subNodeLabel(slot: string): string {
   if (slot === 'ai_languageModel') return 'Chat Model';

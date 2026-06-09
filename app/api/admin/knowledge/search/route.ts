@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getAdminUser } from '@/lib/admin-auth';
 import { searchKnowledge } from '@/lib/rag';
 
 /** POST /api/admin/knowledge/search — test the retrieval the coach would get.
  *  Body: { query: string, phase?: string }. */
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const admin = await getAdminUser(supabase);
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const query = typeof body?.query === 'string' ? body.query : '';

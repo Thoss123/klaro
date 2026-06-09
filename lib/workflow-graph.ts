@@ -60,12 +60,17 @@ export function parseSwitchBranch(branch: string | undefined): number | null {
 export function defaultLinearEdges(steps: WorkflowStep[]): WorkflowEdge[] {
   const edges: WorkflowEdge[] = [];
   for (let i = 1; i < steps.length; i++) {
-    edges.push({
-      id: `e-${steps[i - 1].id}-${steps[i].id}`,
-      source: steps[i - 1].id,
-      target: steps[i].id,
-      branch: 'default',
-    });
+      let branch = 'default';
+      const sourceStep = steps[i - 1];
+      if (isIfStep(sourceStep)) branch = 'true';
+      else if (isSwitchStep(sourceStep)) branch = 'switch-0';
+
+      edges.push({
+        id: `e-${sourceStep.id}-${steps[i].id}`,
+        source: sourceStep.id,
+        target: steps[i].id,
+        branch,
+      });
   }
   return edges;
 }
@@ -77,6 +82,70 @@ export function resolveWorkflowEdges(
   if (edges?.length) return edges;
   return defaultLinearEdges(steps);
 }
+
+/** Main steps ohne ausgehende Kante — je ein „+“-Connector (n8n-Stil). */
+export function findTerminalStepIds(
+  steps: WorkflowStep[],
+  edges: WorkflowEdge[],
+): string[] {
+  const mainSteps = steps.filter(s => !s.subNodeOf);
+  if (!mainSteps.length) return [];
+
+  const mainEdges = edges.filter(e => !e.connectionType);
+  const hasOutgoing = new Set(mainEdges.map(e => e.source));
+  const terminals = mainSteps.filter(s => !hasOutgoing.has(s.id)).map(s => s.id);
+
+  if (terminals.length) return terminals;
+  return [mainSteps[mainSteps.length - 1].id];
+}
+
+export interface TerminalBranch {
+  stepId: string;
+  branch: string;
+}
+
+/** Finds all missing branches on nodes that don't have an outgoing edge for that branch. */
+export function findTerminalBranches(
+  steps: WorkflowStep[],
+  edges: WorkflowEdge[],
+): TerminalBranch[] {
+  const mainSteps = steps.filter(s => !s.subNodeOf);
+  if (!mainSteps.length) return [];
+
+  const mainEdges = edges.filter(e => !e.connectionType);
+  const outgoingBySource = new Map<string, Set<string>>();
+  for (const e of mainEdges) {
+    if (!outgoingBySource.has(e.source)) outgoingBySource.set(e.source, new Set());
+    outgoingBySource.get(e.source)!.add(e.branch || 'default');
+  }
+
+  const terminals: TerminalBranch[] = [];
+  for (const s of mainSteps) {
+    const outs = outgoingBySource.get(s.id) || new Set();
+    
+    if (isIfStep(s)) {
+      if (!outs.has('true') && !outs.has('default')) terminals.push({ stepId: s.id, branch: 'true' });
+      if (!outs.has('false')) terminals.push({ stepId: s.id, branch: 'false' });
+    } else if (isSwitchStep(s)) {
+      const count = (s.parameters?.outputCount as number) || 1;
+      for (let i = 0; i < count; i++) {
+        if (!outs.has(`switch-${i}`) && !(i === 0 && outs.has('default'))) terminals.push({ stepId: s.id, branch: `switch-${i}` });
+      }
+    } else {
+      if (outs.size === 0) terminals.push({ stepId: s.id, branch: 'default' });
+    }
+  }
+
+  if (terminals.length) return terminals;
+  return [{ stepId: mainSteps[mainSteps.length - 1].id, branch: 'default' }];
+}
+
+/** Spaltenbreite im Flow-Node (Icon + Label). */
+export function flowNodeColumnWidth(step: WorkflowStep): number {
+  return isSwitchStep(step) ? 220 : 168;
+}
+
+export const ADD_STEP_NODE_PREFIX = '__add__';
 
 /** Map edge branch → React Flow source handle id. */
 export function branchToSourceHandle(
@@ -290,14 +359,22 @@ export function insertStepInGraph(
 
   let nextEdges = [...edges];
   if (afterId) {
-    const outEdge = edges.find(e => e.source === afterId);
+    const outEdge = edges.find(e => e.source === afterId && (!options?.branch || e.branch === options.branch));
     const downstream = outEdge?.target;
     nextEdges = nextEdges.filter(e => e.source !== afterId || e.id !== outEdge?.id);
+    
+    let defaultBranch = 'default';
+    const afterStep = steps.find(s => s.id === afterId);
+    if (afterStep) {
+      if (isIfStep(afterStep)) defaultBranch = 'true';
+      else if (isSwitchStep(afterStep)) defaultBranch = 'switch-0';
+    }
+
     nextEdges.push({
       id: `e-${afterId}-${newStep.id}`,
       source: afterId,
       target: newStep.id,
-      branch: options?.branch ?? outEdge?.branch ?? 'default',
+      branch: options?.branch ?? outEdge?.branch ?? defaultBranch,
     });
     if (downstream) {
       nextEdges.push({

@@ -9,7 +9,7 @@ import {
   normalizeCanvasData,
 } from '@/lib/canvas-normalize';
 import { stripPhaseFromCanvas } from '@/lib/phase-reset';
-import type { CanvasData } from '@/lib/types';
+import type { CanvasData, Workflow } from '@/lib/types';
 
 describe('toDisplayText', () => {
   it('handles primitives, arrays and nested objects', () => {

@@ -1,0 +1,27 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "Zurück zur Startseite" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img [ref=e5]
+      - text: Zurück zur Startseite
+    - generic [ref=e8]:
+      - heading "Account erstellen" [level=2] [ref=e40]
+      - generic [ref=e43]: Email address "ragtest.coach@klaro-test.dev" is invalid
+      - button "Mit Google weiter" [ref=e10]:
+        - img [ref=e11]
+        - text: Mit Google weiter
+      - generic [ref=e19]: Oder
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: E-Mail
+          - textbox "deine@email.de" [ref=e23]: ragtest.coach@klaro-test.dev
+        - generic [ref=e24]:
+          - generic [ref=e25]: Passwort
+          - textbox "••••••••" [ref=e26]: KlaroRag!2026
+        - button "Registrieren" [ref=e41]
+      - generic [ref=e28]:
+        - text: Bereits einen Account?
+        - button "Hier anmelden" [ref=e42]
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]:
+    - img [ref=e36]
+  - alert [ref=e39]

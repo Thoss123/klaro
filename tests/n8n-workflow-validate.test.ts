@@ -7,6 +7,7 @@ describe('validateWorkflowStructure', () => {
     const wf: Workflow = {
       id: 'wf1',
       title: 'Test',
+      linked_pain_point: 'pp1',
       steps: [
         { id: 's1', label: 'Gmail', type: 'action', n8nType: 'n8n-nodes-base.gmail' },
       ],
@@ -21,6 +22,7 @@ describe('validateWorkflowStructure', () => {
     const wf: Workflow = {
       id: 'wf1',
       title: 'Test',
+      linked_pain_point: 'pp1',
       steps: [
         { id: 's1', label: 'Webhook', type: 'trigger', n8nType: 'n8n-nodes-base.webhook' },
         { id: 's2', label: 'Set', type: 'action', n8nType: 'n8n-nodes-base.set' },

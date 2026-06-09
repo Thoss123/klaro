@@ -69,6 +69,61 @@ export function withKlaroPrefix(name: string): string {
   return KLARO_WORKFLOW_PREFIX + (clean || 'Workflow');
 }
 
+function randId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Stellt sicher, dass kritische Node-Typen GÜLTIGE Parameter haben (sonst Runtime-Fehler
+ * wie „compareOperationFunctions[compareData.operation] is not a function" beim IF-Node).
+ * n8n IF/Filter v2 braucht conditions[].operator.{type,operation}.
+ */
+export function ensureNodeParams(
+  nodeType: string,
+  parameters: Record<string, unknown>,
+): Record<string, unknown> {
+  const p = { ...parameters };
+
+  if (nodeType === 'n8n-nodes-base.if' || nodeType === 'n8n-nodes-base.filter') {
+    const c = p.conditions as any;
+    const valid = c && Array.isArray(c.conditions) && c.conditions.length > 0
+      && c.conditions.every((cond: any) => cond?.operator?.type && cond?.operator?.operation);
+    if (!valid) {
+      p.conditions = {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+        conditions: [{
+          id: randId(),
+          leftValue: '={{ $json }}',
+          rightValue: '',
+          operator: { type: 'string', operation: 'exists', singleValue: true },
+        }],
+        combinator: 'and',
+      };
+    }
+  }
+
+  if (nodeType === 'n8n-nodes-base.switch') {
+    const rules = p.rules as any;
+    const hasValues = rules && Array.isArray(rules.values) && rules.values.length > 0;
+    if (!hasValues) {
+      p.mode = p.mode ?? 'rules';
+      p.rules = {
+        values: [{
+          conditions: {
+            options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+            conditions: [{ id: randId(), leftValue: '={{ $json }}', rightValue: '', operator: { type: 'string', operation: 'exists', singleValue: true } }],
+            combinator: 'and',
+          },
+          outputKey: '0',
+        }],
+      };
+      p.options = p.options ?? { fallbackOutput: 'none' };
+    }
+  }
+
+  return p;
+}
+
 /**
  * Build a valid n8n workflow JSON from a Phase-3 Workflow + step mappings.
  * Positions nodes horizontally with 200px spacing.
@@ -101,6 +156,9 @@ export function buildN8nWorkflow(
       parameters = mapping?.parameters || getDefaultParameters(toolKey, step);
     }
 
+    // Kritische Node-Parameter absichern (IF/Switch/Filter brauchen gültige Operatoren).
+    parameters = ensureNodeParams(nodeType, parameters || {});
+
     const nodeName = sanitizeName(step.label, i);
     const x = 200 + i * 250;
     const y = 300;
@@ -115,6 +173,15 @@ export function buildN8nWorkflow(
         id: mapping.credential_id,
         name: `${credentialKey}-credential`,
       };
+      // Viele n8n-Nodes (wie Airtable) erwarten zusätzlich, dass der Parameter "authentication"
+      // auf den Namen des Credential-Typs gesetzt ist (sonst steht dort oft "none" und es knallt).
+      if (parameters.authentication === 'none' || !parameters.authentication) {
+        parameters.authentication = credentialKey;
+      }
+    } else {
+      // Falls kein Credential existiert, aber "authentication" gesetzt ist, n8n verwirren wir
+      // nicht mit "none", was er als Credential-Typ sucht.
+      if (parameters.authentication === 'none') delete parameters.authentication;
     }
 
     nodes.push({
@@ -182,8 +249,10 @@ export function buildN8nWorkflow(
     name: withKlaroPrefix(workflowName),
     nodes,
     connections,
+    // WICHTIG: n8n REST POST /workflows lehnt `active` als read-only ab (400) → weglassen,
+    // Aktivierung nur über /activate. `availableInMCP: true` MUSS bleiben — sonst „Workflow is
+    // not available in MCP" beim Testlauf (MCP-Trigger braucht den Flag).
     settings: { executionOrder: 'v1', availableInMCP: true },
-    active: false,
   };
 }
 

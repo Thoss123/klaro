@@ -1,4 +1,5 @@
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
+import { parseUserAttachments } from '@/lib/chat-attachments';
 
 const PHASE_LABELS: Record<string, string> = {
   diagnose: '1. Diagnose',
@@ -21,7 +22,8 @@ export function numberedSessionTitle(phase: string, existingSamePhaseCount: numb
 /** Title from first visible user message. */
 export function titleFromUserMessage(content: string, phase: string): string | null {
   if (isHiddenSystemMessage(content)) return null;
-  const trimmed = content.trim();
+  const { text } = parseUserAttachments(content);
+  const trimmed = text.trim();
   if (trimmed.length < 3) return null;
   const excerpt = trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
   return `${phaseDefaultLabel(phase)} — ${excerpt}`;

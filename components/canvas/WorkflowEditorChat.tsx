@@ -7,8 +7,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
+import ChatPendingLoader from '@/components/chat/ChatPendingLoader';
 import { StepConfig, Workflow, WorkflowEdge, WorkflowStep } from '@/lib/types';
 import type { WorkflowEditorCoachContext, WorkflowEditorChatTurn } from '@/lib/workflow-editor-context';
+import { inputFieldsForStep, type NodeRunLite } from '@/lib/workflow-io';
+import ChatInput from '@/components/chat/ChatInput';
+import type { ChatAttachment } from '@/lib/chat-attachments';
 
 export type WorkflowEditorUpdate = {
   steps: WorkflowStep[];
@@ -18,11 +22,15 @@ export type WorkflowEditorUpdate = {
   openStepId?: string;
 };
 
+export type OmittedChatInputProps = never;
+
 export default function WorkflowEditorChat({
   workflow,
   stepConfigs,
   workflowDbId,
   coachContext,
+  runData = [],
+  runError = '',
   onWorkflowUpdate,
   disabled,
 }: {
@@ -30,12 +38,16 @@ export default function WorkflowEditorChat({
   stepConfigs?: Record<string, StepConfig>;
   workflowDbId?: string;
   coachContext?: WorkflowEditorCoachContext;
+  runData?: NodeRunLite[];
+  /** Fehler aus einem fehlgeschlagenen Testlauf ohne Per-Node-Daten (z. B. „Workflow hat Probleme“). */
+  runError?: string;
   onWorkflowUpdate: (update: WorkflowEditorUpdate) => void;
   disabled?: boolean;
 }) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [editorMessages, setEditorMessages] = useState<WorkflowEditorChatTurn[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,33 +58,76 @@ export default function WorkflowEditorChat({
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
   }, [editorMessages, loading]);
 
+  // Autofill message on per-node error
+  const prevRunDataRef = useRef(runData);
+  useEffect(() => {
+    if (runData !== prevRunDataRef.current) {
+      const newErrors = runData.filter(r => r.status === 'error' && !prevRunDataRef.current?.find(p => p.node === r.node && p.status === 'error'));
+      if (newErrors.length > 0) {
+        const errorMsg = newErrors[0];
+        setMessage(prev => prev ? prev : `Der Schritt "${errorMsg.node}" hat einen Fehler: ${errorMsg.error || 'Unbekannt'}. Was bedeutet das und kannst du es bitte direkt für mich beheben?`);
+      }
+      prevRunDataRef.current = runData;
+    }
+  }, [runData]);
+
+  // Autofill message on pre-execution error (kein Per-Node-runData, z. B. „Workflow hat Probleme").
+  const prevRunErrorRef = useRef('');
+  useEffect(() => {
+    if (runError && runError !== prevRunErrorRef.current) {
+      prevRunErrorRef.current = runError;
+      setMessage(prev => prev ? prev : `Beim Testen kam dieser Fehler: „${runError}". Was bedeutet das und kannst du es bitte direkt für mich beheben?`);
+    }
+    if (!runError) prevRunErrorRef.current = '';
+  }, [runError]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const text = message.trim();
-    if (!text || loading || disabled) return;
+    if (!message.trim() && attachments.length === 0) return;
 
-    const userTurn: WorkflowEditorChatTurn = { role: 'user', content: text };
-    setEditorMessages(prev => [...prev, userTurn]);
-    setMessage('');
     setLoading(true);
+    setEditorMessages(prev => [...prev, { role: 'user', content: message }]);
+    const currentMsg = message;
+    const currentAtt = attachments;
+    setMessage('');
+    setAttachments([]);
 
     try {
-      const res = await fetch('/api/n8n/workflow-edit', {
+      const flatRun = runData.flatMap(r =>
+        (r.json || []).slice(0, 3).map((item, i) =>
+          `[Run ${r.node} #${i}]: ${JSON.stringify(item)}`
+        )
+      );
+
+      const ioContext = workflow.steps.map(s => {
+        const iF = inputFieldsForStep(s, workflow.steps, workflow.edges ?? [], runData);
+        if (!iF.length) return null;
+        return `${s.label} Inputs:\n${iF.map(f => ` - ${f.path} (${f.sample})`).join('\n')}`;
+      }).filter(Boolean).join('\n\n');
+
+      const fullContext = [
+        ...editorMessages,
+        { role: 'user', content: currentMsg }
+      ];
+
+      const res = await fetch('/api/agents/workflow-editor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          message: currentMsg,
           workflow,
-          message: text,
-          step_configs: stepConfigs ?? {},
-          workflow_db_id: workflowDbId,
-          coach_context: {
-            ...coachContext,
-            activeWorkflowId: workflow.id,
-            editorHistory: [...editorMessages, userTurn],
-          },
+          stepConfigs,
+          workflowDbId,
+          coachContext,
+          history: fullContext,
+          attachments: currentAtt,
+          runDataSummary: flatRun.slice(0, 20).join('\n'),
+          ioContext,
         }),
       });
-      if (!res.ok) throw new Error('Anfrage fehlgeschlagen');
+
+      if (!res.ok) throw new Error('Network response was not ok');
+
       const data = await res.json() as WorkflowEditorUpdate & {
         changed?: boolean;
         mcpSynced?: boolean;
@@ -106,11 +161,11 @@ export default function WorkflowEditorChat({
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-[min(560px,calc(100%-2rem))] pointer-events-auto flex flex-col gap-2">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-[min(560px,calc(100%-2rem))] pointer-events-auto flex flex-col gap-2 shadow-xl rounded-3xl">
       {(editorMessages.length > 0 || loading) && (
         <div
           ref={threadRef}
-          className="max-h-40 overflow-y-auto rounded-2xl border border-gray-100 bg-white/95 backdrop-blur-sm shadow-lg px-4 py-3 space-y-2 text-sm"
+          className="max-h-40 overflow-y-auto rounded-2xl border border-gray-100 bg-white/95 backdrop-blur-sm shadow-lg px-4 py-3 space-y-2 text-sm mx-1"
         >
           {editorMessages.map((m, i) => (
             <div
@@ -129,35 +184,24 @@ export default function WorkflowEditorChat({
             </div>
           ))}
           {loading && (
-            <div className="flex items-center gap-2 text-gray-400 text-xs">
-              <Loader2 size={14} className="animate-spin" />
-              Klaro passt den Workflow an…
+            <div className="mt-3">
+              <ChatPendingLoader />
             </div>
           )}
         </div>
       )}
 
-      <form
+      <ChatInput
+        value={message}
+        onChange={setMessage}
         onSubmit={handleSubmit}
-        className="bg-white/95 backdrop-blur-sm rounded-2xl border border-gray-200 shadow-xl px-4 py-3 flex items-center gap-3"
-      >
-        <input
-          type="text"
-          value={message}
-          onChange={e => setMessage(e.target.value)}
-          disabled={disabled || loading}
-          placeholder="Wie im Coach-Chat — z.B. „statt ChatGPT Mistral in allen KI-Schritten“"
-          className="flex-1 text-sm bg-transparent border-none outline-none text-gray-800 placeholder:text-gray-400 min-w-0"
-        />
-        <button
-          type="submit"
-          disabled={disabled || loading || !message.trim()}
-          className="shrink-0 w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 disabled:opacity-40 transition-colors"
-          aria-label="Senden"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </button>
-      </form>
+        disabled={disabled || loading}
+        isStreaming={false}
+        attachments={attachments}
+        onAttachmentsChange={setAttachments}
+        sessionId={coachContext?.sessionId}
+        compact={true}
+      />
     </div>
   );
 }

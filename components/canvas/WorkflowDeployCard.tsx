@@ -24,7 +24,17 @@ import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 
 type DeployState = 'idle' | 'deploying' | 'done' | 'error';
 type RunState = 'idle' | 'running' | 'done' | 'error';
+export type NodeRun = { node: string; status: 'success' | 'error'; error?: string; json: unknown[]; itemCount: number };
 type PublishState = 'inactive' | 'active' | 'publishing' | 'error';
+
+/** Freie Position für einen losgelösten neuen Node — unter dem bestehenden Graphen. */
+function freeCanvasPosition(steps: WorkflowStep[]): { x: number; y: number } {
+  const positioned = steps.filter(s => s.position && !s.subNodeOf);
+  if (!positioned.length) return { x: 80, y: 200 };
+  const minX = Math.min(...positioned.map(s => s.position!.x));
+  const maxY = Math.max(...positioned.map(s => s.position!.y));
+  return { x: minX, y: maxY + 220 };
+}
 
 export default function WorkflowDeployCard({
   workflow,
@@ -63,18 +73,28 @@ export default function WorkflowDeployCard({
   const [deployError, setDeployError] = useState('');
   const [runState, setRunState] = useState<RunState>('idle');
   const [runError, setRunError] = useState('');
+  const [runData, setRunData] = useState<NodeRun[]>([]);
   const [publishState, setPublishState] = useState<PublishState>('inactive');
   const [publishError, setPublishError] = useState('');
+  /** Debounce-Timer für n8n-Sync — verhindert Sync-Storm bei schnellen Änderungen. */
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestStepConfigsRef = useRef(stepConfigs);
+
+  useEffect(() => {
+    latestStepConfigsRef.current = stepConfigs;
+  }, [stepConfigs]);
 
   const displayWorkflow: Workflow = { ...workflow, steps, edges };
   const deployed = deployState === 'done';
 
   // Beim Wechsel auf einen anderen Workflow lokalen Zustand neu aus den Props laden.
+  // Nur auf workflow.id reagieren – NICHT auf workflow.steps/.edges, da applyGraph die Steps
+  // bereits lokal setzt UND onWorkflowPersist aufruft, was steps-Prop mit neuer Referenz zurückgibt
+  // und sonst eine Feedback-Schleife (applyGraph → persist → useEffect → setSteps → re-render → …) auslöst.
   const lastWorkflowIdRef = useRef(workflow.id);
   useEffect(() => {
-    if (lastWorkflowIdRef.current !== workflow.id) {
-      lastWorkflowIdRef.current = workflow.id;
-    }
+    if (lastWorkflowIdRef.current === workflow.id) return; // Gleicher Workflow — kein Reset nötig
+    lastWorkflowIdRef.current = workflow.id;
     setSteps(workflow.steps);
     setEdges(workflow.edges ?? defaultLinearEdges(workflow.steps));
   }, [workflow.id, workflow.steps, workflow.edges]);
@@ -86,8 +106,18 @@ export default function WorkflowDeployCard({
     }
   }, [autoOpen, modalOpen, onAutoOpen]);
 
-  /** Einzige Schreibstelle für den Graph: Trigger garantiert verbunden + ins Canvas persistieren. */
-  const applyGraph = useCallback((nextSteps: WorkflowStep[], nextEdges: WorkflowEdge[]) => {
+  // Ausstehenden Sync-Timer beim Unmount abbrechen.
+  useEffect(() => () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); }, []);
+
+  /**
+   * Einzige Schreibstelle für den Graph: Trigger verbunden + ins Canvas persistieren + (wenn deployed) live nach n8n syncen.
+   * skipSync=true für reine Positions-Drags (n8n kennt keine Canvas-Koordinaten → kein Sync nötig).
+   */
+  const applyGraph = useCallback((
+    nextSteps: WorkflowStep[],
+    nextEdges: WorkflowEdge[],
+    { skipSync = false }: { skipSync?: boolean } = {},
+  ) => {
     const synced = syncAiGraphMeta(nextSteps, nextEdges);
     const wired = withTriggerFirst(synced, nextEdges);
     setSteps(wired.steps);
@@ -96,8 +126,26 @@ export default function WorkflowDeployCard({
       const fresh = wired.steps.find(s => s.id === activeStep.id);
       if (fresh) setActiveStep(fresh);
     }
-    onWorkflowPersist?.({ ...workflow, steps: wired.steps, edges: wired.edges });
-  }, [workflow, onWorkflowPersist, activeStep]);
+    const nextWf = { ...workflow, steps: wired.steps, edges: wired.edges };
+    onWorkflowPersist?.(nextWf);
+    // Nach Deploy: strukturelle Änderungen nach n8n spiegeln — debounced, nie für reine Drag-Positionen.
+    if (deployedWorkflowId && !skipSync) {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(() => {
+        fetch('/api/n8n/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workflow_db_id: deployedWorkflowId,
+            workflow: nextWf,
+            step_configs: stepConfigs,
+            workflow_name: workflow.title,
+            structure_changed: true,
+          }),
+        }).catch(console.error);
+      }, 800);
+    }
+  }, [workflow, onWorkflowPersist, activeStep, deployedWorkflowId, stepConfigs]);
 
   const handleWorkflowUpdate = useCallback((update: WorkflowEditorUpdate) => {
     applyGraph(update.steps, update.edges);
@@ -106,9 +154,9 @@ export default function WorkflowDeployCard({
       for (const [stepId, partial] of Object.entries(update.stepConfigUpdates)) {
         const prev = stepConfigs[stepId];
         onStepConfigSave(stepId, {
-          configType: 'n8n',
           ...prev,
           ...partial,
+          configType: 'n8n',
           n8nType: partial.n8nType ?? prev?.n8nType,
           n8nTypeVersion: partial.n8nTypeVersion ?? prev?.n8nTypeVersion,
           parameters: { ...prev?.parameters, ...partial.parameters },
@@ -127,9 +175,14 @@ export default function WorkflowDeployCard({
     applyGraph(steps, nextEdges);
   }, [applyGraph, steps]);
 
+  // Nur Positions-Drag — kein n8n-Sync, da n8n Canvas-Koordinaten nicht kennt.
   const handleStepsUpdate = useCallback((nextSteps: WorkflowStep[]) => {
-    applyGraph(nextSteps, edges);
+    applyGraph(nextSteps, edges, { skipSync: true });
   }, [applyGraph, edges]);
+
+  const handleStepClick = useCallback((step: WorkflowStep) => {
+    setActiveStep(step);
+  }, []);
 
   const handleQuickInsert = useCallback((newStep: WorkflowStep) => {
     const afterId = steps[steps.length - 1]?.id;
@@ -139,17 +192,20 @@ export default function WorkflowDeployCard({
   }, [applyGraph, steps, edges]);
 
   const handleAddStep = useCallback((entry: N8nCatalogIndexEntry) => {
+    const type = stepTypeFromCatalogEntry(entry);
     const newStep: WorkflowStep = {
       id: `step-${Date.now()}`,
       label: shortLabel(entry.displayName, { n8nType: entry.name }),
-      type: stepTypeFromCatalogEntry(entry),
+      type,
       n8nType: entry.name,
       n8nTypeVersion: entry.version,
       tool: entry.name.split('.').pop(),
       credentialType: entry.credentialTypes[0],
+      // Detached: irgendwo wo Platz ist (unter dem bestehenden Graphen). Verbinden per Drag.
+      position: freeCanvasPosition(steps),
     };
-    const afterId = steps[steps.length - 1]?.id;
-    const res = insertStepInGraph(steps, edges, newStep, { afterStepId: afterId });
+    // Kein afterStepId → der neue Node bleibt unverbunden (n8n-Stil: erst platzieren, dann verbinden).
+    const res = insertStepInGraph(steps, edges, newStep);
     applyGraph(res.steps, res.edges);
     setActiveStep(newStep);
   }, [applyGraph, steps, edges]);
@@ -209,9 +265,9 @@ export default function WorkflowDeployCard({
     .filter(requiresConfig)
     .every(s => isConfigured(s, stepConfigs[s.id]));
 
-  const buildMappings = (): StepMapping[] =>
+  const buildMappings = (configs = latestStepConfigsRef.current): StepMapping[] =>
     steps.map(step => {
-      const config = stepConfigs[step.id];
+      const config = configs[step.id];
       const n8nType = config?.n8nType || step.n8nType;
       const parameters = buildParameters(step, config);
       return {
@@ -227,15 +283,17 @@ export default function WorkflowDeployCard({
   const syncToN8n = async (opts: {
     structureChanged?: boolean;
     changedStepIds?: string[];
+    forcedConfigs?: Record<string, StepConfig>;
   } = {}) => {
     if (!deployedWorkflowId) return;
+    const configsToUse = opts.forcedConfigs || latestStepConfigsRef.current;
     await fetch('/api/n8n/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workflow_db_id: deployedWorkflowId,
         workflow: displayWorkflow,
-        step_configs: stepConfigs,
+        step_configs: configsToUse,
         workflow_name: workflow.title,
         structure_changed: opts.structureChanged ?? false,
         changed_step_ids: opts.changedStepIds,
@@ -244,9 +302,24 @@ export default function WorkflowDeployCard({
   };
 
   const handleStepConfigSaveWithSync = (stepId: string, config: StepConfig) => {
+    const oldConfig = latestStepConfigsRef.current[stepId];
+    const credentialChanged = config.credentialType !== oldConfig?.credentialType || config.credentialValue !== oldConfig?.credentialValue;
+
+    // Lokalen Zustand sofort speichern (UI), n8n-Sync aber debouncen —
+    // beim Tippen feuert das pro Tastendruck, sonst ein Sync-Storm.
     onStepConfigSave(stepId, config);
     if (deployedWorkflowId) {
-      syncToN8n({ changedStepIds: [stepId] }).catch(console.error);
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      // We manually build the projected config here to ensure the debounce callback has it,
+      // because latestStepConfigsRef.current might not be updated yet when the timeout starts.
+      const projectedConfigs = { ...latestStepConfigsRef.current, [stepId]: config };
+      syncTimerRef.current = setTimeout(() => {
+        syncToN8n({ 
+          changedStepIds: [stepId], 
+          forcedConfigs: projectedConfigs,
+          structureChanged: credentialChanged 
+        }).catch(console.error);
+      }, 800);
     }
   };
 
@@ -261,7 +334,7 @@ export default function WorkflowDeployCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workflow: displayWorkflow,
-          step_configs: stepConfigs,
+          step_configs: latestStepConfigsRef.current,
           workflow_db_id: deployedWorkflowId,
           mappings,
           workflow_name: workflow.title,
@@ -298,7 +371,7 @@ export default function WorkflowDeployCard({
             id: deployedWorkflowId,
             action: 'update',
             workflow: displayWorkflow,
-            step_configs: stepConfigs,
+            step_configs: latestStepConfigsRef.current,
             mappings,
             name: workflow.title,
           }),
@@ -315,9 +388,10 @@ export default function WorkflowDeployCard({
           project_id: projectId,
           workflow: displayWorkflow,
           mappings,
-          step_configs: stepConfigs,
+          step_configs: latestStepConfigsRef.current,
           name: workflow.title,
           linked_use_case: workflow.linked_pain_point,
+          canvas_workflow_id: workflow.id,
         }),
       });
       const payload = await res.json();
@@ -337,8 +411,45 @@ export default function WorkflowDeployCard({
     }
   };
 
+  /** Lazy-Deploy: stellt sicher, dass ein n8n-Workflow existiert (ohne Config-Block) und liefert die id.
+   *  „Immer testbar" — fehlende Config wirft erst beim Testen einen Node-Fehler. */
+  const ensureDeployed = async (): Promise<string | null> => {
+    if (deployedWorkflowId) return deployedWorkflowId;
+    setDeployState('deploying');
+    setDeployError('');
+    try {
+      // vorhandene Credentials speichern (für den Testlauf), Fehler ignorieren
+      for (const step of steps) {
+        const config = stepConfigs[step.id];
+        if (!config?.credentialValue?.trim()) continue;
+        await fetch('/api/n8n/credentials', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId, tool_name: credentialToolName(config, step), credential_type: config.credentialType || 'api_key', value: config.credentialValue }),
+        }).catch(() => {});
+      }
+      const res = await fetch('/api/n8n/workflows', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId, workflow: displayWorkflow, mappings: buildMappings(),
+          step_configs: latestStepConfigsRef.current, name: workflow.title, linked_use_case: workflow.linked_pain_point,
+          canvas_workflow_id: workflow.id,
+          skip_validate: true,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload.workflow?.id) throw new Error(payload.error || 'Deploy fehlgeschlagen');
+      setDeployState('done');
+      onDeployed(payload.workflow.id);
+      return payload.workflow.id as string;
+    } catch (e: unknown) {
+      setDeployError(e instanceof Error ? e.message : 'Deploy fehlgeschlagen');
+      setDeployState('error');
+      return null;
+    }
+  };
+
   const handlePublish = async (activate: boolean) => {
-    const wfId = deployedWorkflowId;
+    const wfId = deployedWorkflowId ?? await ensureDeployed();
     if (!wfId) return;
     setPublishState('publishing');
     setPublishError('');
@@ -358,10 +469,31 @@ export default function WorkflowDeployCard({
   };
 
   const handleRun = async () => {
-    const wfId = deployedWorkflowId;
-    if (!wfId) return;
     setRunState('running');
     setRunError('');
+    let wfId = deployedWorkflowId;
+    if (wfId) {
+      try {
+        // Update workflow in n8n before running to apply latest stepConfigs
+        await fetch('/api/n8n/workflows', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: wfId,
+            action: 'update',
+            workflow: displayWorkflow,
+            step_configs: latestStepConfigsRef.current,
+            mappings: buildMappings(),
+            name: workflow.title,
+          }),
+        });
+      } catch (e) {
+        console.warn('Update vor dem Test fehlgeschlagen', e);
+      }
+    } else {
+      wfId = (await ensureDeployed()) ?? undefined;
+    }
+    if (!wfId) { setRunState('error'); setRunError('Konnte nicht deployen'); return; }
     try {
       const res = await fetch('/api/n8n/executions', {
         method: 'POST',
@@ -369,6 +501,7 @@ export default function WorkflowDeployCard({
         body: JSON.stringify({ workflow_id: wfId }),
       });
       const data = await res.json();
+      if (Array.isArray(data.runData)) setRunData(data.runData as NodeRun[]);
       if (!res.ok) throw new Error(data.error || 'Ausführung fehlgeschlagen');
       if (data.ok === false) {
         throw new Error(data.error || `Test fehlgeschlagen (${data.status ?? 'unbekannt'})`);
@@ -443,9 +576,10 @@ export default function WorkflowDeployCard({
       {modalOpen && (
           <WorkflowDeployModal
             workflow={displayWorkflow}
+            projectId={projectId}
             stepConfigs={stepConfigs}
             activeStep={activeStep}
-            onStepClick={step => !deployed && setActiveStep(step)}
+            onStepClick={step => setActiveStep(step)}
             onStepSave={handleStepConfigSaveWithSync}
             workflowDbId={deployedWorkflowId}
             onStepPanelClose={() => setActiveStep(null)}
@@ -462,6 +596,7 @@ export default function WorkflowDeployCard({
             deployed={deployed}
             deployState={deployState}
             runState={runState}
+            runData={runData}
             deployError={deployError}
             runError={runError}
             allRequiredConfigured={allRequiredConfigured}

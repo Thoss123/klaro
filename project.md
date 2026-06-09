@@ -43,9 +43,11 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 - **Rolle:** Verhindert "Memory Pollution" (das Verwässern von Kernzielen durch irrelevantes Geplauder).
 - **Route:** `/api/memory-update`
 
-### 2.4 Der Industry Playbook Agent (n8n + NotebookLM)
-- **Aufgabe:** Branchenwissen **vor** dem ersten Chat (Onboarding → n8n Webhook → `industry_playbooks`).
-- **Umsetzung:** Sprint 3 in `roadmap.md`.
+### 2.4 Wissensdatenbank-Zugriff (RAG-Tool `search_knowledge`)
+- **Ersetzt** den früher geplanten Industry-Playbook-Agent (kein n8n/NotebookLM-Pre-Research mehr).
+- **Aufgabe:** Der Haupt-Coach durchsucht bei Bedarf die zentrale RAG-Wissensdatenbank (§3.4) über das Tool `search_knowledge` — für UI-How-tos, Tool-Setup, abgedeckte Use-Cases und vor dem Workflow-Bauen.
+- **Selektiv:** Der Coach bewertet die Treffer selbst (Relevanz-Score + `branche`-Metadaten) und ignoriert Unpassendes. Kein automatisches Reinpressen von Kontext mehr.
+- **Code:** `lib/ai-tools.ts` (Tool-Definition), Handler in `app/api/chat/route.ts`, Regel 10 in `KLARO_SHARED_RULES` (`lib/claude.ts`).
 
 ### 2.5 Topic Research Agent (Mistral Small) *(Sprint 3)*
 - **Aufgabe:** Session-spezifische Recherche für Phase Plan (z. B. YouTube/Reels, Trends) — Output `ResearchBrief` für Canvas-Worker.

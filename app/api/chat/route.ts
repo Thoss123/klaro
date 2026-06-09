@@ -117,16 +117,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // RAG Retrieval
-    const { retrieveRelevantKnowledge } = await import('@/lib/rag');
-    const ragContext = await retrieveRelevantKnowledge(
-      messages[messages.length - 1]?.content || '',
-      currentPhase,
-    );
-    if (ragContext) {
-      systemPrompt += ragContext;
-      console.log(`[RAG] Injected knowledge context into prompt.`);
-    }
+    // RAG is now coach-driven via the `search_knowledge` tool (see onToolCall below),
+    // not auto-injected — so irrelevant entries (e.g. wrong branche) are never forced
+    // into context. The coach queries when it needs to and judges relevance itself.
 
     // Get AI Provider
     const { getProvider } = await import('@/lib/ai-provider');
@@ -158,8 +151,36 @@ export async function POST(req: NextRequest) {
             },
             async (toolCall: any) => {
                console.log('[Tool Call Execution]:', toolCall.name, toolCall.args);
-               
-               if (toolCall.name === 'prepare_phase') {
+
+               if (toolCall.name === 'search_knowledge') {
+                 try {
+                   const { searchKnowledge } = await import('@/lib/rag');
+                   const kategorie = typeof toolCall.args.kategorie === 'string' ? toolCall.args.kategorie : undefined;
+                   const matches = await searchKnowledge({
+                     query: toolCall.args.query || '',
+                     types: kategorie ? ([kategorie] as any) : undefined,
+                     matchCount: 4,
+                     threshold: 0.4,
+                   });
+                   console.log(`[search_knowledge] "${toolCall.args.query}" → ${matches.length} Treffer`);
+                   if (!matches.length) {
+                     return { treffer: [], hinweis: 'Keine passenden Einträge gefunden — nutze dein eigenes Wissen, ohne zu erfinden.' };
+                   }
+                   return {
+                     treffer: matches.map((m: any) => ({
+                       titel: m.title,
+                       art: m.source_type,
+                       relevanz: Math.round(m.similarity * 100) / 100,
+                       branche: (m.metadata && m.metadata.branche) || null,
+                       inhalt: m.content,
+                     })),
+                     hinweis: 'Verwende nur Treffer, die zur Branche und Situation des Nutzers passen. Ignoriere unpassende oder wenig relevante Einträge und erfinde nichts dazu.',
+                   };
+                 } catch (e: any) {
+                   console.error('[search_knowledge] failed:', e?.message);
+                   return { treffer: [], hinweis: 'Wissensdatenbank nicht verfügbar — nutze dein eigenes Wissen.' };
+                 }
+               } else if (toolCall.name === 'prepare_phase') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"prepare_phase","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  return { status: 'success', message: `Phase ${toolCall.args.next_phase} prepared.` };
                } else if (toolCall.name === 'deploy_workflow') {
@@ -263,6 +284,8 @@ export async function POST(req: NextRequest) {
                        project_id,
                        workflow_id: toolCall.args.workflow_id,
                        title: toolCall.args.title,
+                       steps: toolCall.args.steps,
+                       linked_pain_point: toolCall.args.linked_pain_point,
                      }),
                    });
                    const data = await res.json();

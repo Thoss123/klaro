@@ -7,7 +7,7 @@
 
 import React, { memo, useState } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { AlertCircle, Check, Settings2, Power, Trash2, Plus } from 'lucide-react';
+import { AlertCircle, Check, Settings2, Power, Trash2, Plus, X, Play, Loader2 } from 'lucide-react';
 import N8nNodeIcon from './N8nNodeIcon';
 import {
   getMergeInputCount,
@@ -25,10 +25,13 @@ export type FlowNodeData = {
   step: WorkflowStep;
   state: N8nNodeState;
   interactive?: boolean;
+  /** Status aus dem letzten Testlauf: 'success' = durchgelaufen, 'error' = gescheitert. */
+  runStatus?: 'success' | 'error' | 'running';
   onClick?: () => void;
   onDelete?: () => void;
   onToggleDisabled?: () => void;
   onAddSubNode?: (slot: string) => void;
+  onRun?: () => void;
 };
 
 const ICON_SIZE = 76;
@@ -37,7 +40,7 @@ const HANDLE_CLASS = '!w-[15px] !h-[15px] !border-2 !border-white !shadow-sm';
 const SWITCH_LABELS = ['0', '1', '2', '3', '4', '5', '6', '7'];
 
 function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeData>>) {
-  const { step, state, onClick, onDelete, onToggleDisabled, onAddSubNode, interactive } = data;
+  const { step, state, runStatus, onClick, onDelete, onToggleDisabled, onAddSubNode, onRun, interactive } = data;
   const aiSlots = aiSlotsFor(step.n8nType);
   const isAiParent = aiSlots.length > 0;
   const isSubNode = !!step.subNodeOf;
@@ -49,10 +52,13 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
   const disabled = !!step.disabled;
   const [hovered, setHovered] = useState(false);
 
+  // Nur der LAUF-Status erzeugt grün/✓. Konfiguriert-aber-noch-nicht-gelaufen = neutrales Grau.
   const border =
     disabled ? 'border-gray-300'
+    : runStatus === 'running' ? 'border-indigo-500' // Animation comes from overlay
+    : runStatus === 'error' ? 'border-red-500 ring-2 ring-red-200'
+    : runStatus === 'success' ? 'border-green-500 ring-2 ring-green-200'
     : selected ? 'border-indigo-500 ring-2 ring-indigo-200'
-    : state === 'configured' ? 'border-green-500'
     : state === 'needsCredential' ? 'border-red-400'
     : 'border-[#c8c8d4]';
 
@@ -67,50 +73,61 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
 
   return (
     <div
-      className="relative flex flex-col items-center pointer-events-auto"
+      className="relative flex flex-col items-center pointer-events-auto group"
       style={{ width: columnW }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Hover-Toolbar (n8n-Stil) */}
       {showToolbar && (
-        <div className="nodrag absolute -top-9 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md">
-          <button
-            type="button"
-            title="Konfigurieren"
-            onClick={stop(onClick)}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-          >
-            <Settings2 size={14} />
-          </button>
-          <button
-            type="button"
-            title={disabled ? 'Aktivieren' : 'Deaktivieren'}
-            onClick={stop(onToggleDisabled)}
-            className={`flex h-7 w-7 items-center justify-center rounded-md hover:bg-gray-100 ${disabled ? 'text-amber-500' : 'text-gray-500 hover:text-gray-800'}`}
-          >
-            <Power size={14} />
-          </button>
-          {step.type !== 'trigger' && (
+        <div className="nodrag absolute -top-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+          <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md">
             <button
               type="button"
-              title="Löschen"
-              onClick={stop(onDelete)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600"
+              title="Konfigurieren"
+              onClick={stop(onClick)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
             >
-              <Trash2 size={14} />
+              <Settings2 size={16} />
             </button>
-          )}
+            <button
+              type="button"
+              title={disabled ? 'Aktivieren' : 'Deaktivieren'}
+              onClick={stop(onToggleDisabled)}
+              className={`flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 ${disabled ? 'text-amber-500' : 'text-gray-500 hover:text-gray-800'}`}
+            >
+              <Power size={16} />
+            </button>
+            {step.type !== 'trigger' && (
+              <button
+                type="button"
+                title="Löschen"
+                onClick={stop(onDelete)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-50 hover:text-red-600"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+          {/* Invisible bridge so hover doesn't drop between node and toolbar —
+              breiter als der Node, damit der Hover auch auf dem Weg nach oben nicht abreißt. */}
+          <div className="h-5" style={{ width: columnW }} />
         </div>
       )}
 
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
         style={{ width: ICON_SIZE, height: ICON_SIZE, opacity: disabled ? 0.5 : 1 }}
-        className={`relative rounded-xl border-2 bg-white shadow-sm flex items-center justify-center transition-shadow hover:shadow-md ${border}`}
+        className={`relative rounded-xl border-2 bg-white shadow-sm flex items-center justify-center transition-shadow hover:shadow-md cursor-pointer ${border}`}
         aria-label={step.label}
       >
+        {runStatus === 'running' && (
+          <div className="absolute inset-[-4px] rounded-2xl border-[3px] border-indigo-500 border-t-transparent border-r-transparent animate-spin pointer-events-none" />
+        )}
+
         {isMerge ? (
           Array.from({ length: mergeInputs }, (_, i) => {
             const pct = mergeInputs === 1 ? 50 : 20 + (i / (mergeInputs - 1)) * 60;
@@ -143,15 +160,37 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
           color="#6366f1"
         />
 
-        {state === 'configured' && !disabled && (
-          <span className="absolute -bottom-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-green-500">
-            <Check size={11} className="text-white" strokeWidth={3} />
+        {/* Lauf-Badge: ✗ wenn gescheitert, ✓ wenn durchgelaufen (Vorrang vor Konfig-Badge) */}
+        {runStatus === 'running' && !disabled && (
+          <span className="absolute -bottom-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-indigo-500">
+            <Loader2 size={12} className="text-white animate-spin" strokeWidth={3} />
           </span>
         )}
-        {state === 'needsCredential' && !disabled && (
+        {runStatus === 'error' && !disabled && (
+          <span className="absolute -bottom-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-red-500">
+            <X size={12} className="text-white" strokeWidth={3} />
+          </span>
+        )}
+        {runStatus === 'success' && !disabled && (
+          <span className="absolute -bottom-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-green-500">
+            <Check size={12} className="text-white" strokeWidth={3} />
+          </span>
+        )}
+        {!runStatus && state === 'needsCredential' && !disabled && (
           <span className="absolute -bottom-1.5 -right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-red-500">
             <AlertCircle size={11} className="text-white" strokeWidth={2.5} />
           </span>
+        )}
+
+        {/* Testen-Button für Trigger-Nodes — größer, deutlich unter dem Node */}
+        {step.type === 'trigger' && interactive && onRun && (
+          <button
+            type="button"
+            onClick={stop(onRun)}
+            className="nodrag absolute -bottom-6 left-1/2 -translate-x-1/2 translate-y-full z-10 flex items-center gap-2 rounded-full bg-green-500 px-6 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-green-600 hover:shadow-xl transition-all"
+          >
+            <Play size={16} className="fill-current" /> Testen
+          </button>
         )}
 
         {isIf && (
@@ -223,7 +262,7 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
             />
           );
         })}
-      </button>
+      </div>
 
       <p
         className={`mt-2 w-full text-center text-[11px] font-medium leading-snug line-clamp-2 pointer-events-none px-0.5 ${disabled ? 'text-gray-400 line-through' : 'text-gray-700'}`}

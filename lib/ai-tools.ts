@@ -8,6 +8,25 @@ export interface AITool {
 
 export const KLARO_TOOLS: AITool[] = [
   {
+    name: "search_knowledge",
+    description: "Durchsucht Klaros zentrale Wissensdatenbank: Tool-Anleitungen, UI-How-tos (wie man etwas in Klaro macht), abgedeckte Use-Cases, Branchen-Infos und Workflow-Bausteine. Nutze es, BEVOR du antwortest, wenn: der Nutzer fragt WIE man etwas in Klaro oder einem Tool macht; ein Tool eingerichtet/verbunden werden soll; oder du einen Workflow bzw. einen Schritt vorschlagen oder bauen willst. Die Treffer haben einen Relevanz-Score (similarity) und Metadaten (z.B. branche). Verwende nur, was zur Situation des Nutzers passt — ignoriere unpassende Treffer (falsche Branche, falsches Tool, niedrige Relevanz) und erfinde nichts dazu. Erwähne das Tool oder die Datenbank NIE im Chat.",
+    schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Wonach gesucht wird, in natürlicher Sprache (z.B. 'Gmail in n8n verbinden', 'Angebot aus Gesprächsnotiz automatisieren', 'Credential in Klaro hinterlegen')."
+        },
+        kategorie: {
+          type: "string",
+          enum: ["tool", "ui_guide", "use_case", "branche", "template_baustein", "template_workflow"],
+          description: "Optional: auf eine Wissensart einschränken. Weglassen, um alles zu durchsuchen."
+        }
+      },
+      required: ["query"]
+    }
+  },
+  {
     name: "prepare_phase",
     description: "Bereitet die nächste Projektphase vor, z.B. Erstellung von Zusammenfassungen.",
     schema: {
@@ -88,20 +107,36 @@ export const KLARO_TOOLS: AITool[] = [
   },
   {
     name: "build_workflow",
-    description: "Baut einen Phase-3-Workflow-Plan live im Workflow-Editor auf dem Canvas (n8n-Nodes, React-Flow-Graph). Nur in Phase 4 — nachdem der Nutzer gewählt hat, womit er anfangen will.",
+    description: "Baut live einen Workflow im Editor auf dem Canvas (n8n-Nodes, React-Flow-Graph). Nur in Phase 4. ZWEI Modi: (A) bestehenden Plan bauen → nur workflow_id aus workflow_plans. (B) NEUEN Workflow bauen (auch ohne Pain Point, wenn der Nutzer etwas anderes will) → title + steps mitgeben. Schritte: 5–9, jeder mit kurzem Label + type. Erster Schritt MUSS type=trigger sein.",
     schema: {
       type: "object",
       properties: {
         workflow_id: {
           type: "string",
-          description: "Die id des Workflow-Plans aus workflow_plans (z.B. wf_1)"
+          description: "Modus A: id des Workflow-Plans aus workflow_plans (z.B. wf_1). Bei neuem Workflow weglassen."
         },
         title: {
           type: "string",
-          description: "Alternativ: Titel des Plans, falls id unklar"
+          description: "Titel des Workflows. Pflicht bei neuem Workflow (Modus B), sonst optional."
+        },
+        steps: {
+          type: "array",
+          description: "Modus B (neuer Workflow): die Ablauf-Schritte. Nur nötig, wenn kein passender Plan existiert.",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Kurzer deutscher Schritt-Text (was passiert)" },
+              type: { type: "string", description: "trigger | action | ai | decision | human | output" }
+            },
+            required: ["label"]
+          }
+        },
+        linked_pain_point: {
+          type: "string",
+          description: "Optional: id des Pain Points, den dieser Workflow löst. Kann leer sein."
         }
       },
-      required: ["workflow_id"]
+      required: []
     }
   },
   {
@@ -193,16 +228,35 @@ function mapToGeminiType(type: string): SchemaType {
   }
 }
 
+/** Recursively map JSON-Schema props to Gemini Schema (arrays need `items`, objects need `properties`). */
+function toGeminiPropertySchema(prop: Record<string, unknown>): Record<string, unknown> {
+  const schema: Record<string, unknown> = {
+    type: mapToGeminiType(String(prop.type ?? 'string')),
+  };
+  if (prop.description) schema.description = prop.description;
+  if (prop.enum) schema.enum = prop.enum;
+
+  if (prop.type === 'array' && prop.items) {
+    schema.items = toGeminiPropertySchema(prop.items as Record<string, unknown>);
+  }
+  if (prop.type === 'object' && prop.properties) {
+    const nested: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(prop.properties as Record<string, Record<string, unknown>>)) {
+      nested[key] = toGeminiPropertySchema(val);
+    }
+    schema.properties = nested;
+    if (Array.isArray(prop.required) && prop.required.length) {
+      schema.required = prop.required;
+    }
+  }
+  return schema;
+}
+
 export function toGeminiTools(tools: AITool[]): FunctionDeclaration[] {
   return tools.map(tool => {
-    const properties: Record<string, any> = {};
+    const properties: Record<string, unknown> = {};
     for (const key of Object.keys(tool.schema.properties)) {
-      const prop = tool.schema.properties[key];
-      properties[key] = {
-        type: mapToGeminiType(prop.type),
-        description: prop.description,
-        ...(prop.enum ? { enum: prop.enum } : {})
-      };
+      properties[key] = toGeminiPropertySchema(tool.schema.properties[key]);
     }
 
     return {
@@ -213,7 +267,7 @@ export function toGeminiTools(tools: AITool[]): FunctionDeclaration[] {
         properties,
         required: tool.schema.required || []
       }
-    };
+    } as unknown as FunctionDeclaration;
   });
 }
 

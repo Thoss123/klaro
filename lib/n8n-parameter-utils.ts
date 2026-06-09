@@ -16,11 +16,15 @@ function matchesDisplayRule(
   return true;
 }
 
-/** Whether a property should be visible given current parameter values. */
 export function isPropertyVisible(
   prop: N8nNodeProperty,
   values: Record<string, unknown>,
 ): boolean {
+  if (prop.name === 'jsCode' || prop.name === 'pythonCode' || prop.name === 'code') return true;
+  // Wir verwalten Credentials (und damit den Auth-Typ) über unsere eigene Credential-UI.
+  // Das n8n "authentication" Property soll daher nicht als normales Feld im Formular auftauchen.
+  if (prop.name === 'authentication') return false;
+
   const show = prop.displayOptions?.show;
   const hide = prop.displayOptions?.hide;
   if (show && !matchesDisplayRule(show, values)) return false;
@@ -28,7 +32,6 @@ export function isPropertyVisible(
   return true;
 }
 
-/** Flat properties we can render in v1 (skip loadOptions, resourceLocator, etc.). */
 export const RENDERABLE_PROPERTY_TYPES = new Set([
   'string',
   'number',
@@ -37,14 +40,16 @@ export const RENDERABLE_PROPERTY_TYPES = new Set([
   'multiOptions',
   'json',
   'dateTime',
+  'collection',
+  'fixedCollection',
+  // Airtable Base/Table u. ä. — ohne dieses Feld ist der Node nicht konfigurierbar.
+  'resourceLocator',
 ]);
 
 export function isRenderableProperty(prop: N8nNodeProperty): boolean {
   if (prop.type === 'hidden') return false;
   if (prop.type === 'notice') return false;
-  if (prop.type === 'collection' || prop.type === 'fixedCollection') return false;
   if (prop.type === 'loadOptions') return false;
-  if (prop.type === 'resourceLocator') return false;
   return RENDERABLE_PROPERTY_TYPES.has(prop.type) || prop.type === 'options';
 }
 

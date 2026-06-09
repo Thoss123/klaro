@@ -4,26 +4,29 @@
  * Phase 4: n8n workflow editor + deploy — ~90% viewport with margin, chat bar on canvas.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, Rocket, Play, AlertCircle, Power, PowerOff } from 'lucide-react';
+import { X, Check, Loader2, Rocket, Play, AlertCircle, Power, PowerOff, Plus } from 'lucide-react';
 import { Workflow, WorkflowStep, StepConfig } from '@/lib/types';
 import WorkflowFlowCanvas from './WorkflowFlowCanvas';
 import StepConfigPanel from './StepConfigPanel';
 import WorkflowEditorChat, { type WorkflowEditorUpdate } from './WorkflowEditorChat';
 import N8nNodePickerModal from './N8nNodePickerModal';
 import { configProgress } from '@/lib/workflow-deploy';
+import { inputFieldsForStep, runForStep } from '@/lib/workflow-io';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import type { WorkflowEdge } from '@/lib/types';
 import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 
 type DeployState = 'idle' | 'deploying' | 'done' | 'error';
 type RunState = 'idle' | 'running' | 'done' | 'error';
+export type NodeRun = { node: string; status: 'success' | 'error'; error?: string; json: unknown[]; itemCount: number };
 type PublishState = 'inactive' | 'active' | 'publishing' | 'error';
 
 export default function WorkflowDeployModal({
   workflow,
+  projectId,
   stepConfigs,
   activeStep,
   onStepClick,
@@ -42,6 +45,7 @@ export default function WorkflowDeployModal({
   deployed,
   deployState,
   runState,
+  runData = [],
   deployError,
   runError,
   allRequiredConfigured,
@@ -56,6 +60,7 @@ export default function WorkflowDeployModal({
   editorCoachContext,
 }: {
   workflow: Workflow;
+  projectId?: string;
   stepConfigs: Record<string, StepConfig>;
   activeStep: WorkflowStep | null;
   onStepClick: (step: WorkflowStep) => void;
@@ -74,6 +79,7 @@ export default function WorkflowDeployModal({
   deployed: boolean;
   deployState: DeployState;
   runState: RunState;
+  runData?: NodeRun[];
   deployError: string;
   runError: string;
   allRequiredConfigured: boolean;
@@ -91,6 +97,9 @@ export default function WorkflowDeployModal({
   const [visible, setVisible] = useState(true);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [pendingInsertEdge, setPendingInsertEdge] = useState<WorkflowEdge | null>(null);
+  const [toast, setToast] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [animatedRunData, setAnimatedRunData] = useState<NodeRun[]>([]);
+  const [playbackNode, setPlaybackNode] = useState<string | null>(null);
 
   const requestClose = () => setVisible(false);
 
@@ -100,6 +109,72 @@ export default function WorkflowDeployModal({
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
+
+  // Animierte Wiedergabe des Testlaufs (pro Node 600ms)
+  useEffect(() => {
+    if (runState === 'running' || deployState === 'deploying') {
+      setAnimatedRunData([]);
+      setPlaybackNode(null);
+      return;
+    }
+    
+    if (runData && runData.length > 0) {
+      if (animatedRunData.length === runData.length && animatedRunData[0]?.node === runData[0]?.node) return;
+      
+      let i = 0;
+      setAnimatedRunData([]);
+      setPlaybackNode(runData[0].node);
+      
+      const timer = setInterval(() => {
+        setAnimatedRunData(prev => [...prev, runData[i]]);
+        i++;
+        if (i < runData.length) {
+          setPlaybackNode(runData[i].node);
+        } else {
+          setPlaybackNode(null);
+          clearInterval(timer);
+        }
+      }, 600);
+      
+      return () => clearInterval(timer);
+    } else {
+      setAnimatedRunData([]);
+      setPlaybackNode(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runData, runState, deployState]);
+
+  // Lauf-Status je Schritt (für Node-Badges) aus dem animierten Testlauf.
+  const runStatusByStepId = useMemo(() => {
+    const map: Record<string, 'success' | 'error' | 'running'> = {};
+    for (const s of workflow.steps) {
+      const run = runForStep(s, workflow.steps, animatedRunData);
+      if (run?.status) map[s.id] = run.status;
+      
+      // Nutze n8nNameForStepIn Logik inline, da die NodeRun node-Eigenschaft dem n8n Namen entspricht.
+      const stepIdx = workflow.steps.findIndex(x => x.id === s.id);
+      const safeLabel = s.label.replace(/[^a-zA-Z0-9-]/g, '');
+      const expectedName = `${safeLabel || 'Step'}${stepIdx > 0 ? stepIdx : ''}`;
+      
+      if (playbackNode === expectedName) {
+         map[s.id] = 'running';
+      }
+    }
+    return map;
+  }, [workflow.steps, animatedRunData, playbackNode]);
+
+  // Toast bei Fehler/Erfolg im Testlauf (auto-dismiss).
+  useEffect(() => {
+    const failed = runData.filter(r => r.status === 'error');
+    if (runData.length === 0) return;
+    if (failed.length > 0) {
+      setToast({ kind: 'error', text: `Testlauf-Fehler in „${failed[0].node}": ${failed[0].error ?? 'siehe Node'}` });
+    } else {
+      setToast({ kind: 'success', text: 'Testlauf erfolgreich — alle Schritte durchgelaufen.' });
+    }
+    const t = setTimeout(() => setToast(null), 7000);
+    return () => clearTimeout(t);
+  }, [runData]);
 
   const progress = configProgress(workflow.steps, stepConfigs);
 
@@ -117,6 +192,24 @@ export default function WorkflowDeployModal({
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-[5vh_5vw]"
           onClick={requestClose}
         >
+          {/* Toast: Testlauf-Ergebnis */}
+          <AnimatePresence>
+            {toast && (
+              <motion.div
+                key="run-toast"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                onClick={e => { e.stopPropagation(); setToast(null); }}
+                className={`fixed top-6 right-6 z-[10001] max-w-md flex items-start gap-2 rounded-xl px-4 py-3 shadow-2xl cursor-pointer ${
+                  toast.kind === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+                }`}
+              >
+                {toast.kind === 'error' ? <AlertCircle size={18} className="shrink-0 mt-0.5" /> : <Check size={18} className="shrink-0 mt-0.5" />}
+                <span className="text-sm leading-snug">{toast.text}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -131,23 +224,58 @@ export default function WorkflowDeployModal({
               <h2 className="font-bold text-gray-900 text-lg truncate">{workflow.title}</h2>
             </div>
             <div className="flex items-center gap-4 shrink-0">
-              {!deployed && progress.total > 0 && (
-                <span className="text-sm text-gray-500">
-                  {resolving ? 'Nodes werden zugeordnet…' : `${progress.done}/${progress.total} Schritte bereit`}
-                </span>
-              )}
               {deployed && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-full">
                   <Check size={13} /> Deployed
                 </span>
               )}
+
+              {onPublish && (
+                publishState === 'active' ? (
+                  <button
+                    type="button"
+                    onClick={() => onPublish(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                  >
+                    <PowerOff size={14} /> Deaktivieren
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onPublish(true)}
+                    disabled={publishState === 'publishing' || deployState === 'deploying'}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                  >
+                    {publishState === 'publishing'
+                      ? <><Loader2 size={14} className="animate-spin" /> Live…</>
+                      : <><Power size={14} /> Live schalten</>}
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                onClick={onRun}
+                disabled={runState === 'running' || deployState === 'deploying'}
+                className="flex items-center gap-2 px-6 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {runState === 'running'
+                  ? <><Loader2 size={14} className="animate-spin" /> Testet…</>
+                  : deployState === 'deploying'
+                    ? <><Loader2 size={14} className="animate-spin" /> Deploye…</>
+                    : <><Play size={14} /> Testen</>}
+              </button>
+
+              {deployState === 'error' && <span className="inline-flex items-center gap-1 text-xs text-red-500"><AlertCircle size={13} /> {deployError}</span>}
+              {runState === 'error' && <span className="inline-flex items-center gap-1 text-xs text-red-500"><AlertCircle size={13} /> {runError}</span>}
+              {publishState === 'error' && publishError && <span className="inline-flex items-center gap-1 text-xs text-red-500"><AlertCircle size={13} /> {publishError}</span>}
+
               <button
                 type="button"
                 onClick={requestClose}
-                className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors"
+                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors ml-2"
                 aria-label="Schließen"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
           </div>
@@ -157,37 +285,57 @@ export default function WorkflowDeployModal({
             <WorkflowFlowCanvas
               steps={workflow.steps}
               edges={workflow.edges}
-              interactive={!deployed}
+              fitViewKey={workflow.id}
+              interactive
               stepConfigs={stepConfigs}
               onStepClick={onStepClick}
               onStepsChange={onStepsUpdate}
               onEdgesChange={onEdgesUpdate}
               onDeleteStep={onDeleteStep}
               onToggleStepDisabled={onToggleStepDisabled}
-              onEdgeInsert={!deployed ? (edge) => { setPendingInsertEdge(edge); setAddPickerOpen(true); } : undefined}
-              onAddStepClick={!deployed ? () => { setPendingInsertEdge(null); setAddPickerOpen(true); } : undefined}
-              onAddSubNode={!deployed ? onAddSubNode : undefined}
+              onAddStepClick={(stepId, branch) => { 
+                if (stepId) setPendingInsertEdge({ id: '', source: stepId, target: '', branch: branch || 'default' });
+                else setPendingInsertEdge(null);
+                setAddPickerOpen(true); 
+              }}
+              onEdgeInsert={(edge) => { setPendingInsertEdge(edge); setAddPickerOpen(true); }}
+              onAddSubNode={onAddSubNode}
+              onRun={onRun}
+              runStatusByStepId={runStatusByStepId}
               selectedStepId={activeStep?.id}
-              className="w-full pb-24"
+              className="w-full"
             />
+
+            {/* Globaler "Neuer Schritt" Button — auch nach Deploy/Testen sichtbar (Workflow bleibt editierbar). */}
+            <button
+              onClick={() => { setPendingInsertEdge(null); setAddPickerOpen(true); }}
+              className="absolute bottom-6 right-6 z-10 flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-3 font-semibold text-white shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all"
+            >
+              <Plus size={20} /> Neuer Schritt
+            </button>
 
             <WorkflowEditorChat
               workflow={workflow}
               stepConfigs={stepConfigs}
               workflowDbId={workflowDbId}
               coachContext={editorCoachContext}
+              runData={runData}
+              runError={runState === 'error' ? runError : ''}
               onWorkflowUpdate={onWorkflowUpdate}
               disabled={resolving}
             />
 
             <AnimatePresence>
-              {activeStep && !deployed && (
+              {activeStep && (
                 <StepConfigPanel
                   key={activeStep.id}
                   step={activeStep}
+                  projectId={projectId}
                   isFirstStep={workflow.steps[0]?.id === activeStep.id}
                   existing={stepConfigs[activeStep.id]}
-                  onSave={config => { onStepSave(activeStep.id, config); onStepPanelClose(); }}
+                  inputFields={inputFieldsForStep(activeStep, workflow.steps, workflow.edges ?? [], runData)}
+                  inputRun={runForStep(activeStep, workflow.steps, runData)}
+                  onSave={config => onStepSave(activeStep.id, config)}
                   onClose={onStepPanelClose}
                   onNodeTypeChange={onStepNodeTypeChange}
                   onDelete={onDeleteStep}
@@ -196,92 +344,59 @@ export default function WorkflowDeployModal({
             </AnimatePresence>
           </div>
 
-          {/* Footer */}
-          <div className="flex items-center gap-4 px-6 py-4 border-t border-gray-200 shrink-0 bg-white">
-            {!deployed ? (
-              <button
-                onClick={onDeploy}
-                disabled={!allRequiredConfigured || deployState === 'deploying'}
-                className="flex items-center gap-2 px-8 py-3 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
-              >
-                {deployState === 'deploying'
-                  ? <><Loader2 size={16} className="animate-spin" /> Deploye…</>
-                  : <><Rocket size={16} /> Jetzt deployen</>}
-              </button>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                {onPublish && (
-                  publishState === 'active' ? (
-                    <button
-                      type="button"
-                      onClick={() => onPublish(false)}
-                      disabled={publishState === 'publishing'}
-                      className="flex items-center gap-2 px-5 py-3 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
-                    >
-                      <PowerOff size={16} /> Deaktivieren
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onPublish(true)}
-                      disabled={publishState === 'publishing'}
-                      className="flex items-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
-                    >
-                      {publishState === 'publishing'
-                        ? <><Loader2 size={16} className="animate-spin" /> Live…</>
-                        : <><Power size={16} /> Live schalten</>}
-                    </button>
-                  )
-                )}
-                <button
-                  type="button"
-                  onClick={onRun}
-                  disabled={runState === 'running'}
-                  className="flex items-center gap-2 px-8 py-3 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                >
-                  {runState === 'running'
-                    ? <><Loader2 size={16} className="animate-spin" /> Testet…</>
-                    : runState === 'done'
-                      ? <><Check size={16} /> Getestet</>
-                      : <><Play size={16} /> Testen</>}
-                </button>
+          {/* Test-Ergebnisse je Schritt (wie n8n: Output je Node) */}
+          {animatedRunData.length > 0 && (
+            <div className="shrink-0 max-h-[34%] overflow-y-auto border-t border-gray-200 bg-gray-50 px-6 py-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+                Testlauf — Daten je Schritt
               </div>
-            )}
+              <div className="space-y-2">
+                {animatedRunData.map((r, i) => (
+                  <details key={`${r.node}-${i}`} className="rounded-lg border border-gray-200 bg-white">
+                    <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm">
+                      {r.status === 'error'
+                        ? <AlertCircle size={14} className="text-red-500 shrink-0" />
+                        : <Check size={14} className="text-green-600 shrink-0" />}
+                      <span className="font-medium text-gray-800 truncate">{r.node}</span>
+                      <span className="text-xs text-gray-400 ml-auto shrink-0">
+                        {r.status === 'error' ? 'Fehler' : `${r.itemCount} Item${r.itemCount === 1 ? '' : 's'}`}
+                      </span>
+                    </summary>
+                    <div className="px-3 pb-3">
+                      {r.error && <p className="text-xs text-red-500 mb-2">{r.error}</p>}
+                      <pre className="text-[11px] leading-snug bg-gray-900 text-gray-100 rounded-lg p-3 overflow-x-auto max-h-48">
+                        {JSON.stringify(r.json?.slice(0, 5) ?? [], null, 2)}
+                      </pre>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          )}
 
-            {!deployed && !allRequiredConfigured && (
-              <span className="text-sm text-gray-400">
-                Klick auf Nodes mit rotem Rand (!) — Deploy erst wenn alle Schritte konfiguriert sind.
-              </span>
-            )}
-            {deployState === 'error' && (
-              <span className="inline-flex items-center gap-1 text-sm text-red-500"><AlertCircle size={14} /> {deployError}</span>
-            )}
-            {runState === 'error' && (
-              <span className="inline-flex items-center gap-1 text-sm text-red-500"><AlertCircle size={14} /> {runError}</span>
-            )}
-            {publishState === 'error' && publishError && (
-              <span className="inline-flex items-center gap-1 text-sm text-red-500"><AlertCircle size={14} /> {publishError}</span>
-            )}
-            {publishState === 'active' && (
-              <span className="text-sm text-amber-700 font-medium">Produktion aktiv (MCP publish)</span>
-            )}
-          </div>
+          {/* Footer removed */}
         </motion.div>
 
           <N8nNodePickerModal
-            open={addPickerOpen}
-            onClose={() => { setAddPickerOpen(false); setPendingInsertEdge(null); }}
-            onSelect={entry => {
-              if (pendingInsertEdge && onInsertOnEdge) onInsertOnEdge(pendingInsertEdge, entry);
-              else onAddStep(entry);
-              setPendingInsertEdge(null);
-            }}
-            onQuickInsert={onQuickInsert}
-            title={pendingInsertEdge ? 'Schritt einfügen' : 'Was passiert als Nächstes?'}
-            subtitle="Kategorie wählen, dann den passenden Schritt"
-            filterMode={workflow.steps.length === 0 ? 'trigger-only' : 'no-trigger'}
-            defaultCategory={workflow.steps.length === 0 ? 'trigger' : 'action'}
-          />
+          open={addPickerOpen}
+          onClose={() => { setAddPickerOpen(false); setPendingInsertEdge(null); }}
+          onSelect={(entry) => {
+            if (pendingInsertEdge) {
+              onInsertOnEdge?.(pendingInsertEdge, entry);
+            } else {
+              onAddStep(entry);
+            }
+            setAddPickerOpen(false);
+            setPendingInsertEdge(null);
+          }}
+          title={pendingInsertEdge ? 'Schritt anfügen' : 'Neuen Schritt hinzufügen'}
+          filterMode={
+            workflow.steps.length === 0 
+              ? 'trigger-only' 
+              : pendingInsertEdge ? 'no-trigger' : 'all'
+          }
+          defaultCategory={workflow.steps.length === 0 ? 'trigger' : undefined}
+        />
         </motion.div>
       )}
     </AnimatePresence>,

@@ -57,6 +57,77 @@ export interface ReindexResult {
   errors: { file: string; error: string }[];
 }
 
+export interface IndexedEntry {
+  filepath: string;
+  title: string;
+  source_type: KnowledgeSourceType;
+}
+
+/** Embed one piece of content and upsert it as a single atomic entry. */
+export async function indexOne(
+  supabase: SupabaseClient,
+  relPath: string,
+  content: string,
+): Promise<IndexedEntry> {
+  const { metadata, body } = parseFrontmatter(content);
+  const titleMatch = body.match(/^#\s+(.+)$/m);
+  const title = titleMatch ? titleMatch[1].trim() : path.basename(relPath);
+  const source_type = getSourceType(relPath);
+  const embeddingText =
+    content.length > 3000 ? `${title}\n\n${body.slice(0, 2400)}` : content;
+  const embedding = await generateEmbedding(embeddingText);
+
+  const { error } = await supabase.from('knowledge_base').upsert(
+    {
+      filepath: relPath,
+      filename: path.basename(relPath),
+      title,
+      content,
+      source_type,
+      metadata,
+      embedding,
+      is_active: true,
+      indexed_at: new Date().toISOString(),
+    },
+    { onConflict: 'filepath' },
+  );
+  if (error) throw new Error(error.message);
+  return { filepath: relPath, title, source_type };
+}
+
+/**
+ * Normalize a user-supplied path to a `knowledge/...` forward-slash relative path
+ * and the absolute on-disk path. Throws on traversal or non-.md paths.
+ */
+export function resolveKnowledgePath(input: string): { relPath: string; absPath: string } {
+  let p = input.trim().replace(/\\/g, '/').replace(/^\.?\//, '');
+  if (!p) throw new Error('Pfad fehlt.');
+  if (!p.startsWith('knowledge/')) p = `knowledge/${p}`;
+  if (!p.endsWith('.md')) throw new Error('Pfad muss auf .md enden.');
+  const absPath = path.resolve(process.cwd(), p);
+  if (absPath !== KNOWLEDGE_ROOT && !absPath.startsWith(KNOWLEDGE_ROOT + path.sep)) {
+    throw new Error('Pfad muss innerhalb von /knowledge liegen.');
+  }
+  return { relPath: p, absPath };
+}
+
+/**
+ * Write pasted markdown to /knowledge/<path> on disk and index it.
+ * (Disk write persists the file into the repo locally; on read-only hosts it
+ * would throw — callers may treat that as non-fatal and still index.)
+ */
+export async function uploadAndIndex(
+  supabase: SupabaseClient,
+  inputPath: string,
+  content: string,
+): Promise<IndexedEntry> {
+  if (!content.trim()) throw new Error('Inhalt ist leer.');
+  const { relPath, absPath } = resolveKnowledgePath(inputPath);
+  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+  fs.writeFileSync(absPath, content, 'utf-8');
+  return indexOne(supabase, relPath, content);
+}
+
 /**
  * Re-embed knowledge files from disk and upsert them via the given Supabase
  * client. The client must be authenticated (RLS allows writes to authenticated).
@@ -73,29 +144,7 @@ export async function reindexKnowledge(
     const relPath = path.relative(process.cwd(), file).replace(/\\/g, '/');
     try {
       const content = fs.readFileSync(file, 'utf-8');
-      const { metadata, body } = parseFrontmatter(content);
-      const titleMatch = body.match(/^#\s+(.+)$/m);
-      const title = titleMatch ? titleMatch[1].trim() : path.basename(relPath);
-      const source_type = getSourceType(relPath);
-      const embeddingText =
-        content.length > 3000 ? `${title}\n\n${body.slice(0, 2400)}` : content;
-      const embedding = await generateEmbedding(embeddingText);
-
-      const { error } = await supabase.from('knowledge_base').upsert(
-        {
-          filepath: relPath,
-          filename: path.basename(relPath),
-          title,
-          content,
-          source_type,
-          metadata,
-          embedding,
-          is_active: true,
-          indexed_at: new Date().toISOString(),
-        },
-        { onConflict: 'filepath' },
-      );
-      if (error) throw new Error(error.message);
+      await indexOne(supabase, relPath, content);
       result.indexed++;
     } catch (e) {
       result.failed++;

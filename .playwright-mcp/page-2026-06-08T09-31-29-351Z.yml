@@ -1,0 +1,27 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - link "Zurück zur Startseite" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img [ref=e5]
+      - text: Zurück zur Startseite
+    - generic [ref=e8]:
+      - heading "Anmelden" [level=2] [ref=e50]
+      - generic [ref=e49]: email rate limit exceeded
+      - button "Mit Google weiter" [ref=e10]:
+        - img [ref=e11]
+        - text: Mit Google weiter
+      - generic [ref=e19]: Oder
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: E-Mail
+          - textbox "deine@email.de" [ref=e23]: klaro.ragtest3@gmail.com
+        - generic [ref=e24]:
+          - generic [ref=e25]: Passwort
+          - textbox "••••••••" [ref=e26]: KlaroRag!2026
+        - button "Einloggen" [ref=e51]
+      - generic [ref=e28]:
+        - text: Noch keinen Account?
+        - button "Hier registrieren" [active] [ref=e52]
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]:
+    - img [ref=e36]
+  - alert [ref=e42]

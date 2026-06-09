@@ -36,7 +36,13 @@ export default function DashboardPage() {
     setSessionsByProject(grouped);
   };
 
+  // Guard against React StrictMode running this effect twice in dev — two
+  // concurrent ensureDefaultProject() calls would both insert a default project
+  // (check-then-insert race) and create duplicate "Mein Projekt" entries.
+  const didInit = useRef(false);
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
     const init = async () => {
       const supabase = createSupabaseBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -74,9 +80,28 @@ export default function DashboardPage() {
     }
   };
 
-  const handleOpenProject = (projectId: string) => {
+  const handleOpenProject = async (projectId: string) => {
     const s = sessionsByProject[projectId]?.[0];
-    if (s) router.push(`/chat?id=${s.id}`);
+    if (s) { router.push(`/chat?id=${s.id}`); return; }
+    // Project has no chat yet. Seed one from the most recent onboarding so the
+    // click always does something; if there is no onboarding at all, send the
+    // user through the onboarding form.
+    if (!userId) return;
+    try {
+      const allSessions = Object.values(sessionsByProject).flat()
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      if (allSessions.length > 0) {
+        const ob = await loadSessionOnboarding(allSessions[0].id);
+        if (ob) {
+          const newSessionId = await createSession(ob, userId, 'diagnose', undefined, undefined, projectId);
+          router.push(`/chat?id=${newSessionId}`);
+          return;
+        }
+      }
+      router.push('/onboarding');
+    } catch (err) {
+      console.error('Error opening project', err);
+    }
   };
 
   const handleRename = async (projectId: string, name: string) => {

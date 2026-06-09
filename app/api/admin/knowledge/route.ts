@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getAdminUser } from '@/lib/admin-auth';
 
 /** GET /api/admin/knowledge — list all knowledge_base entries (overview). */
 export async function GET() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const admin = await getAdminUser(supabase);
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { data, error } = await supabase
     .from('knowledge_base')
@@ -22,10 +21,8 @@ export async function GET() {
 /** DELETE /api/admin/knowledge?id=... — remove one entry. */
 export async function DELETE(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const admin = await getAdminUser(supabase);
+  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const id = new URL(req.url).searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });

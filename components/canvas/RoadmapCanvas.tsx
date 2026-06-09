@@ -748,7 +748,7 @@ function WorkflowInlineCard({
           {linkedTitle && <p className="text-[11px] text-gray-400 mt-0.5">↳ {linkedTitle}</p>}
         </div>
       </div>
-      <WorkflowNodeGraph steps={wf.steps ?? []} compact tileSize={32} showTrailingPlus={false} />
+      <WorkflowNodeGraph steps={wf.steps ?? []} compact showTrailingPlus={false} />
       <span className="text-xs font-medium text-indigo-600 mt-2 inline-block">Workflow öffnen</span>
     </button>
   );

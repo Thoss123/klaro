@@ -46,7 +46,9 @@ import {
 } from '@/lib/session-kickoff';
 import {
   type ChatAttachment,
-  formatAttachmentsForMessage,
+  embedUserAttachments,
+  formatAttachmentsForCoach,
+  parseUserAttachments,
   attachmentsForApi,
 } from '@/lib/chat-attachments';
 import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
@@ -529,6 +531,34 @@ function ChatPageContent() {
   // ---- Project state ----
   const [currentProject, setCurrentProject] = useState<{ id: string, name: string } | null>(null);
 
+  // Bereits deployte n8n-Workflows aus der DB hydrieren (canvas_workflow_id → DB-Workflow-id).
+  // Ohne das denkt der Client nach jedem Reload „noch nicht deployt" und erstellt Duplikate.
+  useEffect(() => {
+    const projId = currentProject?.id;
+    if (!projId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/n8n/workflows?project_id=${projId}`);
+        if (!res.ok) return;
+        const { workflows } = await res.json() as {
+          workflows?: Array<{ id: string; canvas_workflow_id?: string | null; n8n_workflow_id?: string | null }>;
+        };
+        if (cancelled || !workflows) return;
+        const map: Record<string, string> = {};
+        for (const w of workflows) {
+          // Nur echte Deploys (n8n-Workflow existiert) als „deployed" übernehmen.
+          if (w.canvas_workflow_id && w.n8n_workflow_id) map[w.canvas_workflow_id] = w.id;
+        }
+        setDeployedWorkflowIds(map);
+        deployedWorkflowIdsRef.current = map;
+      } catch (e) {
+        console.error('Hydrate deployed workflows failed', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProject?.id]);
+
   const handleWorkflowPersist = useCallback((updated: Workflow) => {
     setCanvasData(prev => {
       const workflows = (prev.workflows ?? []).map(w =>
@@ -577,6 +607,7 @@ function ChatPageContent() {
       : undefined;
     return {
       phase,
+      sessionId: currentSessionId,
       onboarding: obWithMemory,
       canvas: canvasData,
       mainChatHistory: mainChatHistoryForEditor(messages),
@@ -658,6 +689,7 @@ function ChatPageContent() {
             mappings: autoMappings(canvasWorkflow.steps),
             name: tag.name || canvasWorkflow.title,
             linked_use_case: canvasWorkflow.linked_pain_point,
+            canvas_workflow_id: canvasWorkflow.id,
           }),
         });
         if (res.ok) {
@@ -786,7 +818,7 @@ function ChatPageContent() {
 
     const userContent = isHiddenInit
       ? content
-      : formatAttachmentsForMessage(content, turnAttachments);
+      : embedUserAttachments(content, turnAttachments);
 
     let newMessages: Message[] = [];
     if (messagesOverride) {
@@ -858,7 +890,17 @@ function ChatPageContent() {
     try {
       const payloadMessages = isHiddenInit
         ? [{ role: 'user', content: getHiddenInitMessage(chatPhase) }]
-        : newMessages.map(m => ({ role: m.role, content: m.content }));
+        : newMessages.map((m, idx) => {
+            const isLastUser = idx === newMessages.length - 1 && m.role === 'user';
+            const { text } = parseUserAttachments(m.content);
+            if (isLastUser) {
+              return {
+                role: 'user' as const,
+                content: formatAttachmentsForCoach(text, turnAttachments),
+              };
+            }
+            return { role: m.role, content: text || m.content };
+          });
 
       // Load project memory for context injection
       let projectMemoryText = 'Bisher keine Historie.';

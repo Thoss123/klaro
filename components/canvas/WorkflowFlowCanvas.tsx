@@ -10,7 +10,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
@@ -29,14 +28,19 @@ import type { StepConfig, WorkflowEdge, WorkflowStep } from '@/lib/types';
 import { isConfigured, requiresConfig } from '@/lib/workflow-deploy';
 import { isAiConnection } from '@/lib/ai-subnodes';
 import {
+  ADD_STEP_NODE_PREFIX,
   aiConnectionFromHandles,
   branchToSourceHandle,
   connectionToEdgeFields,
+  findTerminalBranches,
+  flowNodeColumnWidth,
   layoutStepPositions,
   parseSwitchBranch,
   resolveWorkflowEdges,
 } from '@/lib/workflow-graph';
 import WorkflowFlowNode, { type FlowNodeData } from './WorkflowFlowNode';
+import WorkflowAddStepNode, { ADD_STEP_BTN_SIZE, type AddStepNodeData } from './WorkflowAddStepNode';
+import WorkflowMiniMap from './WorkflowMiniMap';
 import type { N8nNodeState } from './N8nNode';
 
 type FlowEdgeData = {
@@ -91,11 +95,17 @@ function WorkflowFlowEdge({
   );
 }
 
-const nodeTypes = { workflowStep: WorkflowFlowNode };
+const nodeTypes = { workflowStep: WorkflowFlowNode, addStep: WorkflowAddStepNode };
 const edgeTypes = { workflowEdge: WorkflowFlowEdge };
 
-/** Beim Öffnen nur moderat einzoomen — nicht den ganzen Viewport ausfüllen. */
-const FIT_VIEW_OPTS = { padding: 0.38, maxZoom: 0.82, minZoom: 0.45, duration: 180 };
+/** Gleiche Logik wie der Fit-View-Button in den Controls. */
+const FIT_VIEW_OPTS = { padding: 0.12, duration: 250 };
+const ICON_SIZE = 76;
+const ICON_CENTER_Y = 38;
+
+function iconRightX(colW: number): number {
+  return (colW - ICON_SIZE) / 2 + ICON_SIZE;
+}
 
 function nodeState(step: WorkflowStep, stepConfigs?: Record<string, StepConfig>): N8nNodeState {
   if (!stepConfigs) return 'default';
@@ -113,6 +123,8 @@ function toFlowNodes(
   onDeleteStep?: (stepId: string) => void,
   onToggleStepDisabled?: (stepId: string) => void,
   onAddSubNode?: (stepId: string, slot: string) => void,
+  onRun?: () => void,
+  runStatusByStepId?: Record<string, 'success' | 'error' | 'running'>,
 ): Node<FlowNodeData>[] {
   return steps.map(step => ({
     id: step.id,
@@ -122,10 +134,12 @@ function toFlowNodes(
       step,
       state: selectedStepId === step.id ? 'selected' : nodeState(step, stepConfigs),
       interactive,
+      runStatus: runStatusByStepId?.[step.id],
       onClick: onStepClick ? () => onStepClick(step) : undefined,
       onDelete: interactive && onDeleteStep ? () => onDeleteStep(step.id) : undefined,
       onToggleDisabled: interactive && onToggleStepDisabled ? () => onToggleStepDisabled(step.id) : undefined,
       onAddSubNode: interactive && onAddSubNode ? (slot: string) => onAddSubNode(step.id, slot) : undefined,
+      onRun,
     },
   }));
 }
@@ -164,6 +178,7 @@ export default function WorkflowFlowCanvas({
   stepConfigs,
   interactive = false,
   selectedStepId,
+  fitViewKey,
   onStepClick,
   onStepsChange,
   onEdgesChange,
@@ -172,6 +187,8 @@ export default function WorkflowFlowCanvas({
   onToggleStepDisabled,
   onEdgeInsert,
   onAddSubNode,
+  onRun,
+  runStatusByStepId,
   className = '',
 }: {
   steps: WorkflowStep[];
@@ -179,14 +196,18 @@ export default function WorkflowFlowCanvas({
   stepConfigs?: Record<string, StepConfig>;
   interactive?: boolean;
   selectedStepId?: string | null;
+  /** Wechsel triggert Fit-View (z. B. workflow.id beim Öffnen). */
+  fitViewKey?: string;
   onStepClick?: (step: WorkflowStep) => void;
   onStepsChange?: (steps: WorkflowStep[]) => void;
   onEdgesChange?: (edges: WorkflowEdge[]) => void;
-  onAddStepClick?: () => void;
+  onAddStepClick?: (stepId?: string, branch?: string) => void;
   onDeleteStep?: (stepId: string) => void;
   onToggleStepDisabled?: (stepId: string) => void;
   onEdgeInsert?: (edge: WorkflowEdge) => void;
   onAddSubNode?: (stepId: string, slot: string) => void;
+  onRun?: () => void;
+  runStatusByStepId?: Record<string, 'success' | 'error' | 'running'>;
   className?: string;
 }) {
   const resolvedEdges = useMemo(
@@ -199,21 +220,64 @@ export default function WorkflowFlowCanvas({
     [steps, resolvedEdges],
   );
 
+  const terminalBranches = useMemo(
+    () => findTerminalBranches(laidOutSteps, resolvedEdges),
+    [laidOutSteps, resolvedEdges],
+  );
+
+  const addConnectorNodes = useMemo((): Node<AddStepNodeData>[] => {
+    if (!interactive || !onAddStepClick) return [];
+    return terminalBranches.flatMap(({ stepId, branch }) => {
+      const step = laidOutSteps.find(s => s.id === stepId);
+      if (!step?.position) return [];
+      const colW = flowNodeColumnWidth(step);
+      
+      let yPct = 50;
+      if (branch === 'true') yPct = 35;
+      else if (branch === 'false') yPct = 65;
+      else if (branch.startsWith('switch-')) {
+        const count = (step.parameters?.outputCount as number) || 1;
+        const i = parseInt(branch.slice(7), 10);
+        yPct = count === 1 ? 50 : 15 + (i / (count - 1)) * 70;
+      }
+      const yOffset = 130 * yPct / 100;
+
+      return [{
+        id: `${ADD_STEP_NODE_PREFIX}${stepId}-${branch}`,
+        type: 'addStep',
+        position: {
+          x: step.position.x + iconRightX(colW) + 32,
+          y: step.position.y + yOffset - ADD_STEP_BTN_SIZE / 2,
+        },
+        data: { onClick: () => onAddStepClick(stepId, branch) },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+      }];
+    });
+  }, [interactive, onAddStepClick, terminalBranches, laidOutSteps]);
+
   const derivedFlowNodes = useMemo(
-    () => toFlowNodes(
-      laidOutSteps,
-      stepConfigs,
-      selectedStepId,
-      interactive,
-      onStepClick,
-      onDeleteStep,
-      onToggleStepDisabled,
-      onAddSubNode,
-    ),
-    [laidOutSteps, stepConfigs, selectedStepId, interactive, onStepClick, onDeleteStep, onToggleStepDisabled, onAddSubNode],
+    () => [
+      ...toFlowNodes(
+        laidOutSteps,
+        stepConfigs,
+        selectedStepId,
+        interactive,
+        onStepClick,
+        onDeleteStep,
+        onToggleStepDisabled,
+        onAddSubNode,
+        onRun,
+        runStatusByStepId,
+      ),
+      ...addConnectorNodes,
+    ],
+    [laidOutSteps, stepConfigs, selectedStepId, interactive, onStepClick, onDeleteStep, onToggleStepDisabled, onAddSubNode, onRun, runStatusByStepId, addConnectorNodes],
   );
 
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(derivedFlowNodes);
+  /** true while user has a node pressed — set by onNodeDragStart, cleared by onNodeDragStop */
   const isDraggingRef = useRef(false);
 
   useEffect(() => {
@@ -233,7 +297,21 @@ export default function WorkflowFlowCanvas({
     onEdgesChange(resolvedEdges.filter(e => e.id !== edgeId));
   }, [onEdgesChange, resolvedEdges]);
 
-  const flowEdges = useMemo<Edge[]>(() => resolvedEdges.map(e => {
+  const connectorEdges = useMemo<Edge[]>(() => {
+    if (!interactive || !onAddStepClick) return [];
+    return terminalBranches.map(({ stepId, branch }) => ({
+      id: `${ADD_STEP_NODE_PREFIX}edge-${stepId}-${branch}`,
+      source: stepId,
+      sourceHandle: branchToSourceHandle(branch),
+      target: `${ADD_STEP_NODE_PREFIX}${stepId}-${branch}`,
+      style: { stroke: '#b0b0bc', strokeWidth: 2 },
+      selectable: false,
+      interactionWidth: 0,
+    }));
+  }, [interactive, onAddStepClick, terminalBranches]);
+
+  const flowEdges = useMemo<Edge[]>(() => [
+    ...resolvedEdges.map(e => {
     // AI-Sub-Connection (Chat Model/Memory/Tool → Agent): gestrichelt violett, ohne +/×.
     if (e.connectionType) {
       return {
@@ -267,23 +345,33 @@ export default function WorkflowFlowCanvas({
         onDelete: () => handleEdgeDelete(e.id),
       } satisfies FlowEdgeData,
     };
-  }), [resolvedEdges, interactive, onEdgeInsert, handleEdgeDelete]);
+  }),
+    ...connectorEdges,
+  ], [resolvedEdges, interactive, onEdgeInsert, handleEdgeDelete, connectorEdges]);
 
-  const flowRef = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
+  const flowRef = useRef<ReactFlowInstance<Node<FlowNodeData | AddStepNodeData>, Edge> | null>(null);
   const lastFitKeyRef = useRef('');
 
   const scheduleFitView = useCallback((key: string) => {
     if (lastFitKeyRef.current === key) return;
     lastFitKeyRef.current = key;
     requestAnimationFrame(() => {
-      flowRef.current?.fitView(FIT_VIEW_OPTS);
+      requestAnimationFrame(() => {
+        flowRef.current?.fitView(FIT_VIEW_OPTS);
+      });
     });
   }, []);
 
-  const onInit = useCallback((instance: ReactFlowInstance<Node<FlowNodeData>, Edge>) => {
+  const onInit = useCallback((instance: ReactFlowInstance<Node<FlowNodeData | AddStepNodeData>, Edge>) => {
     flowRef.current = instance;
-    scheduleFitView(`init-${steps.length}`);
-  }, [steps.length, scheduleFitView]);
+    scheduleFitView(`init-${fitViewKey ?? steps.length}`);
+  }, [fitViewKey, steps.length, scheduleFitView]);
+
+  useEffect(() => {
+    if (!fitViewKey) return;
+    lastFitKeyRef.current = '';
+    scheduleFitView(`open-${fitViewKey}`);
+  }, [fitViewKey, scheduleFitView]);
 
   const onConnect: OnConnect = useCallback((connection: Connection) => {
     if (!interactive || !onEdgesChange) return;
@@ -305,75 +393,61 @@ export default function WorkflowFlowCanvas({
     onEdgesChange([...next, newEdge]);
   }, [interactive, onEdgesChange, steps, resolvedEdges]);
 
+  // onNodesChange: only forwards React Flow's internal state changes.
+  // Position persistence is handled by onNodeDragStop below.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     onFlowNodesChange(changes);
+  }, [onFlowNodesChange]);
 
-    if (!interactive || !onStepsChange) return;
+  // Called ONLY on real user drag-end — safe to persist positions.
+  const onNodeDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
 
-    if (changes.some(c => c.type === 'position' && c.dragging === true)) {
-      isDraggingRef.current = true;
-      return;
-    }
-
-    const positionChanges = changes.filter(
-      c => c.type === 'position' && c.position && c.dragging === false,
-    );
-    if (!positionChanges.length) return;
-
+  const onNodeDragStop = useCallback((_: MouseEvent | TouchEvent, node: Node) => {
     isDraggingRef.current = false;
-    const next = steps.map(s => {
-      const ch = positionChanges.find(c => c.type === 'position' && c.id === s.id);
-      if (ch && ch.type === 'position' && ch.position) {
-        return { ...s, position: { x: ch.position.x, y: ch.position.y } };
-      }
-      return s;
-    });
+    if (!interactive || !onStepsChange) return;
+    if (String(node.id).startsWith(ADD_STEP_NODE_PREFIX)) return;
+    // Persist the dragged node's final position.
+    const next = steps.map(s =>
+      s.id === node.id ? { ...s, position: { x: node.position.x, y: node.position.y } } : s,
+    );
     onStepsChange(next);
-  }, [interactive, onStepsChange, steps, onFlowNodesChange]);
+  }, [interactive, onStepsChange, steps]);
 
   return (
-    <div className={`relative flex-1 min-h-0 ${className}`}>
+    <div className={`workflow-flow-editor relative flex-1 min-h-0 ${className}`}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={(_, node) => {
+          if (node.type === 'addStep') return;
           const step = (node.data as FlowNodeData).step;
           onStepClick?.(step);
         }}
         onConnect={onConnect}
         onNodesChange={onNodesChange}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
         nodesDraggable={interactive}
         nodesConnectable={interactive}
         elementsSelectable={interactive}
         deleteKeyCode={interactive ? ['Backspace', 'Delete'] : null}
         panOnScroll
         onInit={onInit}
-        minZoom={0.35}
-        maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.78 }}
+        minZoom={0.2}
+        maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} color="#c8c8d4" />
-        <Controls showInteractive={interactive} />
-        <MiniMap
-          nodeColor="#6366f1"
-          maskColor="rgba(247,247,250,0.8)"
-          className="!bg-white/80 !border-gray-200"
+        <Controls
+          showInteractive={false}
+          position="bottom-left"
+          className="workflow-flow-controls"
         />
       </ReactFlow>
-
-      {interactive && onAddStepClick && (
-        <button
-          type="button"
-          onClick={onAddStepClick}
-          className="absolute bottom-28 right-6 z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium shadow-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus size={16} />
-          Schritt
-        </button>
-      )}
     </div>
   );
 }

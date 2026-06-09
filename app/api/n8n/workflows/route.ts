@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { project_id, workflow, mappings, name, linked_use_case, step_configs, skip_validate } = await req.json() as {
+  const { project_id, workflow, mappings, name, linked_use_case, step_configs, skip_validate, canvas_workflow_id } = await req.json() as {
     project_id: string;
     workflow: Workflow;
     mappings: StepMapping[];
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     linked_use_case?: string;
     step_configs?: Record<string, StepConfig>;
     skip_validate?: boolean;
+    canvas_workflow_id?: string;
   };
 
   if (!skip_validate) {
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
   const sdkValidation = await validateWorkflowJsonWithSdk(
     workflowJson as { name: string; nodes: Array<{ name: string; type: string; typeVersion: number; parameters?: Record<string, unknown> }> },
   );
-  if (!sdkValidation.skipped && !sdkValidation.valid) {
+  // skip_validate (Auto-Deploy): trotzdem deployen — Fehler fehlender Config kommen beim Testen.
+  if (!skip_validate && !sdkValidation.skipped && !sdkValidation.valid) {
     return NextResponse.json(
       {
         error: 'SDK-Validierung fehlgeschlagen',
@@ -68,11 +70,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let n8n_workflow_id: string | null = null;
+  // Idempotenz: existiert für diesen Canvas-Workflow schon ein Deploy → wiederverwenden
+  // (n8n-Workflow UPDATEN statt neu erstellen), damit keine Duplikate entstehen.
+  let existing: { id: string; n8n_workflow_id: string | null; status: string | null } | null = null;
+  if (canvas_workflow_id) {
+    const { data: existingRow } = await supabase
+      .from('workflows')
+      .select('id, n8n_workflow_id, status')
+      .eq('user_id', user.id)
+      .eq('project_id', project_id)
+      .eq('canvas_workflow_id', canvas_workflow_id)
+      .maybeSingle();
+    existing = existingRow ?? null;
+  }
+
+  let n8n_workflow_id: string | null = existing?.n8n_workflow_id ?? null;
   let mcpTest: { status?: string; error?: string } | null = null;
+  let deployError: string | null = null;
   try {
-    const created = await createN8nWorkflow(workflowJson);
-    n8n_workflow_id = created.id;
+    if (n8n_workflow_id) {
+      // Bereits deployt → bestehenden n8n-Workflow aktualisieren (kein neuer!).
+      await updateN8nWorkflow(n8n_workflow_id, workflowJson);
+    } else {
+      const created = await createN8nWorkflow(workflowJson);
+      n8n_workflow_id = created.id;
+    }
 
     if (isN8nMcpConfigured() && n8n_workflow_id) {
       try {
@@ -82,27 +104,44 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (e: any) {
-    console.error('n8n deploy failed:', e.message);
-    // Save as draft even if n8n fails
+    // WICHTIG: Fehler NICHT verschlucken. Vorher wurde still ein „draft" gespeichert,
+    // die UI dachte „deployed", und der Testlauf schlug mit „not deployed" fehl.
+    deployError = e?.message || 'n8n-Deploy fehlgeschlagen';
+    console.error('n8n deploy failed:', deployError);
   }
 
-  const { data, error } = await supabase
-    .from('workflows')
-    .insert({
-      user_id: user.id,
-      project_id,
-      linked_use_case: linked_use_case || null,
-      n8n_workflow_id,
-      name,
-      workflow_json: workflowJson,
-      status: n8n_workflow_id ? 'inactive' : 'draft',
-    })
-    .select()
-    .single();
+  // Bestehende Zeile updaten statt neu einfügen (sonst DB-Duplikat trotz n8n-Reuse).
+  const row = {
+    user_id: user.id,
+    project_id,
+    linked_use_case: linked_use_case || null,
+    canvas_workflow_id: canvas_workflow_id || null,
+    n8n_workflow_id,
+    name,
+    workflow_json: workflowJson,
+    // Beim Wiederverwenden den bestehenden Status (z. B. 'active') NICHT überschreiben.
+    status: n8n_workflow_id ? (existing?.status ?? 'inactive') : 'draft',
+  };
+  const { data, error } = existing
+    ? await supabase.from('workflows').update({ ...row, updated_at: new Date().toISOString() }).eq('id', existing.id).select().single()
+    : await supabase.from('workflows').insert(row).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ workflow: data, mcpTest, sdkValidation: sdkValidation.skipped ? null : sdkValidation });
+  // n8n hat den Workflow NICHT angenommen → klaren Fehler zurückgeben (502), nicht „Erfolg".
+  if (!n8n_workflow_id) {
+    return NextResponse.json(
+      {
+        error: `n8n hat den Workflow nicht angenommen: ${deployError ?? 'unbekannter Grund'}`,
+        deployed: false,
+        workflow: data,
+        workflowJson,
+      },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json({ workflow: data, deployed: true, mcpTest, sdkValidation: sdkValidation.skipped ? null : sdkValidation });
 }
 
 // GET /api/n8n/workflows?project_id=xxx

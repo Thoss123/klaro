@@ -36,16 +36,26 @@ export async function POST(req: Request) {
         {
           role: 'user',
           content: `Bestehende Memory:
-${currentMemory || 'Noch keine.'}
+${currentMemory || '[CORE FACTS]\nKeine.\n\n[LATEST CONTEXT]\nKeine.'}
 
 Neue Information aus dem Gespräch:
 ${newMessage}
 
-Extrahiere NUR neue, relevante Fakten über das Unternehmen oder das Projekt.
-Format: kurze Bullet Points, maximal 3 neue Punkte.
-Komprimiere die gesamte Memory (alt + neu) auf maximal 500 Wörter, sodass die wichtigsten Kernfakten erhalten bleiben. Ältere, irrelevante Infos können wegfallen.
-Nichts erfinden, nur was explizit gesagt wurde.
-Wenn es absolut NICHTS Neues gibt und die bestehende Memory aktuell ist, antworte exakt mit dem Text der bestehenden Memory.`
+Deine Aufgabe ist es, das Gedächtnis des Coaches (Memory) zu aktualisieren und in genau zwei Sektionen zu gliedern:
+
+[CORE FACTS]
+Hierhin gehören beständige Fakten über das Unternehmen (Zielgruppe, Angebot, Prozesse, Hürden). Diese ändern sich selten. Extrahiere neue beständige Fakten und füge sie hier hinzu. Streiche alte, die sich als falsch erwiesen haben.
+
+[LATEST CONTEXT]
+Hierhin gehört der aktuellste Kontext der letzten Gesprächsrunden (z.B. "Nutzer schaut sich gerade Tool X an", "Nutzer möchte Prozess Y zuerst bauen"). Halte diese Sektion SEHR kurz (max 3 Bullet Points). Älterer Kontext fliegt hier raus.
+
+Gib NUR die aktualisierte Memory zurück, exakt in diesem Format:
+[CORE FACTS]
+- ...
+[LATEST CONTEXT]
+- ...
+
+Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zurück, aber stelle sicher, dass sie in [CORE FACTS] und [LATEST CONTEXT] gegliedert ist.`
         }
       ]
     });

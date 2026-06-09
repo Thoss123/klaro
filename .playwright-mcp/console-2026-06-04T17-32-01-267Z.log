@@ -1,0 +1,136 @@
+[     126ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     233ms] [LOG] [Fast Refresh] done in 208ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     260ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/login:0
+[     291ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     323ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     441ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     454ms] [LOG] [Fast Refresh] done in 116ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   19408ms] [LOG] %c%s color: red; background: yellow; font-size: 24px; Achtung! @ https://www.gstatic.com/_/mss/boq-identity/_/js/k=boq-identity.AccountsSignInUi.de.4xx_Fla74ZU.es5.O/am=Ed8AAACAUfwjZADw__ffAAAEEEQHfM8CNAFCBgAAAAAAAAAALAAAQCM/d=1/excm=_b,_tp,accountchooserview/ed=1/dg=0/wt=2/ujg=1/rs=AOaEmlGJvkhGUwIeVLTlQtEu1fsgSgMcUA/dti=1/m=_b,_tp:545
+[   19408ms] [LOG] %c%s font-size: 18px; Wenn Sie diese Konsole verwenden, können Angreifer möglicherweise mithilfe einer sogenannten Self-XSS-Attacke Ihre Identität stehlen und Ihre Daten ausspionieren.
+Sie sollten keinen Code eingeben oder einfügen, den Sie nicht verstehen. @ https://www.gstatic.com/_/mss/boq-identity/_/js/k=boq-identity.AccountsSignInUi.de.4xx_Fla74ZU.es5.O/am=Ed8AAACAUfwjZADw__ffAAAEEEQHfM8CNAFCBgAAAAAAAAAALAAAQCM/d=1/excm=_b,_tp,accountchooserview/ed=1/dg=0/wt=2/ujg=1/rs=AOaEmlGJvkhGUwIeVLTlQtEu1fsgSgMcUA/dti=1/m=_b,_tp:545
+[   22687ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   22735ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   30362ms] [WARNING] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   30441ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   30480ms] [LOG] [Fast Refresh] done in 139ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   36032ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/login:0
+[   37452ms] [LOG] %c%s color: red; background: yellow; font-size: 24px; Achtung! @ https://www.gstatic.com/_/mss/boq-identity/_/js/k=boq-identity.AccountsSignInUi.de.4xx_Fla74ZU.es5.O/am=Ed8AAACAUfwjZADw__ffAAAEEEQHfM8CNAFCBgAAAAAAAAAALAAAQCM/d=1/excm=_b,_tp,accountchooserview/ed=1/dg=0/wt=2/ujg=1/rs=AOaEmlGJvkhGUwIeVLTlQtEu1fsgSgMcUA/dti=1/m=_b,_tp:545
+[   37452ms] [LOG] %c%s font-size: 18px; Wenn Sie diese Konsole verwenden, können Angreifer möglicherweise mithilfe einer sogenannten Self-XSS-Attacke Ihre Identität stehlen und Ihre Daten ausspionieren.
+Sie sollten keinen Code eingeben oder einfügen, den Sie nicht verstehen. @ https://www.gstatic.com/_/mss/boq-identity/_/js/k=boq-identity.AccountsSignInUi.de.4xx_Fla74ZU.es5.O/am=Ed8AAACAUfwjZADw__ffAAAEEEQHfM8CNAFCBgAAAAAAAAAALAAAQCM/d=1/excm=_b,_tp,accountchooserview/ed=1/dg=0/wt=2/ujg=1/rs=AOaEmlGJvkhGUwIeVLTlQtEu1fsgSgMcUA/dti=1/m=_b,_tp:545
+[   38447ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://accounts.google.com/v3/signin/identifier?app_domain=https%3A%2F%2Fnxkijeqxkefbrvaanite.supabase.co&client_id=658236633227-rl5u8io1udpu79h62n08el83ebj5q564.apps.googleusercontent.com&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAN7v5BCZNRkn0Q0tfjxEMHShyF2uNHwwo23DhtTr7QULJV5dSxlIckDumPzAkL2I2vGnjBjjgtc-GWpzncYYxNXLFqvGaN3PoPEJDLwlvwxkdgejnM9ffHiPR0XDvC6Fl6uZ32-LhENQAHcwZylN1kg7XmL0xeNy8NhxV9nGNkxG1ShBNzyyf0-CLaBsrRjCeEWrWIzCJiPYwI_TI56TJSOJylWEaRL0Hdm3XuNupnATVlcN7bqY-TwliXc7vi5jx1M1JQh5RLpBS5atGqEiIs8vjcLr3RWmqSw5c1ynIw8SZ5XFk7ZyGtwgBih7TftpaKRc8dhyAkPJpyU2rFehwELffaVkuQRddipe9b2jpD5nLrPiB---QFhgMJInwwmABriIVy_G2Xav-bsjnO2GXVH-H9CWiJHpnB23zcdV4LbWAl-59aF41VDA3p7mQlNqbRQeHy6j0_VL3_Ekn3zpg4FVgXzFWT4IYR-NDgSx33LEPC6IW0%26flowName%3DGeneralOAuthFlow%26as%3DS153939397%253A1780594356822601%26client_id%3D658236633227-rl5u8io1udpu79h62n08el83ebj5q564.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&dsh=S153939397%3A1780594356822601&flowName=GeneralOAuthFlow&o2v=2&opparams=%253Fredirect_to%253Dhttp%25253A%25252F%25252Flocalhost%25253A3000%25252Fapi%25252Fauth%25252Fcallback&prompt=select_account&redirect_uri=https%3A%2F%2Fnxkijeqxkefbrvaanite.supabase.co%2Fauth%2Fv1%2Fcallback&response_type=code&scope=email%20profile&service=lso&state=1ac4cc20-9eee-409c-9164-0f8b74fa6673:0
+[   43620ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://accounts.google.com/v3/signin/challenge/pwd?TL=APouJz72m2zcBWTpP4fhKWJlQDwg6c_DSZZ7uPKgiuMGE2VvoVVI6GmmeN-qv6u7&app_domain=https%3A%2F%2Fnxkijeqxkefbrvaanite.supabase.co&checkConnection=youtube%3A147&checkedDomains=youtube&cid=1&client_id=658236633227-rl5u8io1udpu79h62n08el83ebj5q564.apps.googleusercontent.com&continue=https%3A%2F%2Faccounts.google.com%2Fsignin%2Foauth%2Fconsent%3Fauthuser%3Dunknown%26part%3DAJi8hAN7v5BCZNRkn0Q0tfjxEMHShyF2uNHwwo23DhtTr7QULJV5dSxlIckDumPzAkL2I2vGnjBjjgtc-GWpzncYYxNXLFqvGaN3PoPEJDLwlvwxkdgejnM9ffHiPR0XDvC6Fl6uZ32-LhENQAHcwZylN1kg7XmL0xeNy8NhxV9nGNkxG1ShBNzyyf0-CLaBsrRjCeEWrWIzCJiPYwI_TI56TJSOJylWEaRL0Hdm3XuNupnATVlcN7bqY-TwliXc7vi5jx1M1JQh5RLpBS5atGqEiIs8vjcLr3RWmqSw5c1ynIw8SZ5XFk7ZyGtwgBih7TftpaKRc8dhyAkPJpyU2rFehwELffaVkuQRddipe9b2jpD5nLrPiB---QFhgMJInwwmABriIVy_G2Xav-bsjnO2GXVH-H9CWiJHpnB23zcdV4LbWAl-59aF41VDA3p7mQlNqbRQeHy6j0_VL3_Ekn3zpg4FVgXzFWT4IYR-NDgSx33LEPC6IW0%26flowName%3DGeneralOAuthFlow%26as%3DS153939397%253A1780594356822601%26client_id%3D658236633227-rl5u8io1udpu79h62n08el83ebj5q564.apps.googleusercontent.com%26requestPath%3D%252Fsignin%252Foauth%252Fconsent%23&dsh=S153939397%3A1780594356822601&flowName=GeneralOAuthFlow&o2v=2&opparams=%253Fredirect_to%253Dhttp%25253A%25252F%25252Flocalhost%25253A3000%25252Fapi%25252Fauth%25252Fcallback&prompt=select_account&pstMsg=1&redirect_uri=https%3A%2F%2Fnxkijeqxkefbrvaanite.supabase.co%2Fauth%2Fv1%2Fcallback&response_type=code&scope=email%20profile&service=lso&state=1ac4cc20-9eee-409c-9164-0f8b74fa6673:0
+[   65878ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   65924ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   70670ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2FFfmpeg.svg:0
+[   70681ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FIf%2FIf.svg:0
+[   70728ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FGoogleDrive%2FGoogleDrive.svg:0
+[   70801ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FMetaBusinessSuite.svg:0
+[   71158ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FIf%2Fif.svg:0
+[   71173ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2Fffmpeg.svg:0
+[   71257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FGoogleDrive%2FgoogleDrive.svg:0
+[   71293ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FmetaBusinessSuite.svg:0
+[   75049ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2FFfmpeg.svg:0
+[   75554ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.ffmpeg:0
+[   75557ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2Fffmpeg.svg:0
+[   75634ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.ffmpeg:0
+[   86106ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   86558ms] [LOG] [Fast Refresh] done in 553ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   86667ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   86681ms] [LOG] [Fast Refresh] done in 115ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87091ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87513ms] [LOG] [Fast Refresh] done in 522ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87618ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87639ms] [LOG] [Fast Refresh] done in 125ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87777ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   87910ms] [LOG] [Fast Refresh] done in 233ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   88229ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   88373ms] [LOG] [Fast Refresh] done in 256ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   88473ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   88679ms] [LOG] [Fast Refresh] done in 305ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   89784ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FMetaBusinessSuite.svg:0
+[   89815ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FGoogleDrive%2FGoogleDrive.svg:0
+[   89842ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2FFfmpeg.svg:0
+[   89890ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   89892ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FIf%2FIf.svg:0
+[   89894ms] [LOG] [Fast Refresh] done in 106ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   90226ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FmetaBusinessSuite.svg:0
+[   90251ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FIf%2Fif.svg:0
+[   90383ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2Fffmpeg.svg:0
+[   90494ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FGoogleDrive%2FgoogleDrive.svg:0
+[   95541ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://nxkijeqxkefbrvaanite.supabase.co/rest/v1/project_canvas?on_conflict=project_id:0
+[   95543ms] [ERROR] Error saving project canvas: TypeError: Failed to fetch | TypeError: Failed to fetch
+    at http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0yudpsc._.js:7954:23
+    at http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0yudpsc._.js:7979:16
+    at async executeWithRetry (http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_0eu3ylr._.js:272:29)
+    at async saveProjectCanvas (http://localhost:3000/_next/static/chunks/_100ndua._.js:9573:23) @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3318
+[   95543ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://nxkijeqxkefbrvaanite.supabase.co/rest/v1/project_canvas?on_conflict=project_id:0
+[   95544ms] [ERROR] Error saving project canvas: TypeError: Failed to fetch | TypeError: Failed to fetch
+    at http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0yudpsc._.js:7954:23
+    at http://localhost:3000/_next/static/chunks/node_modules_%40supabase_0yudpsc._.js:7979:16
+    at async executeWithRetry (http://localhost:3000/_next/static/chunks/node_modules_%40supabase_postgrest-js_dist_index_mjs_0eu3ylr._.js:272:29)
+    at async saveProjectCanvas (http://localhost:3000/_next/static/chunks/_100ndua._.js:9573:23) @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3318
+[  141898ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?credential=httpBasicAuth:0
+[  141958ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?credential=httpBasicAuth:0
+[  142010ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/chat:0
+[  143931ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?credential=openAiApi:0
+[  144035ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/chat:0
+[  147977ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.ffmpeg:0
+[  148149ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.ffmpeg:0
+[  148563ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2FFfmpeg.svg:0
+[  148982ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FFfmpeg%2Fffmpeg.svg:0
+[  158600ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?credential=googleApi:0
+[  158705ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/chat:0
+[  160392ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  160452ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  163030ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?credential=openAiApi:0
+[  163137ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/chat:0
+[  164965ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  165033ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  169022ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  169167ms] [LOG] [Fast Refresh] done in 249ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  171411ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  171578ms] [LOG] [Fast Refresh] done in 270ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  212519ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  212581ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/catalog?node=n8n-nodes-base.metaBusinessSuite:0
+[  213047ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FMetaBusinessSuite.svg:0
+[  213555ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/n8n/icon?path=n8n-nodes-base%2Fdist%2Fnodes%2FMetaBusinessSuite%2FmetaBusinessSuite.svg:0
+[  400306ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  400749ms] [LOG] [Fast Refresh] done in 541ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  400868ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  401148ms] [LOG] [Fast Refresh] done in 383ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  401325ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  401435ms] [LOG] [Fast Refresh] done in 214ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  414898ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  415564ms] [LOG] [Fast Refresh] done in 764ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  415683ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  415896ms] [LOG] [Fast Refresh] done in 315ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  416042ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  416054ms] [LOG] [Fast Refresh] done in 117ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  416174ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  416213ms] [LOG] [Fast Refresh] done in 143ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  482631ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  483430ms] [LOG] [Fast Refresh] done in 902ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  483544ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  483779ms] [LOG] [Fast Refresh] done in 337ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  497084ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  497085ms] [LOG] [Fast Refresh] done in 108ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  522412ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  522451ms] [LOG] [Fast Refresh] done in 143ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  522567ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  522814ms] [LOG] [Fast Refresh] done in 352ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  557421ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  558061ms] [LOG] [Fast Refresh] done in 507ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  570474ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  570853ms] [LOG] [Fast Refresh] done in 286ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  570959ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  571117ms] [LOG] [Fast Refresh] done in 261ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  571294ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  571352ms] [LOG] [Fast Refresh] done in 158ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  617840ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  618345ms] [LOG] [Fast Refresh] done in 607ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  618474ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  618761ms] [LOG] [Fast Refresh] done in 396ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  618880ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  618927ms] [LOG] [Fast Refresh] done in 153ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  619047ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  619068ms] [LOG] [Fast Refresh] done in 126ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477

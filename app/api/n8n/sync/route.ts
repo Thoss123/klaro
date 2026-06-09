@@ -31,6 +31,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Workflow nicht deployed' }, { status: 404 });
   }
 
+  // Resolve n8n credential IDs for each tool
+  const { data: creds } = await supabase
+    .from('user_credentials')
+    .select('tool_name, n8n_credential_id')
+    .eq('user_id', user.id)
+    .eq('status', 'active'); // project_id is optional but we can filter by it if available
+
+  const credMap: Record<string, string> = {};
+  for (const c of creds || []) {
+    if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
+  }
+
+  const baseMappings = buildMappingsFromWorkflow(body.workflow, body.step_configs ?? {});
+  const credentialMappings = baseMappings.map(m => ({
+    ...m,
+    credential_id: (m.tool && credMap[m.tool]) || (m.credential_type && credMap[m.credential_type]) || m.credential_id,
+  }));
+
   try {
     const result = await syncDeployedWorkflow({
       n8nWorkflowId,
@@ -39,7 +57,7 @@ export async function POST(req: NextRequest) {
       workflowName: body.workflow_name || body.workflow.title,
       structureChanged: body.structure_changed ?? false,
       changedStepIds: body.changed_step_ids,
-      credentialMappings: buildMappingsFromWorkflow(body.workflow, body.step_configs ?? {}),
+      credentialMappings,
     });
 
     return NextResponse.json({ ok: true, ...result });

@@ -153,8 +153,23 @@ function stripIconsPrefix(path: string): string {
   return path.replace(/^icons\//, '').replace(/^file:/, '');
 }
 
+const CORE_ICONS: Record<string, string> = {
+  'if': 'node/if.svg',
+  'switch': 'node/switch.svg',
+  'merge': 'node/merge.svg',
+  'manualtrigger': 'node/manual-trigger.svg',
+  'scheduletrigger': 'node/schedule-trigger.svg',
+  'webhook': 'node/webhook.svg',
+  'httprequest': 'node/http-request.svg',
+  'code': 'node/code.svg',
+  'set': 'node/edit-fields.svg',
+  'wait': 'node/wait.svg',
+  'noop': 'node/no-operation.svg',
+  'splitinbatches': 'node/split-out.svg',
+};
+
 export function resolveIconPath(
-  iconOrNode: N8nNodeTypeDescription['icon'] | Pick<N8nNodeTypeDescription, 'icon' | 'iconUrl'>,
+  iconOrNode: N8nNodeTypeDescription['icon'] | Pick<N8nNodeTypeDescription, 'icon' | 'iconUrl' | 'name'>,
 ): string | null {
   const iconUrl =
     typeof iconOrNode === 'object' && iconOrNode !== null && 'iconUrl' in iconOrNode
@@ -169,6 +184,12 @@ export function resolveIconPath(
     typeof iconOrNode === 'object' && iconOrNode !== null && 'icon' in iconOrNode
       ? iconOrNode.icon
       : iconOrNode;
+      
+  if (!icon && typeof iconOrNode === 'object' && iconOrNode !== null && 'name' in iconOrNode) {
+    const short = (iconOrNode.name?.split('.').pop() || iconOrNode.name)?.toLowerCase();
+    if (short && CORE_ICONS[short]) return CORE_ICONS[short];
+  }
+
   if (!icon) return null;
   if (typeof icon === 'string') {
     if (icon.startsWith('file:')) return stripIconsPrefix(icon);
@@ -177,7 +198,10 @@ export function resolveIconPath(
     if (icon.startsWith('node:')) return `node/${icon.slice(5)}.svg`;
     return null;
   }
-  return icon.light ? stripIconsPrefix(icon.light) : null;
+  if (typeof icon === 'object' && icon !== null && 'light' in icon) {
+    return stripIconsPrefix((icon as { light: string }).light);
+  }
+  return null;
 }
 
 /** Build searchable catalog index from raw nodes.json entries. */

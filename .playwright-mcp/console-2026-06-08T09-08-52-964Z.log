@@ -1,0 +1,77 @@
+[     155ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[     779ms] [LOG] [Fast Refresh] done in 731ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1021ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1130ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1316ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1363ms] [LOG] [Fast Refresh] done in 160ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1519ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[    1799ms] [LOG] [Fast Refresh] done in 383ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   30077ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   30345ms] [LOG] [Fast Refresh] done in 375ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   52057ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   52292ms] [LOG] [Fast Refresh] done in 345ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   73329ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   73569ms] [LOG] [Fast Refresh] done in 347ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   95126ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[   95347ms] [LOG] [Fast Refresh] done in 327ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  115093ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  115296ms] [LOG] [Fast Refresh] done in 314ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  135053ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  135257ms] [LOG] [Fast Refresh] done in 316ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  159736ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  159940ms] [LOG] [Fast Refresh] done in 312ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  170512ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  170833ms] [LOG] [Fast Refresh] done in 428ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  191540ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  191791ms] [LOG] [Fast Refresh] done in 362ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  233418ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  233700ms] [LOG] [Fast Refresh] done in 386ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  262837ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/onboarding:0
+[  263595ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  263800ms] [LOG] [Fast Refresh] done in 309ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  291285ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  291506ms] [LOG] [Fast Refresh] done in 328ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  326574ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  326685ms] [LOG] [Fast Refresh] done in 216ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  327365ms] [WARNING] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  330015ms] [LOG] [chat] Sending to API — onboarding: {"ziel":"Weiß nicht, wo wir anfangen sollen","ki_erfahrung":"Haben schon damit rumgespielt","wer_setzt_um":"Ich selbst","hindernis":"Keine Zeit uns damit zu beschäftigen","branche":"Agentur","tempo":"Diese Woche","unternehmensgroesse":"small","vorname":"Thomas","firmenname":"Pixelwerk Studio","rolle_im_unternehmen":"CEO / Geschäftsführung","memory":null} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  330016ms] [LOG] [chat] phase: diagnose | isHiddenInit: true @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  330291ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  333841ms] [LOG] [Fast Refresh] done in 3656ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  334788ms] [LOG] [agent-sync][canvas][turn] msg turn session=a07b2952-ef32-42c8-aeb0-7b2ccc826ff2 {"phase":"diagnose","hiddenInit":true,"userPreview":"[__klaro_system__] phase=diagnose\nHallo, lass uns starten!"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  334789ms] [LOG] [agent-sync][memory][turn] msg turn session=a07b2952-ef32-42c8-aeb0-7b2ccc826ff2 {"phase":"diagnose","hiddenInit":true} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  334790ms] [LOG] [agent-sync][canvas][evaluate] blocked {"reason":"hidden_init","detail":"Welcome/hidden init — no sync"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  337442ms] [LOG] [agent-sync][canvas][skip] auto_sync not run {"reason":"hidden_init","detail":"Welcome/hidden init — no sync"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  337443ms] [LOG] [agent-sync][memory][skip] hidden init — no memory extract @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  365168ms] [LOG] [chat] Sending to API — onboarding: {"ziel":"Weiß nicht, wo wir anfangen sollen","ki_erfahrung":"Haben schon damit rumgespielt","wer_setzt_um":"Ich selbst","hindernis":"Keine Zeit uns damit zu beschäftigen","branche":"Agentur","tempo":"Diese Woche","unternehmensgroesse":"small","vorname":"Thomas","firmenname":"Pixelwerk Studio","rolle_im_unternehmen":"CEO / Geschäftsführung","memory":null} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  365169ms] [LOG] [chat] phase: diagnose | isHiddenInit: false @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  365298ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  365313ms] [LOG] [Fast Refresh] done in 120ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  368060ms] [LOG] [agent-sync][canvas][turn] msg turn session=a07b2952-ef32-42c8-aeb0-7b2ccc826ff2 {"phase":"diagnose","hiddenInit":false,"userPreview":"Kurze Zwischenfrage: Wie verbinde ich eigentlich Gmail in Klaro? Wo genau trage "} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  368061ms] [LOG] [agent-sync][memory][turn] msg turn session=a07b2952-ef32-42c8-aeb0-7b2ccc826ff2 {"phase":"diagnose","hiddenInit":false} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  368062ms] [LOG] [agent-sync][canvas][evaluate] eligible {"reason":"ok","detail":"phase=diagnose, userChars=105"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  371863ms] [LOG] [agent-sync][canvas][invoke] auto_sync (no tag in stream) @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  371866ms] [LOG] [agent-sync][canvas][invoke] POST /api/canvas-worker (auto_sync) {"projectId":"46b0cf6c-e2ab-4d4f-86b5-88f691586429","phase":"diagnose"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  371869ms] [LOG] [agent-sync][memory][invoke] POST /api/memory-update {"sessionId":"a07b2952-ef32-42c8-aeb0-7b2ccc826ff2","userChars":105,"assistantChars":575} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  372126ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  374091ms] [LOG] [agent-sync][memory][success] memory updated {"chars":756,"reason":"new_facts_merged"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  377134ms] [LOG] [Fast Refresh] done in 5367ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  378078ms] [LOG] [agent-sync][canvas][success] canvas updated {"diff":"pain_points 0→0 (Δ+0), use_cases 0→0 (Δ+0), company_steps=0, change_appetite=—","phase":"diagnose"} @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  415195ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  416249ms] [LOG] [Fast Refresh] done in 1154ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  417503ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  417692ms] [LOG] [Fast Refresh] done in 297ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  967552ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  968827ms] [LOG] [Fast Refresh] done in 1372ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  968939ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  969598ms] [LOG] [Fast Refresh] done in 760ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  969740ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  969819ms] [LOG] [Fast Refresh] done in 183ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  985697ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  986208ms] [LOG] [Fast Refresh] done in 596ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  986333ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  986909ms] [LOG] [Fast Refresh] done in 676ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[  999549ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[ 1000011ms] [LOG] [Fast Refresh] done in 549ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[ 1000143ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477
+[ 1000772ms] [LOG] [Fast Refresh] done in 734ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2477

@@ -39,6 +39,7 @@ export function stripInternalTags(content: string): string {
     'canvas_update',
     'canvas_built',
     'options',
+    'user_attachments',
   ];
   for (const tag of paired) {
     text = text.replace(

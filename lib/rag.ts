@@ -48,18 +48,23 @@ const PHASE_TYPE_MAP: Record<string, KnowledgeSourceType[]> = {
   umsetzung: ['tool', 'template_baustein', 'template_workflow', 'ui_guide'],
 };
 
-/** Semantic search over the global knowledge base. */
+/** Semantic search over the global knowledge base.
+ *  - `types` (explicit) overrides the phase map — use it for coach-driven lookups.
+ *  - `phase` (only when `types` is omitted) restricts to that phase's relevant types.
+ *  - neither → search all types. */
 export async function searchKnowledge(opts: {
   query: string;
   phase?: string;
+  types?: KnowledgeSourceType[] | null;
   matchCount?: number;
   threshold?: number;
 }): Promise<KnowledgeMatch[]> {
-  const { query, phase, matchCount = 5, threshold = 0.4 } = opts;
+  const { query, phase, types, matchCount = 5, threshold = 0.4 } = opts;
   if (!query || !query.trim()) return [];
 
   const embedding = await generateEmbedding(query);
-  const filterTypes = phase ? PHASE_TYPE_MAP[phase] ?? null : null;
+  const filterTypes =
+    types !== undefined ? types : phase ? PHASE_TYPE_MAP[phase] ?? null : null;
 
   const supabase = createSupabaseAnonClient();
   const { data, error } = await supabase.rpc('search_knowledge', {

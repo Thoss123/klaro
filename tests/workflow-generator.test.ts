@@ -67,9 +67,10 @@ describe('buildN8nWorkflow', () => {
     expect(json.nodes[3].credentials.gmailOAuth2Api.id).toBe('cred_gmail');
   });
 
-  it('positions nodes horizontally and is inactive by default', () => {
+  it('positions nodes horizontally and omits the read-only active field', () => {
     const json = buildN8nWorkflow(wf, mappings, 'X') as any;
-    expect(json.active).toBe(false);
+    // n8n REST POST /workflows lehnt `active` als read-only ab → darf NICHT im JSON sein.
+    expect(json.active).toBeUndefined();
     expect(json.nodes[1].position[0]).toBeGreaterThan(json.nodes[0].position[0]);
   });
 

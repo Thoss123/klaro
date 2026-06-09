@@ -1,0 +1,38 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - button [ref=e5] [cursor=pointer]
+      - button [ref=e6] [cursor=pointer]
+      - button [ref=e7] [cursor=pointer]
+      - button [ref=e8] [cursor=pointer]
+      - button [ref=e9] [cursor=pointer]
+      - button [ref=e10] [cursor=pointer]
+      - button [disabled] [ref=e11]
+      - button [disabled] [ref=e12]
+      - button [disabled] [ref=e13]
+      - button [disabled] [ref=e14]
+      - button [disabled] [ref=e15]
+    - generic [ref=e178]:
+      - button "Zurück" [ref=e180]:
+        - img [ref=e181]
+        - text: Zurück
+      - generic [ref=e183]:
+        - heading "Was hat euch bisher ausgebremst?" [level=2] [ref=e184]
+        - paragraph [ref=e185]: Mehrere Antworten sind möglich — wählt alles, was bei euch zutrifft.
+      - generic [ref=e186]:
+        - button "Keine Zeit, sich intensiv damit zu beschäftigen" [ref=e187]:
+          - generic [ref=e189]: Keine Zeit, sich intensiv damit zu beschäftigen
+        - button "Zu wenig technisches Know-how im Team" [ref=e190]:
+          - generic [ref=e192]: Zu wenig technisches Know-how im Team
+        - button "Bedenken zu Datenschutz, Sicherheit oder Compliance" [ref=e193]:
+          - generic [ref=e195]: Bedenken zu Datenschutz, Sicherheit oder Compliance
+        - button "Unklarheit, welcher Prozess den größten Hebel hat" [ref=e196]:
+          - generic [ref=e198]: Unklarheit, welcher Prozess den größten Hebel hat
+        - button "Bisher keine passenden Tools oder Anbieter gefunden" [ref=e199]:
+          - generic [ref=e201]: Bisher keine passenden Tools oder Anbieter gefunden
+      - button "Weiter" [disabled] [ref=e203]:
+        - text: Weiter
+        - img [ref=e204]
+  - button "Open Next.js Dev Tools" [ref=e50] [cursor=pointer]:
+    - img [ref=e51]
+  - alert [ref=e54]

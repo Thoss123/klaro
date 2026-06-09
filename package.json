@@ -15,7 +15,12 @@
     "index-knowledge": "node scripts/index-knowledge.mjs",
     "index-tools": "node scripts/index-knowledge.mjs tools",
     "index-branchen": "node scripts/index-knowledge.mjs branchen",
-    "index-templates": "node scripts/index-knowledge.mjs templates"
+    "index-templates": "node scripts/index-knowledge.mjs templates",
+    "supabase": "supabase",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "db:migration:new": "supabase migration new"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",
@@ -46,6 +51,7 @@
     "eslint": "^10.4.0",
     "eslint-config-next": "^16.2.6",
     "postcss": "^8",
+    "supabase": "^2.105.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.6"

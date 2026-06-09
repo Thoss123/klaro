@@ -21,6 +21,7 @@ export function buildMcpParameterOperations(
   workflow: Workflow,
   stepConfigs: Record<string, StepConfig>,
   changedStepIds?: string[],
+  mappings?: StepMapping[],
 ): McpWorkflowOperation[] {
   const ops: McpWorkflowOperation[] = [];
   const changed = changedStepIds ? new Set(changedStepIds) : null;
@@ -29,14 +30,20 @@ export function buildMcpParameterOperations(
     if (changed && !changed.has(step.id)) return;
 
     const config = stepConfigs[step.id];
+    const nodeName = n8nNodeNameForStep(step.label, index);
+    
+    // 1. Update parameters
     const parameters = buildParameters(step, config);
-    if (!parameters || Object.keys(parameters).length === 0) return;
+    if (parameters && Object.keys(parameters).length > 0) {
+      ops.push({
+        operation: 'updateNodeParameters',
+        nodeName,
+        parameters,
+      });
+    }
 
-    ops.push({
-      operation: 'updateNodeParameters',
-      nodeName: n8nNodeNameForStep(step.label, index),
-      parameters,
-    });
+    // Note: n8n MCP update_workflow does NOT support setNodeCredential.
+    // Credentials must be updated via REST sync (structureChanged: true).
   });
 
   return ops;
@@ -57,10 +64,11 @@ export async function syncParametersToN8nMcp(
   workflow: Workflow,
   stepConfigs: Record<string, StepConfig>,
   changedStepIds?: string[],
+  mappings?: StepMapping[],
 ): Promise<{ appliedOperations: number } | null> {
   if (!isN8nMcpConfigured()) return null;
 
-  const operations = buildMcpParameterOperations(workflow, stepConfigs, changedStepIds);
+  const operations = buildMcpParameterOperations(workflow, stepConfigs, changedStepIds, mappings);
   if (operations.length === 0) return { appliedOperations: 0 };
 
   const result = await mcpUpdateWorkflow(n8nWorkflowId, operations);
@@ -134,6 +142,7 @@ export async function syncDeployedWorkflow(input: SyncDeployedWorkflowInput): Pr
     input.workflow,
     input.stepConfigs,
     input.changedStepIds,
+    mappings,
   );
 
   return {

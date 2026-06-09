@@ -16,10 +16,10 @@ export type CompleteJson = (args: {
 }) => Promise<{ content: string; tokens: number }>;
 
 /** Build a `CompleteJson` backed by a real Mistral client (JSON response mode). */
-export function mistralCompleteJson(client: Mistral): CompleteJson {
+export function mistralCompleteJson(client: Mistral, model: string = AGENT_MODEL): CompleteJson {
   return async ({ system, user }) => {
     const res = await client.chat.complete({
-      model: AGENT_MODEL,
+      model: model,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },

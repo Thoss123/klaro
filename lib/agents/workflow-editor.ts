@@ -10,7 +10,7 @@ import {
   isCoachingIntent,
   nextOpenStepId,
 } from '@/lib/workflow-setup-coach';
-import { attachSubNode, defaultEntryForSlot, aiSlotsFor } from '@/lib/ai-subnodes';
+import { attachSubNode, defaultEntryForSlot, aiSlotsFor, isSubNodeOnlyType, STANDALONE_AI_NODE } from '@/lib/ai-subnodes';
 import { getCatalogIndex, getNodeByName, getN8nCatalog } from '@/lib/n8n-catalog';
 import { searchCatalogIndex } from '@/lib/n8n-categories';
 import { buildInitialParameters } from '@/lib/n8n-parameter-utils';
@@ -98,6 +98,10 @@ export interface WorkflowEditInput {
   stepConfigs?: Record<string, StepConfig>;
   /** Gleicher Kontext wie Haupt-Chat (Onboarding, Canvas, Memory, Verlauf). */
   coachContext?: WorkflowEditorCoachContext;
+  /** Pro Schritt: verfügbare Eingangsdaten-Felder (Output des Vorschritts) für Expressions. */
+  inputSchema?: Record<string, { path: string; sample: string }[]>;
+  /** Fehler je Node aus dem letzten Testlauf (für „was war der Error?" + Auto-Fix). */
+  nodeErrors?: { node: string; error: string }[];
 }
 
 export interface WorkflowEditResult {
@@ -166,16 +170,38 @@ async function applyHeuristicEdit(
           || s.tool === 'openAi'
           || s.tool === 'openai';
         if (!isOpenAi) continue;
-        steps[i] = {
-          ...s,
-          n8nType: mistralType,
-          n8nTypeVersion: mistralDef
-            ? (Array.isArray(mistralDef.version) ? mistralDef.version.at(-1) : mistralDef.version) ?? 1
-            : s.n8nTypeVersion,
-          tool: mistralType.split('.').pop(),
-          type: 'ai',
-          credentialType: mistralDef?.credentials?.[0]?.name ?? s.credentialType,
-        };
+
+        if (!s.subNodeOf && isSubNodeOnlyType(mistralType)) {
+          const agentDef = getNodeByName(catalog, '@n8n/n8n-nodes-langchain.agent');
+          steps[i] = {
+            ...s,
+            n8nType: '@n8n/n8n-nodes-langchain.agent',
+            n8nTypeVersion: agentDef ? (Array.isArray(agentDef.version) ? agentDef.version.at(-1) : agentDef.version) ?? 1 : 1,
+            tool: 'agent',
+            type: 'ai',
+            parameters: {},
+            credentialType: undefined,
+          };
+          const attached = attachSubNode(steps, edges, s.id, 'ai_languageModel', {
+            name: mistralType,
+            displayName: mistralDef?.displayName ?? 'Mistral',
+            version: mistralDef ? (Array.isArray(mistralDef.version) ? mistralDef.version.at(-1) : mistralDef.version) ?? 1 : 1,
+            credentialTypes: [mistralDef?.credentials?.[0]?.name ?? ''],
+          } as any);
+          steps = attached.steps;
+          edges = attached.edges;
+        } else {
+          steps[i] = {
+            ...s,
+            n8nType: mistralType,
+            n8nTypeVersion: mistralDef
+              ? (Array.isArray(mistralDef.version) ? mistralDef.version.at(-1) : mistralDef.version) ?? 1
+              : s.n8nTypeVersion,
+            tool: mistralType.split('.').pop(),
+            type: 'ai',
+            credentialType: mistralDef?.credentials?.[0]?.name ?? s.credentialType,
+          };
+        }
         swapCount++;
       }
       if (swapCount > 0) {
@@ -196,38 +222,67 @@ async function applyHeuristicEdit(
     const index_ = await getCatalogIndex();
     const n8nType = resolveN8nTypeFromClause(targetClause, index_);
     if (n8nType && steps[index].n8nType !== n8nType) {
-      const catalog = await getN8nCatalog();
-      const nodeDef = getNodeByName(catalog, n8nType);
-      const isAi = n8nType.includes('langchain');
-      const isTrigger = /Trigger$|\.webhook$/.test(n8nType);
-      steps[index] = {
-        ...steps[index],
-        n8nType,
-        n8nTypeVersion: nodeDef
-          ? (Array.isArray(nodeDef.version) ? nodeDef.version.at(-1) : nodeDef.version) ?? 1
-          : steps[index].n8nTypeVersion,
-        tool: n8nType.split('.').pop(),
-        type: isAi ? 'ai' : isTrigger ? 'trigger' : steps[index].type,
-        parameters: nodeDef
-          ? { ...buildInitialParameters(nodeDef.properties || []), ...steps[index].parameters }
-          : steps[index].parameters,
-        credentialType: nodeDef?.credentials?.[0]?.name ?? steps[index].credentialType,
-      };
-      changed = true;
-      const nr = stepNumber(steps, steps[index].id);
-      reply = `Schritt ${nr}: „${steps[index].label}" nutzt jetzt ${nodeDef?.displayName ?? n8nType.split('.').pop()}.`;
+      if (!steps[index].subNodeOf && isSubNodeOnlyType(n8nType)) {
+        const catalog = await getN8nCatalog();
+        const agentDef = getNodeByName(catalog, '@n8n/n8n-nodes-langchain.agent');
+        
+        steps[index] = {
+          ...steps[index],
+          n8nType: '@n8n/n8n-nodes-langchain.agent',
+          n8nTypeVersion: agentDef ? (Array.isArray(agentDef.version) ? agentDef.version.at(-1) : agentDef.version) ?? 1 : 1,
+          tool: 'agent',
+          type: 'ai',
+          parameters: {},
+          credentialType: undefined,
+        };
+        changed = true;
+        reply = `Schritt ${stepNumber(steps, steps[index].id)}: als Agent eingerichtet.`;
+        
+        let slot = 'ai_languageModel';
+        if (n8nType.toLowerCase().includes('tool') || n8nType.toLowerCase().includes('store')) slot = 'ai_tool';
+        else if (n8nType.toLowerCase().includes('memory')) slot = 'ai_memory';
+        
+        const entry = index_.find(e => e.name === n8nType);
+        if (entry) {
+          const attached = attachSubNode(steps, edges, steps[index].id, slot, entry);
+          steps = attached.steps;
+          edges = attached.edges;
+          reply += ` ${entry.displayName ?? n8nType.split('.').pop()} wurde verbunden.`;
+        }
+      } else {
+        const catalog = await getN8nCatalog();
+        const nodeDef = getNodeByName(catalog, n8nType);
+        const isAi = n8nType.includes('langchain');
+        const isTrigger = /Trigger$|\.webhook$/.test(n8nType);
+        steps[index] = {
+          ...steps[index],
+          n8nType,
+          n8nTypeVersion: nodeDef
+            ? (Array.isArray(nodeDef.version) ? nodeDef.version.at(-1) : nodeDef.version) ?? 1
+            : steps[index].n8nTypeVersion,
+          tool: n8nType.split('.').pop(),
+          type: isAi ? 'ai' : isTrigger ? 'trigger' : steps[index].type,
+          parameters: nodeDef
+            ? { ...buildInitialParameters(nodeDef.properties || []), ...steps[index].parameters }
+            : steps[index].parameters,
+          credentialType: nodeDef?.credentials?.[0]?.name ?? steps[index].credentialType,
+        };
+        changed = true;
+        const nr = stepNumber(steps, steps[index].id);
+        reply = `Schritt ${nr}: „${steps[index].label}" nutzt jetzt ${nodeDef?.displayName ?? n8nType.split('.').pop()}.`;
 
-      // AI Agent/Chain: Default Chat Model anhängen wenn noch keiner verbunden ist.
-      if (aiSlotsFor(n8nType).some(s => s.required)) {
-        const slot = aiSlotsFor(n8nType).find(s => s.required)!;
-        const hasModel = (steps[index].aiSubNodes?.[slot.slot]?.length ?? 0) > 0;
-        if (!hasModel) {
-          const entry = defaultEntryForSlot(slot.slot, index_);
-          if (entry) {
-            const attached = attachSubNode(steps, edges, steps[index].id, slot.slot, entry);
-            steps = attached.steps;
-            edges = attached.edges;
-            reply += ` ${slot.label} (${entry.displayName}) wurde automatisch verbunden.`;
+        // AI Agent/Chain: Default Chat Model anhängen wenn noch keiner verbunden ist.
+        if (aiSlotsFor(n8nType).some(s => s.required)) {
+          const slot = aiSlotsFor(n8nType).find(s => s.required)!;
+          const hasModel = (steps[index].aiSubNodes?.[slot.slot]?.length ?? 0) > 0;
+          if (!hasModel) {
+            const entry = defaultEntryForSlot(slot.slot, index_);
+            if (entry) {
+              const attached = attachSubNode(steps, edges, steps[index].id, slot.slot, entry);
+              steps = attached.steps;
+              edges = attached.edges;
+              reply += ` ${slot.label} (${entry.displayName}) wurde automatisch verbunden.`;
+            }
           }
         }
       }
@@ -309,7 +364,6 @@ async function attachCoachResult(
     message: formatCoachMessage(workflow, guides, headline),
     changed,
     stepConfigUpdates: Object.keys(stepConfigUpdates).length ? stepConfigUpdates : undefined,
-    openStepId: nextOpenStepId(guides),
   };
 }
 
@@ -348,8 +402,29 @@ async function applyCoachingOnly(
     message: formatCoachMessage(workflow, guides, headline),
     changed: Object.keys(stepConfigUpdates).length > 0,
     stepConfigUpdates: Object.keys(stepConfigUpdates).length ? stepConfigUpdates : undefined,
-    openStepId: nextOpenStepId(guides),
   };
+}
+
+function formatInputSchemaForPrompt(
+  steps: WorkflowStep[],
+  inputSchema?: Record<string, { path: string; sample: string }[]>,
+): string {
+  if (!inputSchema) return '';
+  const lines: string[] = [];
+  steps.forEach((s, i) => {
+    const fields = inputSchema[s.id];
+    if (fields?.length) {
+      lines.push(`Schritt ${i + 1} ("${s.label}") Eingangsfelder: ${fields.slice(0, 20).map(f => `$json.${f.path}`).join(', ')}`);
+    }
+  });
+  return lines.length
+    ? `\nVERFÜGBARE EINGANGSDATEN (aus letztem Testlauf — nutze sie als Expression \`={{ $json.feld }}\` in step_configs):\n${lines.join('\n')}`
+    : '';
+}
+
+function formatNodeErrorsForPrompt(nodeErrors?: { node: string; error: string }[]): string {
+  if (!nodeErrors?.length) return '';
+  return `\nFEHLER AUS LETZTEM TESTLAUF (wenn der User nach dem Error fragt: erkläre ihn knapp auf Deutsch UND korrigiere die betroffenen step_configs/parameters automatisch):\n${nodeErrors.map(e => `- Node "${e.node}": ${e.error}`).join('\n')}`;
 }
 
 async function applyLlmEdit(
@@ -358,6 +433,8 @@ async function applyLlmEdit(
   complete: CompleteJson,
   stepConfigs?: Record<string, StepConfig>,
   coachContext?: WorkflowEditorCoachContext,
+  inputSchema?: Record<string, { path: string; sample: string }[]>,
+  nodeErrors?: { node: string; error: string }[],
 ): Promise<WorkflowEditResult | null> {
   const index = await getCatalogIndex();
   const overview = await buildWorkflowOverview(workflow);
@@ -366,36 +443,26 @@ async function applyLlmEdit(
 
   const contextBlock = formatCoachContextBlock(coachContext);
 
-  const system = `Du bist Klaro im Workflow-Editor — derselbe Coach wie im Haupt-Chat, nur dass du hier den geöffneten Workflow bearbeitest und antwortest.
-Nutze den KLARO-KONTEXT (Firma, Memory, Pain Points, Haupt-Chat), um Anfragen korrekt zu verstehen — z.B. „wie besprochen", „statt ChatGPT Mistral", Schritt-Bezüge aus dem Gespräch.
-Der User beschreibt Änderungen am Workflow.
-Antworte NUR mit JSON:
+  const system = `Du bist Klaro im Workflow-Editor — der technische Setup-Coach für n8n Workflows.
+Nutze den KLARO-KONTEXT, um die Anfragen perfekt umzusetzen. Der User beschreibt Änderungen am Workflow (Nodes hinzufügen, umbauen, tauschen oder löschen).
+Antworte IMMER UND AUSSCHLIESSLICH mit JSON in folgendem Format:
 {
-  "message": "Kurze Bestätigung auf Deutsch",
-  "steps": [{"id":"...","label":"...","type":"trigger|action|ai|decision|human|output","n8nType":"...","n8nTypeVersion":1,"note":"Deutsch: was dieser Schritt tut","parameters":{}}],
+  "message": "Kurze, freundliche Bestätigung auf Deutsch + Erklärung was als Nächstes zu tun ist.",
+  "steps": [{"id":"...","label":"...","type":"trigger|action|ai|decision|human|output","n8nType":"...","n8nTypeVersion":1,"note":"Kurzer Zweck auf Deutsch","parameters":{}}],
   "edges": [{"id":"e-a-b","source":"step-id-a","target":"step-id-b","branch":"default|true|false|switch-0","targetInput":0,"connectionType":"ai_languageModel"}],
-  "step_configs": {"step-id": {"parameters": {"httpMethod":"POST","path":"klaro-mein-flow"}}}
+  "step_configs": {"step-id": {"parameters": {"...":"..."}}}
 }
-REGELN:
-- Schritt 1 MUSS type=trigger sein (manualTrigger, webhook oder scheduleTrigger).
-- Kein Trigger in der Mitte — nur am Anfang.
-- IF: n8n-nodes-base.if, edges branch true/false.
-- Switch: n8n-nodes-base.switch, edges branch switch-0, switch-1, …
-- Merge: n8n-nodes-base.merge, mehrere Edges auf target mit targetInput 0,1,2…
-- Bestehende step-ids beibehalten wenn möglich.
-- n8nType STRENG nur aus Kandidatenliste. Erfinde KEINE Node-Namen (wie "metaapi").
-- Meta/Facebook/Instagram = n8n-nodes-base.facebookGraphApi
-- note: kurzer deutscher Zwecktext pro Schritt (nicht die englische Node-Beschreibung).
-- parameters: sinnvolle Defaults (resource/operation/mode) aus dem Katalog-Kontext.
-- AI Agent (@n8n/n8n-nodes-langchain.agent): Sub-Nodes als eigene steps mit subNodeOf + connectionType-Edges.
-- Node-Tausch („Schritt 2 soll Slack sein"): n8nType des betroffenen Schritts ändern, id beibehalten.
-- edges: bei Node-Tausch oder Parameter-Änderung WEGLASSEN oder [] — bestehende Verbindungen bleiben erhalten.
-- edges: nur mitsenden wenn du die Topologie wirklich änderst (neuer Schritt, IF/Switch, Löschen).
-- step_configs: sinnvolle Parameter pro Schritt (Webhook: POST + path, Gmail: operation send, KI: model).
-- message: Kurze Bestätigung PLUS konkrete nächste Schritte auf Deutsch (was User klicken/ausfüllen/deployen soll).
-- Webhook: erkläre dass die URL erst nach Deploy in n8n sichtbar ist; Pfad jetzt schon setzen.
-- Nutze step.note und Workflow-Kontext aus Phase 3 — User kennt den fachlichen Ablauf.
-- Führe Konversationen/Rückfragen in "message" immer auf Deutsch.`;
+STRIKTE REGELN FÜR DEINE ARBEIT:
+1. LÖSCHEN VON NODES: Wenn der User verlangt, dass bestimmte Schritte "weg" sollen oder gelöscht werden sollen, MUSST du diese Knoten (und all ihre Sub-Nodes) komplett aus dem "steps" Array weglassen! WICHTIG: Wenn du Knoten löschst oder hinzufügst (z.B. ein IF einfügst), musst du ZWINGEND das komplette "edges" Array mitsenden und die Verbindungen so anpassen, dass der Graph sauber verbunden ist (ohne die gelöschten Knoten).
+2. EDGES BEI UPDATES: Wenn du NUR Parameter oder den Typ eines bestehenden Knotens änderst (z.B. Slack zu Teams) und keine Knoten löschst/hinzufügst, lass "edges" komplett leer ([]).
+3. KORREKTE NODE-TYPEN (n8nType): Erfinde NIEMALS Nodes. Nutze NUR die exakten n8nTypes aus der Kandidatenliste ganz unten!
+4. KI-MODELLE & TOOLS SIND IMMER SUB-NODES: Ein Sprachmodell (wie Mistral Cloud Chat, OpenAI) oder ein Tool darf NIEMALS ein normaler Knoten im Workflow-Ablauf (Flow) sein!
+   - FALSCH: Ein Schritt mit n8nType="@n8n/n8n-nodes-langchain.lmChatMistralCloud" der ganz normal zwischen zwei Schritten hängt. Das zerschießt alles!
+   - RICHTIG: Setze einen "AI Agent" (@n8n/n8n-nodes-langchain.agent) in den Hauptflow. Hänge dann das Sprachmodell als Sub-Node daran an.
+   - SO GEHT'S: Das Modell kommt auch als Element in "steps", ABER mit dem speziellen Feld "subNodeOf": {"parentId": "id-des-agenten", "slot": "ai_languageModel"}. Zusätzlich musst du eine Edge von dem Modell zum Agenten setzen mit "connectionType": "ai_languageModel" (bzw. "ai_tool", "ai_memory").
+5. DATENFLUSS & EXPRESSIONS: Felder, die dynamische Daten aus Vorschritten brauchen (Texte, Emails), MÜSSEN n8n-Expressions mit vorangestelltem '=' verwenden (z.B. "={{ $json.body }}"). Nutze dafür die "VERFÜGBARE EINGANGSDATEN".
+6. VERHALTEN & MESSAGE: Du redest direkt mit dem User auf Deutsch. Nenne die betroffenen Schritte. Erkläre bei Fehlern die Ursache und wie du es behoben hast. Wenn er dich bittet, Mistral Large zu nehmen, setze bei den Parametern des Mistral-Sub-Nodes einfach "model": "mistral-large-latest". Bei "Code" Nodes MUSS der Code in den Parameter "jsCode" gesetzt werden. Bei "If" Nodes nutze "conditions". Sei smart, gib nicht auf, löse das Problem!
+7. EDGES LÖSCHEN/HINZUFÜGEN: Wenn du die Edges (Verbindungen) änderst, ersetze das "edges" Array komplett mit dem neuen Graphen. Schritt 1 MUSS immer ein Trigger (z.B. n8n-nodes-base.manualTrigger) sein.`;
 
   const user = `Workflow: ${workflow.title}
 
@@ -409,7 +476,7 @@ Aktuelle Edges:
 ${JSON.stringify(workflow.edges ?? [], null, 2)}
 
 User-Anfrage: ${message}
-${contextBlock}
+${contextBlock}${formatInputSchemaForPrompt(workflow.steps, inputSchema)}${formatNodeErrorsForPrompt(nodeErrors)}
 Kandidaten-Nodes (nur diese n8nTypes verwenden):
 ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}`;
 
@@ -421,7 +488,23 @@ ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}
       edges?: WorkflowEdge[];
       step_configs?: Record<string, Partial<StepConfig>>;
     }>(content);
-    if (!parsed?.steps?.length) return null;
+    // Q&A / Erklärung ohne Struktur-Änderung: trotzdem die Antwort zeigen (z.B. „was hast du
+    // umgestellt?", „was war der Error?"). Nur step_configs (Parameter) können sich ändern.
+    if (!parsed?.steps?.length) {
+      if (parsed?.message?.trim()) {
+        return {
+          steps: workflow.steps,
+          edges: resolveWorkflowEdges(workflow.steps, workflow.edges),
+          message: parsed.message.trim(),
+          stepConfigUpdates: parsed.step_configs,
+          changed: !!(parsed.step_configs && Object.keys(parsed.step_configs).length),
+        };
+      }
+      return null;
+    }
+
+    const extraSubNodes: WorkflowStep[] = [];
+    const extraEdges: WorkflowEdge[] = [];
 
     const catalog = await getN8nCatalog();
     const mapped = parsed.steps.map(s => {
@@ -432,6 +515,47 @@ ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}
       if (resolved.n8nType && !getNodeByName(catalog, resolved.n8nType)) {
         console.warn(`[workflow-editor] LLM halluziniert Node: ${resolved.n8nType} — nutze Heuristik-Fallback.`);
         resolved = { ...resolved, n8nType: undefined };
+      }
+
+      // Sub-Node-only (Mistral/Anthropic Chat Model, Memory, Tool) NICHT als Haupt-Node verwenden —
+      // die funktionieren nur an einem Agent/Basic LLM Chain. Auf Standalone-KI-Node zurückfallen.
+      if (resolved.n8nType && !resolved.subNodeOf && isSubNodeOnlyType(resolved.n8nType)) {
+        console.warn(`[workflow-editor] "${resolved.n8nType}" ist nur als Sub-Node nutzbar → Wandle in Agent + Sub-Node um.`);
+        const requestedType = resolved.n8nType;
+        const requestedParams = resolved.parameters;
+        const requestedVersion = resolved.n8nTypeVersion;
+        
+        resolved = {
+          ...resolved,
+          n8nType: '@n8n/n8n-nodes-langchain.agent',
+          type: 'ai',
+          tool: 'agent',
+          parameters: {},
+          credentialType: undefined,
+        };
+        
+        let slot = 'ai_languageModel';
+        if (requestedType.toLowerCase().includes('tool') || requestedType.toLowerCase().includes('store')) slot = 'ai_tool';
+        else if (requestedType.toLowerCase().includes('memory')) slot = 'ai_memory';
+
+        const subId = `sub-${slot}-${Date.now()}-${Math.random().toString(36).substring(2,7)}`;
+        extraSubNodes.push({
+          id: subId,
+          label: requestedType.split('.').pop()!,
+          type: 'ai',
+          n8nType: requestedType,
+          n8nTypeVersion: requestedVersion ?? 1,
+          tool: requestedType.split('.').pop()!,
+          subNodeOf: { parentId: resolved.id, slot },
+          parameters: requestedParams,
+        });
+        
+        extraEdges.push({
+          id: `e-ai-${subId}-${resolved.id}-${slot}`,
+          source: subId,
+          target: resolved.id,
+          connectionType: slot,
+        });
       }
 
       if (!resolved.n8nType) {
@@ -460,13 +584,19 @@ ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}
     });
 
     const mergedSteps = mergeStepsFromEdit(workflow.steps, mapped);
+    mergedSteps.push(...extraSubNodes);
+    
     const prevEdges = resolveWorkflowEdges(workflow.steps, workflow.edges);
-    const topologyUnchanged = hasSameStepIds(workflow.steps, mergedSteps);
+    const topologyUnchanged = hasSameStepIds(workflow.steps, mergedSteps.filter(s => !extraSubNodes.find(e => e.id === s.id)));
+    const edgesFromLlm = topologyUnchanged ? undefined : parsed.edges;
+    if (edgesFromLlm) edgesFromLlm.push(...extraEdges);
+    
     const mergedEdges = mergeEdgesFromEdit(
       prevEdges,
-      topologyUnchanged ? undefined : parsed.edges,
+      edgesFromLlm,
       mergedSteps,
     );
+    if (!edgesFromLlm && extraEdges.length > 0) mergedEdges.push(...extraEdges);
 
     const wired = withTriggerFirst(mergedSteps, mergedEdges);
     const configs = stepConfigs ?? {};
@@ -505,7 +635,6 @@ ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}
       message: coachMsg,
       changed: true,
       stepConfigUpdates: Object.keys(mergedConfigUpdates).length ? mergedConfigUpdates : undefined,
-      openStepId: nextOpenStepId(guides),
     };
   } catch (e) {
     console.error('[workflow-editor] LLM failed:', e);
@@ -533,8 +662,10 @@ export async function runWorkflowEditor(
       complete,
       configs,
       input.coachContext,
+      input.inputSchema,
+      input.nodeErrors,
     );
-    if (llm?.changed) return llm;
+    if (llm) return llm;
   }
 
   if (heuristic) return heuristic;
@@ -554,7 +685,5 @@ export async function runWorkflowEditor(
       'Konnte die Anfrage nicht umsetzen — bitte konkreter formulieren (z.B. „Schritt 2 soll OpenAI nutzen“, „Webhook einrichten“ oder „IF nach Schritt 3“).',
     ),
     changed: false,
-    openStepId: nextOpenStepId(guides),
   };
 }
-

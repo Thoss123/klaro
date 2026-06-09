@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { readFile } from 'fs/promises';
+import { join, basename } from 'path';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { getN8nPublicBase, getCatalogIndex, resolveBundledIconUrl } from '@/lib/n8n-catalog';
 
@@ -35,22 +37,49 @@ export async function GET(req: NextRequest) {
     : sanitizeIconPath(req.nextUrl.searchParams.get('path'));
   if (!path) return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
 
-  const candidates = [
-    `${getN8nPublicBase()}/icons/${path}`,
-    resolveBundledIconUrl(path),
-    // fa/map-signs.svg, node/ai-agent.svg — nur auf der n8n-Instanz
-    path.startsWith('fa/') || path.startsWith('node/')
-      ? `${getN8nPublicBase()}/icons/${path}`
-      : null,
-  ].filter((url): url is string => Boolean(url));
+  // n8n's built-in node/langchain icon set is bundled locally under
+  // public/n8n-icons/nodes. Serve by BASENAME first (offline + fast) for ANY
+  // .svg path — not just "node/…". The npm-catalog fallback (used when the n8n
+  // instance returns 401 on /types/*) resolves core icons to bare "if.svg",
+  // "edit-fields.svg", … without the "node/" prefix; without this they 404'd
+  // because the instance has no such file and the CDN is unreliable.
+  const localName = basename(path);
+  if (localName.endsWith('.svg')) {
+    try {
+      const file = join(process.cwd(), 'public', 'n8n-icons', 'nodes', localName);
+      const body = await readFile(file);
+      return new NextResponse(new Uint8Array(body), {
+        headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' },
+      });
+    } catch {
+      // not bundled — fall through to the network candidates below
+    }
+  }
+
+  const bundled = resolveBundledIconUrl(path);
+  const instanceUrl = `${getN8nPublicBase()}/icons/${path}`;
+  // Built-in pseudo-icons (fa:/node:) have no file on the instance — it returns
+  // its SPA index.html — so go straight to the real CDN (FontAwesome / n8n
+  // design-system). File icons (gmail, code, …) load best from the instance.
+  const isBuiltin = path.startsWith('fa/') || path.startsWith('node/');
+  const candidates = (isBuiltin
+    ? [bundled, instanceUrl]
+    : [instanceUrl, bundled]
+  ).filter((url): url is string => Boolean(url));
 
   for (const url of candidates) {
     try {
       const res = await fetch(url, { next: { revalidate: 86400 } });
       if (!res.ok) continue;
+      const upstreamType = res.headers.get('content-type') || '';
+      // n8n serves its SPA index.html (HTTP 200) for unknown icon paths — e.g. the
+      // FontAwesome (fa:) and built-in (node:) pseudo-icons used by IF / AI Agent.
+      // That HTML must never be returned as an icon, or we'd render a broken image.
+      if (upstreamType.includes('text/html')) continue;
       const body = await res.arrayBuffer();
-      const contentType = res.headers.get('content-type')
-        || (path.endsWith('.png') ? 'image/png' : 'image/svg+xml');
+      const contentType = upstreamType.startsWith('image/')
+        ? upstreamType
+        : (path.endsWith('.png') ? 'image/png' : 'image/svg+xml');
       return new NextResponse(body, {
         headers: {
           'Content-Type': contentType,

@@ -4,12 +4,16 @@ import { clsx } from 'clsx';
 import { User, Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Message } from '@/lib/types';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
+import { parseUserAttachments } from '@/lib/chat-attachments';
+
 export default function MessageBubble({ message }: { message: Message, onEdit?: (id: string, newContent: string) => void }) {
   const { role, content, id } = message;
   const [isCopied, setIsCopied] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
 
-  const visibleContent = stripInternalTags(content);
+  const { text: userText, attachments: userAttachments } =
+    role === 'user' ? parseUserAttachments(content) : { text: content, attachments: [] };
+  const visibleContent = stripInternalTags(role === 'user' ? userText : content);
 
   const isPhase4Only = content.includes('<request_credential>') || content.includes('<deploy_workflow>') || content.includes('<test_workflow>') || content.includes('<activate_workflow>');
 
@@ -25,7 +29,11 @@ export default function MessageBubble({ message }: { message: Message, onEdit?: 
     return null;
   }
 
-  if (!visibleContent) return null;
+  const imagePreviews = userAttachments
+    .filter(a => a.type === 'image' && (a.url || a.preview))
+    .map(a => a.url || a.preview!);
+
+  if (!visibleContent && !imagePreviews.length) return null;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(visibleContent);
@@ -71,13 +79,27 @@ export default function MessageBubble({ message }: { message: Message, onEdit?: 
         <User size={18} />
       </div>
       <div className="flex flex-col max-w-[80%] items-end">
-        <div className="rounded-2xl px-5 py-3 bg-indigo-600 text-white relative">
-          <div
-            className="prose prose-sm max-w-none prose-invert"
-            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-          >
-            <ReactMarkdown>{visibleContent}</ReactMarkdown>
-          </div>
+        <div className="rounded-2xl px-4 py-3 bg-indigo-600 text-white relative">
+          {imagePreviews.length > 0 && (
+            <div className={`flex flex-wrap gap-2 ${visibleContent ? 'mb-3' : ''}`}>
+              {imagePreviews.map((src, i) => (
+                <img
+                  key={`${id}-img-${i}`}
+                  src={src}
+                  alt=""
+                  className="max-w-[200px] max-h-[160px] rounded-xl object-cover border border-white/20"
+                />
+              ))}
+            </div>
+          )}
+          {visibleContent && (
+            <div
+              className="prose prose-sm max-w-none prose-invert"
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+            >
+              <ReactMarkdown>{visibleContent}</ReactMarkdown>
+            </div>
+          )}
         </div>
       </div>
     </div>

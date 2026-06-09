@@ -82,7 +82,7 @@ Coach: <trigger_canvas_update>
 
 Die Deploy-Route schreibt in `workflows`. Falls die Tabelle in eurem Projekt noch fehlt:
 
-- `[x]` **Migration ausführen** (Supabase SQL Editor): _Tabellen `workflows` + `user_credentials` existieren; Unique-Index `user_credentials(user_id,project_id,tool_name)` ergänzt (für Credentials-Upsert). Schema in repo: `supabase-migrations/20260602_n8n_sprint2.sql`._
+- `[x]` **Migration ausführen** (Supabase SQL Editor): _Tabellen `workflows` + `user_credentials` existieren; Unique-Index `user_credentials(user_id,project_id,tool_name)` ergänzt (für Credentials-Upsert). Schema in repo: `supabase/migrations/20260602000000_n8n_sprint2.sql`._
 
 ```sql
 create table if not exists workflows (
@@ -129,7 +129,7 @@ MOCK_N8N=false
 ### 2.2 Backend verifizieren (kein neuer Code nötig, nur testen)
 
 - `[x]` **Mock-Test lokal:** `MOCK_N8N=true` → `POST /api/n8n/workflows` mit Test-User → Eintrag in `workflows` Tabelle, `n8n_workflow_id` mock. _Verifiziert: 200, Zeile mit `mock_wf_…`, `status=inactive`, korrektes n8n-JSON aus `buildN8nWorkflow`._
-- `[ ]` **Live-Test:** `MOCK_N8N=false` → minimaler Workflow-JSON (Manual Trigger → Set Node) per `createN8nWorkflow` aus Route oder einmaligem Script (`npm run test:n8n`). _Wartet auf VPS + API-Key._
+- `[x]` **Live-Test:** `MOCK_N8N=false` → minimaler Workflow-JSON (Manual Trigger → Set Node) per `createN8nWorkflow` aus Route oder einmaligem Script (`npm run test:n8n`). _Live verifiziert (Juni 2026) via `npm run test:n8n` gegen `n8n.srv1046571.hstgr.cloud`: create → activate (400 bei Manual-Trigger erwartet) → executions → deactivate → delete, alles grün, Cleanup ok._
 - `[x]` **Activate/Deactivate:** `PATCH /api/n8n/workflows` mit `action: activate|deactivate`. _Verifiziert: `status` → `active`._
 - `[x]` **Executions:** `GET /api/n8n/executions?workflow_id=<db-id>` liefert Liste (oder leer bei neuem WF). _Verifiziert (Mock): Liste mit `success`._ ⚠️ Param heißt `workflow_id` (DB-ID), nicht `workflowId`.
 
@@ -218,7 +218,16 @@ MOCK_N8N=false
 - `[x]` **Canvas-Worker umbinden:** `app/api/canvas-worker/route.ts` ruft Pipeline auf; bei `block`/`revise_coach` keine Extraktion, sonst `workerDirective` (Supervisor-Anweisung + Research-Bullets + QA-Fixes) in den Extraktions-Prompt injiziert.
 - `[ ]` **DevContextModal:** Orchestration-Schritte + Token pro Agent anzeigen (Debug). _Backend liefert `orchestration.logs` bereits in der canvas-worker-Antwort; UI-Anzeige offen._
 
-### 3.1 Industry Playbook Agent (Pre-Research, branchenweit)
+### 3.1 Wissensdatenbank-Tool statt Industry Playbook Agent (teilweise erledigt)
+
+> **Entscheidung (Juni 2026):** Der ursprünglich geplante Industry-Playbook-Agent **entfällt**. Stattdessen nutzt der Coach die zentrale **RAG-Wissensdatenbank** über das Tool **`search_knowledge`** (in allen Phasen verfügbar): Er fragt gezielt ab (UI-How-tos „wie macht man X", Tool-Setup, abgedeckte Use-Cases, **bevor** er einen Workflow/Schritt vorschlägt oder baut) und **bewertet die Treffer selbst** — passt die Branche/das Tool nicht oder ist die Relevanz niedrig, ignoriert er sie und nutzt eigenes Wissen. Die `industry_playbooks`/n8n/NotebookLM-Punkte unten sind damit **hinfällig**.
+>
+> - `[x]` **Tool `search_knowledge`** (`lib/ai-tools.ts`) + Handler in `app/api/chat/route.ts` (ruft `searchKnowledge`, liefert Treffer mit Relevanz + `branche`-Metadaten zurück). Phasenunabhängig.
+> - `[x]` **Coach-Prompt:** Regel 10 in `KLARO_SHARED_RULES` — wann abfragen, Treffer selbst bewerten, Branche prüfen, nichts erfinden, Tool/Datenbank nie im Chat erwähnen.
+> - `[x]` **Auto-Injektion entfernt** — RAG ist jetzt coach-gesteuert statt immer in den Prompt gedrückt (keine unpassenden Infos mehr erzwungen).
+> - `[ ]` **QA:** 3 Branchen testen — Coach zieht passende Einträge, ignoriert fremde Branchen, leakt das Tool nicht.
+
+~~Ursprünglicher Plan (hinfällig — durch `search_knowledge` ersetzt):~~
 
 - `[ ]` **Supabase:** Tabelle `industry_playbooks` (`branche`, `content` jsonb/text, `updated_at`).
 - `[ ]` **n8n Workflow:** Webhook `POST /webhook/build-playbook` → NotebookLM / Google AI → Playbook-Text → Upsert Supabase.
@@ -263,8 +272,8 @@ MOCK_N8N=false
 
 ## Sprint 4: Memory Guardian Hardening, Voice Mode & UI Polish
 
-- `[ ]` **Memory Guardian:** Strikte Trennung `[CORE FACTS]` / `[LATEST CONTEXT]` in `/api/memory-update`; Coach-Prompt liest nur CORE für Ziele.
-- `[ ]` **Voice Mode (MVP):** Mikrofon → Web Speech API → Textfeld → Senden.
+- `[x]` **Memory Guardian:** Strikte Trennung `[CORE FACTS]` / `[LATEST CONTEXT]` in `/api/memory-update`; Coach-Prompt liest nur CORE für Ziele.
+- `[x]` **Voice Mode (MVP):** Mikrofon → Web Speech API → Textfeld → Senden.
 - `[ ]` **Voice Mode (Polish):** Push-to-talk, Permissions, Fehler-UI.
 - `[x]` **Workflow-Visualisierung:** `components/canvas/WorkflowGraph.tsx` — read-only n8n-Look (SVG-Node-Graph aus `workflow_json`, Bezier-Kanten, Tool-Icons/Farben). Live verifiziert.
 - `[ ]` **UX Polish:** Onboarding Dark Mode / Motion.

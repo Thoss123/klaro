@@ -11,7 +11,7 @@
 - [x] Platzhalterseiten
 
 ## 2. Datenbank (Ausstehend)
-- [ ] SQL-Schema aus `supabase-schema.sql` in Supabase manuell ausführen
+- [ ] SQL-Schema via Supabase CLI: `npm run db:push` (nach `npx supabase link`)
 - [ ] `.env.local` mit echten Schlüsseln befüllen (Supabase URL/Anon Key, Anthropic API Key)
 
 ## 3. UI-Komponenten entwickeln

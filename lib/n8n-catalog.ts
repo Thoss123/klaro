@@ -187,7 +187,7 @@ export function getCredentialByName(
   catalog: N8nCatalogSnapshot,
   typeName: string,
 ): N8nCredentialTypeDescription | undefined {
-  return catalog.credentials.find(c => c.name === typeName);
+  return catalog.credentials.find(c => c.name === typeName || c.name.endsWith(`.${typeName}`));
 }
 
 /** Default parameters from n8n property defaults. */
@@ -208,10 +208,23 @@ export function resolveN8nIconUrl(iconRef: string | undefined): string | null {
   return null;
 }
 
-/** Build unpkg fallback URL for a catalog icon path. */
+// n8n's built-in pseudo-icons have NO file in the node packages:
+//  - `fa:<name>`   → FontAwesome glyph (n8n uses FontAwesome Free **v5** names)
+//  - `node:<name>` → n8n editor's own icon set (design-system package)
+// We resolve them to their real upstream SVGs so they render like in n8n.
+const FA5_SOLID = 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/svgs/solid';
+const N8N_NODE_ICONS =
+  'https://cdn.jsdelivr.net/gh/n8n-io/n8n@2.23.4/packages/frontend/@n8n/design-system/src/components/N8nIcon/nodes';
+
+/** Build a CDN URL for a catalog icon path (FontAwesome, n8n node-icon set, or npm node packages). */
 export function resolveBundledIconUrl(iconPath: string): string | null {
-  if (iconPath.startsWith('fa/') || iconPath.startsWith('node/')) {
-    return null;
+  // FontAwesome pseudo-icons: fa/map-signs.svg (IF), fa/pen.svg (Set), fa/clock.svg (Schedule), …
+  if (iconPath.startsWith('fa/')) {
+    return `${FA5_SOLID}/${iconPath.slice(3)}`;
+  }
+  // n8n built-in node-icon set: node/ai-agent.svg (AI Agent), node/no-operation.svg, …
+  if (iconPath.startsWith('node/')) {
+    return `${N8N_NODE_ICONS}/${iconPath.slice(5)}`;
   }
   if (iconPath.startsWith('@n8n/n8n-nodes-langchain/dist/')) {
     return `https://unpkg.com/@n8n/n8n-nodes-langchain@${N8N_LANGCHAIN_VERSION}/${iconPath.replace(/^@n8n\/n8n-nodes-langchain\//, '')}`;

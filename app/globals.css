@@ -74,3 +74,63 @@
   font-size: 0.8125rem;
   letter-spacing: 0.01em;
 }
+
+/* Workflow-Editor: Controls + Minimap (n8n-inspiriert) */
+.workflow-flow-editor .workflow-flow-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0 0 6.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(8px);
+}
+
+.workflow-flow-editor .workflow-flow-controls button {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  background: transparent;
+  color: #6b7280;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.workflow-flow-editor .workflow-flow-controls button:last-child {
+  border-bottom: none;
+}
+
+.workflow-flow-editor .workflow-flow-controls button:hover {
+  background: #f9fafb;
+  color: #374151;
+}
+
+.workflow-flow-editor .workflow-flow-controls button svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+
+.workflow-flow-editor .workflow-flow-minimap {
+  margin: 0 1rem 6.5rem 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #f7f7fa;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.workflow-flow-editor .workflow-flow-minimap-svg {
+  display: block;
+  width: 140px;
+  height: 96px;
+  border-radius: 0.75rem;
+}
+
+.workflow-flow-editor .workflow-flow-minimap-mask {
+  fill: rgba(247, 247, 250, 0.72);
+  stroke: #d1d5db;
+  stroke-width: 1.5;
+}

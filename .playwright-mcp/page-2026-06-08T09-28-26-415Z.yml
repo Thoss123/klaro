@@ -1,0 +1,286 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e8] [cursor=pointer]:
+    - img [ref=e9]
+  - alert [ref=e69]
+  - main [ref=e70]:
+    - generic [ref=e72]:
+      - navigation [ref=e73]:
+        - link "K Klaro" [ref=e74] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e75]: K
+          - generic [ref=e76]: Klaro
+        - generic [ref=e77]:
+          - link "Anmelden" [ref=e78] [cursor=pointer]:
+            - /url: /login
+          - link "Kostenlos starten" [ref=e79] [cursor=pointer]:
+            - /url: /onboarding
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - heading "KI einsetzen. Workflows bauen & umsetzen." [level=1] [ref=e82]:
+            - text: KI einsetzen.
+            - text: Workflows bauen & umsetzen.
+          - paragraph [ref=e83]: Klaro stellt die richtigen Fragen, füllt deinen Plan live — und baut daraus Automatisierungen, die du wirklich umsetzen kannst.
+          - generic [ref=e84]:
+            - link "Kostenlos starten" [ref=e85] [cursor=pointer]:
+              - /url: /onboarding
+            - link "So arbeitet Klaro" [ref=e86] [cursor=pointer]:
+              - /url: "#so-arbeitet-klaro"
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - generic [ref=e90]: K
+              - generic [ref=e91]:
+                - paragraph [ref=e92]: Klaro Coach
+                - paragraph [ref=e93]: Online
+            - generic [ref=e94]:
+              - generic [ref=e95]: Verstehen
+              - generic [ref=e96]: Planen
+              - generic [ref=e97]: Bauen
+              - generic [ref=e98]: Live
+          - generic [ref=e100]:
+            - paragraph [ref=e101]: Roadmap · Plan
+            - generic [ref=e102]:
+              - generic [ref=e103]:
+                - generic [ref=e104]: Angebote automatisieren
+                - generic [ref=e105]: Hoch
+              - paragraph [ref=e106]: CRM → KI-Entwurf → Freigabe → Versand
+              - generic [ref=e107]:
+                - generic [ref=e108]: Gmail
+                - generic [ref=e109]: Sheets
+                - generic [ref=e110]: Slack
+          - generic [ref=e111]:
+            - textbox "Schreib einfach drauf los…" [ref=e112]
+            - button "Gespräch starten" [ref=e113]:
+              - img [ref=e114]
+          - paragraph [ref=e116]: Kostenlos · Keine Kreditkarte nötig
+    - generic [ref=e117]:
+      - paragraph [ref=e118]: Kennst du das?
+      - generic [ref=e119]:
+        - generic [ref=e120]:
+          - text: "01"
+          - heading "ChatGPT ja — Automatisierung nein" [level=3] [ref=e121]
+          - paragraph [ref=e122]: Im Team wird gechattet, aber wiederkehrende Aufgaben laufen weiter manuell. KI hilft beim Formulieren, nicht beim Ablauf.
+        - generic [ref=e123]:
+          - text: "02"
+          - heading "Automatisierung ohne Priorität" [level=3] [ref=e124]
+          - paragraph [ref=e125]: Du weißt, dass Prozesse automatisierbar wären — aber welche zuerst, mit welchem Tool?
+        - generic [ref=e126]:
+          - text: "03"
+          - heading "Kein Einstieg, kein Know-how" [level=3] [ref=e127]
+          - paragraph [ref=e128]: Du weißt nicht, wo du anfangen sollst — und ohne technischen Hintergrund wirkt jedes Tool wie ein weiteres Baustellen-Projekt.
+    - generic [ref=e129]:
+      - heading "So arbeitet Klaro" [level=2] [ref=e130]
+      - paragraph [ref=e131]: Vom Planen bis zur Umsetzung — Gespräch, Roadmap und umsetzbare Automatisierungen in einem Flow.
+      - generic [ref=e133]:
+        - generic [ref=e134]:
+          - generic [ref=e135]:
+            - img [ref=e137]
+            - paragraph [ref=e139]: Schritt 1
+            - heading "Verstehen" [level=3] [ref=e140]
+            - paragraph [ref=e141]: Klaro fragt nach deinem Alltag — was nervt, was dauert zu lange, welche Tools ihr schon nutzt. Eine Frage nach der anderen.
+          - img [ref=e143]
+        - generic [ref=e145]:
+          - generic [ref=e146]:
+            - img [ref=e148]
+            - paragraph [ref=e150]: Schritt 2
+            - heading "Planen" [level=3] [ref=e151]
+            - paragraph [ref=e152]: Engpässe, Tools und der konkrete Plan erscheinen live auf deiner Roadmap — priorisiert und aus dem, was du erzählt hast.
+          - img [ref=e154]
+        - generic [ref=e156]:
+          - generic [ref=e157]:
+            - img [ref=e159]
+            - paragraph [ref=e162]: Schritt 3
+            - heading "Bauen" [level=3] [ref=e163]
+            - paragraph [ref=e164]: "Klaro baut den Ablauf: von der Auslösung über KI und Freigabe bis zum Versand. Du ergänzt nur Zugänge und Freigaben."
+          - img [ref=e166]
+        - generic [ref=e169]:
+          - img [ref=e171]
+          - paragraph [ref=e173]: Schritt 4
+          - heading "Live-Schalten" [level=3] [ref=e174]
+          - paragraph [ref=e175]: Automatisierung starten, kurz testen — dann läuft sie bei dir und entlastet den Alltag im Betrieb.
+    - generic [ref=e176]:
+      - heading "Vier Phasen. Ein durchgängiger Weg." [level=2] [ref=e177]
+      - paragraph [ref=e178]: "Nicht nur Chat und Notizen: Klaro hält Kontext über die gesamte Journey und liefert am Ende umsetzbare Automatisierung."
+      - generic [ref=e179]:
+        - generic [ref=e180]:
+          - generic [ref=e181]:
+            - img [ref=e183]
+            - paragraph [ref=e186]: Problem Identifikation
+          - heading "1. Diagnose" [level=3] [ref=e187]
+          - paragraph [ref=e188]: Pain Points und Unternehmensprofil — der Coach fragt gezielt nach Alltag und Engpässen.
+          - generic [ref=e189]:
+            - generic [ref=e190]: Pain Points
+            - generic [ref=e191]: Ist-Zustand
+        - generic [ref=e192]:
+          - generic [ref=e193]:
+            - img [ref=e195]
+            - paragraph [ref=e197]: Tools & Setup
+          - heading "2. Analyse" [level=3] [ref=e198]
+          - paragraph [ref=e199]: Ist-Tools, Automatisierungspotenzial und Umsetzer-Profil — alles aus dem Gespräch.
+          - generic [ref=e200]:
+            - generic [ref=e201]: Tool-Stack
+            - generic [ref=e202]: Use Cases
+        - generic [ref=e203]:
+          - generic [ref=e204]:
+            - img [ref=e206]
+            - paragraph [ref=e208]: Workflows
+          - heading "3. Plan" [level=3] [ref=e209]
+          - paragraph [ref=e210]: Automatisierungs-Blaupausen auf der Roadmap — priorisiert, Schritt für Schritt.
+          - generic [ref=e211]:
+            - generic [ref=e212]: Abläufe 1–3
+            - generic [ref=e213]: Erste Schritte
+        - generic [ref=e214]:
+          - generic [ref=e215]: Bis Live-Schalten
+          - generic [ref=e216]:
+            - img [ref=e218]
+            - paragraph [ref=e223]: Go-Live
+          - heading "4. Umsetzung" [level=3] [ref=e224]
+          - paragraph [ref=e225]: Klaro baut die Automatisierung, du hinterlegst Zugänge — dann Livegang und Testlauf.
+          - generic [ref=e226]:
+            - generic [ref=e227]: Fertiger Ablauf
+            - generic [ref=e228]: Live
+      - generic [ref=e230]:
+        - generic [ref=e231]:
+          - generic [ref=e232]:
+            - img [ref=e234]
+            - generic [ref=e236]: 1. Diagnose
+          - generic [ref=e237]:
+            - img [ref=e239]
+            - generic [ref=e241]: 2. Analyse
+          - generic [ref=e242]:
+            - img [ref=e244]
+            - generic [ref=e246]: 3. Plan
+          - generic [ref=e247]:
+            - img [ref=e249]
+            - generic [ref=e251]: 4. Umsetzung
+        - paragraph [ref=e252]: Gespräch und Roadmap laufen parallel — Klaro übernimmt Fakten aus dem Dialog. In Phase 4 wird aus dem Plan die fertige Automatisierung; du gibst nur noch Zugänge, Texte und Freigabe-Kanäle ein.
+    - generic [ref=e253]:
+      - heading "Das kommt raus — nicht nur Folien." [level=2] [ref=e254]
+      - paragraph [ref=e255]: Roadmap mit Prioritäten, konkrete Abläufe und am Ende eine umsetzbare Automatisierung — aus dem, was du wirklich gesagt hast.
+      - generic [ref=e257]:
+        - generic [ref=e258]:
+          - paragraph [ref=e259]: Roadmap · Erkannte Engpässe
+          - generic [ref=e260]:
+            - generic [ref=e261]:
+              - generic [ref=e262]:
+                - heading "Angebote manuell" [level=3] [ref=e263]
+                - generic [ref=e264]: Hoch
+              - paragraph [ref=e265]: Jedes Angebot von Hand — fehleranfällig, 3–4h/Woche.
+            - generic [ref=e266]:
+              - generic [ref=e267]:
+                - heading "E-Mail-Flut" [level=3] [ref=e268]
+                - generic [ref=e269]: Hoch
+              - paragraph [ref=e270]: Wichtiges geht in Routine-Anfragen unter.
+            - generic [ref=e271]:
+              - generic [ref=e272]:
+                - heading "Wissen auf Köpfen" [level=3] [ref=e273]
+                - generic [ref=e274]: Mittel
+              - paragraph [ref=e275]: Bei Ausfall fehlt Zugriff auf Know-how.
+        - generic [ref=e276]:
+          - paragraph [ref=e277]: Phase 4 · Fertige Automatisierung
+          - generic [ref=e278]:
+            - generic [ref=e279]:
+              - generic [ref=e280]:
+                - generic [ref=e281]:
+                  - img [ref=e282]
+                  - generic [ref=e284]: Formular
+                - generic [ref=e285]: →
+              - generic [ref=e286]:
+                - generic [ref=e287]:
+                  - img [ref=e288]
+                  - generic [ref=e290]: Sheets
+                - generic [ref=e291]: →
+              - generic [ref=e292]:
+                - generic [ref=e293]:
+                  - img [ref=e294]
+                  - generic [ref=e297]: KI-Entwurf
+                - generic [ref=e298]: →
+              - generic [ref=e299]:
+                - generic [ref=e300]:
+                  - img [ref=e301]
+                  - generic [ref=e304]: Freigabe
+                - generic [ref=e305]: →
+              - generic [ref=e307]:
+                - img [ref=e308]
+                - generic [ref=e310]: Gmail
+            - generic [ref=e311]:
+              - generic [ref=e312]:
+                - img [ref=e313]
+                - text: Bereit zur Umsetzung
+              - generic [ref=e315]: "KLARO: Angebots-Flow"
+          - list [ref=e316]:
+            - listitem [ref=e317]:
+              - generic [ref=e318]: "1"
+              - text: Schritte im Chat konfigurieren (Zugang, Freigabe-Kanal)
+            - listitem [ref=e319]:
+              - generic [ref=e320]: "2"
+              - text: Automatisierung starten — läuft bei dir
+            - listitem [ref=e321]:
+              - generic [ref=e322]: "3"
+              - text: Testlauf mit einem Klick
+    - generic [ref=e323]:
+      - heading "Für wen ist Klaro?" [level=2] [ref=e324]
+      - paragraph [ref=e325]: KMU und Teams, die vom Gespräch bis zur Automatisierung kommen wollen.
+      - generic [ref=e326]:
+        - generic [ref=e327]:
+          - img [ref=e329]
+          - heading "Geschäftsführung" [level=3] [ref=e332]
+          - paragraph [ref=e333]: KI ist wichtig — aber keine Zeit für Tool-Chaos. Klaro liefert Plan und optional die erste laufende Automatisierung.
+        - generic [ref=e334]:
+          - img [ref=e336]
+          - heading "IT & Umsetzung" [level=3] [ref=e338]
+          - paragraph [ref=e339]: Klares Briefing und konkrete Schritte — statt „mach mal was mit KI“.
+        - generic [ref=e340]:
+          - img [ref=e342]
+          - heading "Agentur & Beratung" [level=3] [ref=e347]
+          - paragraph [ref=e348]: Kunden von der Diagnose bis zur Umsetzung führen — mit nachvollziehbarer Roadmap, nicht nur Slides.
+    - generic [ref=e351]:
+      - generic [ref=e352]:
+        - img [ref=e354]
+        - generic [ref=e357]: Entwickelt in Österreich
+      - generic [ref=e358]:
+        - img [ref=e360]
+        - generic [ref=e363]: DSGVO · Daten in der EU
+      - generic [ref=e364]:
+        - img [ref=e366]
+        - generic [ref=e368]: Deine Tools und Zugänge — nur was du verbindest
+      - generic [ref=e369]:
+        - img [ref=e371]
+        - generic [ref=e375]: Bei wichtigen Schritten fragt Klaro dich — nichts ohne dein Okay
+    - generic [ref=e378]:
+      - paragraph [ref=e379]:
+        - img [ref=e380]
+        - text: Kostenlos · Keine Kreditkarte
+      - heading "Fang heute an. An einem Tag zur ersten Automatisierung." [level=2] [ref=e383]:
+        - text: Fang heute an.
+        - text: An einem Tag zur ersten Automatisierung.
+      - paragraph [ref=e384]: Vom Gespräch zur Roadmap — Klaro führt dich Schritt für Schritt bis dein erster Ablauf bei dir läuft.
+      - generic [ref=e385]:
+        - generic [ref=e386]:
+          - generic [ref=e387]: Verstehen
+          - img [ref=e388]
+        - generic [ref=e390]:
+          - generic [ref=e391]: Planen
+          - img [ref=e392]
+        - generic [ref=e394]:
+          - generic [ref=e395]: Bauen
+          - img [ref=e396]
+        - generic [ref=e399]: Live-Schalten
+      - link "Jetzt kostenlos starten" [ref=e400] [cursor=pointer]:
+        - /url: /onboarding
+        - text: Jetzt kostenlos starten
+        - img [ref=e401]
+      - generic [ref=e403]:
+        - generic [ref=e404]:
+          - img [ref=e405]
+          - text: Erster Ablauf oft am selben Tag
+        - generic [ref=e408]:
+          - img [ref=e409]
+          - text: Keine Kreditkarte nötig
+    - generic [ref=e412]:
+      - paragraph [ref=e413]: Klaro © 2026 — Made in Austria
+      - generic [ref=e414]:
+        - link "Datenschutz" [ref=e415] [cursor=pointer]:
+          - /url: /datenschutz
+        - link "Impressum" [ref=e416] [cursor=pointer]:
+          - /url: /impressum

@@ -5,7 +5,7 @@ import { getN8nCatalog, getNodeByName } from '@/lib/n8n-catalog';
 import { defaultLinearEdges, withTriggerFirst } from '@/lib/workflow-graph';
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
 import { shortLabel, shortWorkflowTitle } from '@/lib/short-label';
-import type { CanvasData, Workflow } from '@/lib/types';
+import type { CanvasData, Workflow, WorkflowStep } from '@/lib/types';
 
 /** POST /api/n8n/build-workflow — turn a Phase-3 plan into a live n8n workflow on the canvas. */
 export async function POST(req: NextRequest) {
@@ -48,11 +48,33 @@ export async function POST(req: NextRequest) {
   };
 
   const plans = getWorkflowPlans(canvas);
-  const plan =
+  let plan =
     plans.find(w => w.id === workflowId) ??
     (titleMatch
       ? plans.find(w => w.title.toLowerCase().includes(titleMatch) || titleMatch.includes(w.title.toLowerCase()))
       : undefined);
+
+  // Ad-hoc-Workflow: der Coach kann in Phase 4 einen NEUEN Workflow ohne Plan/Pain-Point
+  // bauen, indem er Titel + Schritte mitschickt. So funktioniert „bau mir einen Workflow für X".
+  let isAdHoc = false;
+  if (!plan) {
+    const providedSteps = Array.isArray(body.steps) ? body.steps : [];
+    if (providedSteps.length > 0 && (body.title || workflowId)) {
+      isAdHoc = true;
+      plan = {
+        id: workflowId || `wf_custom_${Date.now()}`,
+        title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'Neuer Workflow',
+        linked_pain_point: typeof body.linked_pain_point === 'string' ? body.linked_pain_point : '',
+        steps: providedSteps
+          .filter((s: { label?: string }) => s && typeof s.label === 'string' && s.label.trim())
+          .map((s: { id?: string; label: string; type?: string }, i: number) => ({
+            id: s.id || `s${i + 1}`,
+            label: s.label.trim(),
+            type: (s.type as WorkflowStep['type']) || (i === 0 ? 'trigger' : 'action'),
+          })),
+      };
+    }
+  }
 
   if (!plan) {
     return NextResponse.json({ error: 'Workflow-Plan nicht gefunden' }, { status: 404 });
@@ -112,9 +134,11 @@ export async function POST(req: NextRequest) {
 
   // Vorhandenen Build mit gleicher id ersetzen (Heilung), sonst anhängen.
   const others = getBuiltWorkflows(canvas).filter(w => w.id !== plan.id);
+  // Ad-hoc-Plan in workflow_plans aufnehmen, damit er erhalten bleibt (sonst nur die plans-Liste).
+  const nextPlans = isAdHoc && !plans.some(p => p.id === plan!.id) ? [...plans, plan] : plans;
   const nextCanvas: CanvasData = {
     ...canvas,
-    workflow_plans: plans,
+    workflow_plans: nextPlans,
     workflows: [...others, built],
   };
 

@@ -1,0 +1,35 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - button [disabled] [ref=e5]
+      - button [disabled] [ref=e6]
+      - button [disabled] [ref=e7]
+      - button [disabled] [ref=e8]
+      - button [disabled] [ref=e9]
+      - button [disabled] [ref=e10]
+      - button [disabled] [ref=e11]
+      - button [disabled] [ref=e12]
+      - button [disabled] [ref=e13]
+      - button [disabled] [ref=e14]
+      - button [disabled] [ref=e15]
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - heading "In welcher Branche ist dein Unternehmen tätig?" [level=2] [ref=e21]
+        - paragraph [ref=e22]: Damit Klaro von Anfang an branchentypische Prozesse versteht.
+      - generic [ref=e23]:
+        - button "Steuerberatung & Wirtschaftsprüfung" [ref=e24]:
+          - generic [ref=e26]: Steuerberatung & Wirtschaftsprüfung
+        - button "Handwerk & Produktion" [ref=e27]:
+          - generic [ref=e29]: Handwerk & Produktion
+        - button "E-Commerce & Online-Handel" [ref=e30]:
+          - generic [ref=e32]: E-Commerce & Online-Handel
+        - button "Marketing-, Kreativ- oder Digitalagentur" [ref=e33]:
+          - generic [ref=e35]: Marketing-, Kreativ- oder Digitalagentur
+        - button "Beratung & professionelle Dienstleistung" [ref=e36]:
+          - generic [ref=e38]: Beratung & professionelle Dienstleistung
+        - button "Immobilien" [ref=e39]:
+          - generic [ref=e41]: Immobilien
+        - button "Andere Branche" [ref=e42]:
+          - generic [ref=e44]: Andere Branche
+  - button "Open Next.js Dev Tools" [ref=e50] [cursor=pointer]:
+    - img [ref=e51]

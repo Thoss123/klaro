@@ -230,7 +230,7 @@ export type WorkflowStepConfigs = Record<string, Record<string, StepConfig>>
 // Agent-style action feedback
 export interface AgentAction {
   id: string
-  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow' | 'research_solutions' | 'build_workflow' | 'edit_workflow'
+  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow' | 'research_solutions' | 'create_workflow_plan' | 'build_workflow' | 'edit_workflow'
   status: 'running' | 'done' | 'error'
   label: string
   detail?: string

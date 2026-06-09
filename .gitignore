@@ -40,3 +40,7 @@ next-env.d.ts
 .env*.local
 
 .vercel
+
+# local notes / test credentials — never commit (contains test logins)
+CLAUDE.md
+CLAUDE.local.md

@@ -1,3 +1,6 @@
+-- Legacy snapshot. Canonical migrations live in supabase/migrations/.
+-- Fresh setup: `npx supabase db push` (after `supabase link`).
+
 create table projects (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,

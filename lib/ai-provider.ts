@@ -27,6 +27,22 @@ function mergeMistralToolCallDelta(
 
 export type VisionAttachment = { mimeType: string; base64: string };
 
+function buildMistralUserContent(message: string, attachments?: VisionAttachment[]) {
+  const images = (attachments || []).filter(a => a.mimeType?.startsWith('image/') && a.base64);
+  if (!images.length) return message || ' ';
+
+  const parts: Array<{ type: 'text'; text: string } | { type: 'image_url'; imageUrl: string }> = [];
+  if (message.trim()) parts.push({ type: 'text', text: message });
+  for (const img of images) {
+    parts.push({
+      type: 'image_url',
+      imageUrl: `data:${img.mimeType};base64,${img.base64}`,
+    });
+  }
+  if (!parts.length) parts.push({ type: 'text', text: ' ' });
+  return parts;
+}
+
 export interface AIProvider {
   streamMessage(
     systemPrompt: string,
@@ -186,7 +202,7 @@ export class MistralProvider implements AIProvider {
     const messages: any[] = [
        { role: 'system', content: systemPrompt },
        ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content || ' ' })),
-       { role: 'user', content: message }
+       { role: 'user', content: buildMistralUserContent(message, attachments) }
     ];
 
     const MAX_TOOL_ROUNDS = 6;
@@ -211,7 +227,9 @@ export class MistralProvider implements AIProvider {
 
         const toolCalls = choice?.delta?.toolCalls;
         if (toolCalls?.length) {
-          for (const call of toolCalls) mergeMistralToolCallDelta(pending, call);
+          for (const call of toolCalls) {
+            mergeMistralToolCallDelta(pending, call as { index?: number; id?: string; function?: { name?: string; arguments?: string } });
+          }
         }
       }
 
@@ -222,6 +240,12 @@ export class MistralProvider implements AIProvider {
         id: string;
         type: 'function';
         function: { name: string; arguments: string };
+      }> = [];
+      const toolResults: Array<{
+        role: 'tool';
+        name: string;
+        toolCallId: string;
+        content: string;
       }> = [];
 
       for (const [, tc] of sorted) {
@@ -246,7 +270,7 @@ export class MistralProvider implements AIProvider {
           type: 'function',
           function: { name: tc.name, arguments: tc.arguments || '{}' },
         });
-        messages.push({
+        toolResults.push({
           role: 'tool',
           name: tc.name,
           toolCallId: tc.id,
@@ -256,7 +280,9 @@ export class MistralProvider implements AIProvider {
 
       if (!assistantToolCalls.length) return;
 
+      // Mistral requires: assistant (with toolCalls) → tool results. Last role must be "tool".
       messages.push({ role: 'assistant', content: '', toolCalls: assistantToolCalls });
+      for (const tr of toolResults) messages.push(tr);
       await streamRound(round + 1);
     };
 
@@ -267,12 +293,24 @@ export class MistralProvider implements AIProvider {
       const isRateLimit = error?.statusCode === 429 || error?.message?.includes('429') || error?.message?.includes('rate_limit');
       console.warn(`Mistral failed (${isRateLimit ? '429 rate limit' : error?.message}) — falling back to Gemini`);
       const gemini = new GeminiProvider();
-      // Reconstruct history without system message (Gemini gets it via systemInstruction)
-      const geminiHistory = messages
-        .filter(m => m.role !== 'system')
-        .slice(0, -1) // last message is the current user message
-        .map(m => ({ role: m.role, content: m.content }));
-      const lastUserMsg = messages.filter(m => m.role === 'user').at(-1)?.content || message;
+      // Reconstruct history for Gemini (no system / tool roles; fold tool results into user turns)
+      const geminiHistory: { role: string; content: string }[] = [];
+      for (const m of messages.filter(msg => msg.role !== 'system')) {
+        if (m.role === 'user') {
+          geminiHistory.push({ role: 'user', content: m.content || ' ' });
+        } else if (m.role === 'assistant') {
+          geminiHistory.push({ role: 'assistant', content: m.content || ' ' });
+        } else if (m.role === 'tool') {
+          geminiHistory.push({
+            role: 'user',
+            content: `[Tool ${m.name} result]: ${m.content || '{}'}`,
+          });
+        }
+      }
+      const lastUserMsg = geminiHistory.filter(m => m.role === 'user').at(-1)?.content || message;
+      if (geminiHistory.length && geminiHistory.at(-1)?.role === 'user') {
+        geminiHistory.pop();
+      }
       await gemini.streamMessage(systemPrompt, geminiHistory, lastUserMsg, onChunk, onToolCall, attachments, phase);
     }
   }

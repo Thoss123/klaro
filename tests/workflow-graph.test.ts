@@ -13,6 +13,7 @@ import {
   isMergeStep,
   isSwitchStep,
   layoutStepPositions,
+  findTerminalStepIds,
   removeStepFromGraph,
   switchBranch,
   mergeEdgesFromEdit,
@@ -95,6 +96,15 @@ describe('graph operations', () => {
     const laid = layoutStepPositions(steps, edges, { force: true });
     expect(laid.every(s => s.position)).toBe(true);
     expect(laid[1].position!.x).toBeGreaterThan(laid[0].position!.x);
+  });
+
+  it('finds terminal steps without outgoing main edges', () => {
+    expect(findTerminalStepIds(steps, edges)).toEqual(['s3']);
+    const branched: WorkflowEdge[] = [
+      { id: 'e1', source: 's1', target: 's2', branch: 'default' },
+      { id: 'e2', source: 's1', target: 's3', branch: 'default' },
+    ];
+    expect(findTerminalStepIds(steps, branched).sort()).toEqual(['s2', 's3']);
   });
 });
 

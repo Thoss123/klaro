@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { getExecutions, triggerTestExecution } from '@/lib/n8n';
+import { getExecutions, triggerTestExecution, getExecutionDetail, ensureWorkflowMcpEnabled } from '@/lib/n8n';
 
 // GET /api/n8n/executions?workflow_id=<db-id>
 export async function GET(req: NextRequest) {
@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
   if (!wf?.n8n_workflow_id) return NextResponse.json({ error: 'Workflow not found or not deployed' }, { status: 404 });
 
   try {
+    // MCP-Zugriff sicherstellen (heilt auch alte Deploys ohne availableInMCP-Flag).
+    await ensureWorkflowMcpEnabled(wf.n8n_workflow_id);
     const result = await triggerTestExecution(wf.n8n_workflow_id);
 
     await supabase
@@ -53,20 +55,28 @@ export async function POST(req: NextRequest) {
       .eq('id', workflow_id)
       .eq('user_id', user.id);
 
+    // Per-Node-Daten holen (wie n8n NDV: Input/Output je Schritt).
+    const detail = result.executionId ? await getExecutionDetail(result.executionId) : null;
+
     if (result.status === 'error' || result.status === 'crashed') {
       return NextResponse.json(
-        { error: result.error || 'Test-Ausführung fehlgeschlagen', ...result },
+        { error: result.error || 'Test-Ausführung fehlgeschlagen', runData: detail?.runData ?? [], ...result },
         { status: 422 },
       );
     }
 
     return NextResponse.json({
       executionId: result.executionId,
-      status: result.status,
+      status: result.status ?? detail?.status,
       via: result.via,
-      ok: result.status === 'success',
+      ok: (result.status ?? detail?.status) === 'success',
+      runData: detail?.runData ?? [],
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    let errorMsg = typeof e?.message === 'string' ? e.message : 'Test-Ausführung fehlgeschlagen';
+    if (/workflow has issues and cannot be executed/i.test(errorMsg)) {
+      errorMsg = 'Der Workflow hat ungelöste Probleme (z.B. fehlende Pflichtfelder oder Credentials) und konnte nicht getestet werden. Öffne die rot markierten Nodes und ergänze die fehlenden Angaben — oder beschreibe das Problem unten im Chat, dann behebe ich es für dich.';
+    }
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }

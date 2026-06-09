@@ -2,10 +2,10 @@ import { inferDocumentPhase } from '@/lib/canvas-normalize';
 import type { CanvasData, Phase } from '@/lib/types';
 
 export function stripPhaseFromCanvas(canvas: CanvasData, phase: Phase): CanvasData {
-  const clearUmsetzung = phase === 'umsetzung' || phase === 'plan' || phase === 'analyse' || phase === 'diagnose';
-  const clearPlan = phase === 'plan' || phase === 'analyse' || phase === 'diagnose';
-  const clearAnalyse = phase === 'analyse' || phase === 'diagnose';
   const clearDiagnose = phase === 'diagnose';
+  const clearAnalyse = phase === 'analyse';
+  const clearPlan = phase === 'plan';
+  const clearUmsetzung = phase === 'umsetzung';
 
   const phasesToClear = new Set<Phase>();
   if (clearDiagnose) phasesToClear.add('diagnose');
@@ -20,7 +20,7 @@ export function stripPhaseFromCanvas(canvas: CanvasData, phase: Phase): CanvasDa
 
   const reset = { ...canvas, documents, phase };
 
-  if (clearUmsetzung) {
+  if (clearPlan || clearUmsetzung) {
     reset.workflows = [];
   }
 

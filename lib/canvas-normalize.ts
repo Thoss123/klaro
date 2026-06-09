@@ -305,7 +305,7 @@ export function normalizeCanvasData(
     .map((d, i) => normalizeDocument(d, i))
     .filter((d): d is CanvasDocument => d !== null);
 
-  const canExtractWorkflows = phase === 'umsetzung';
+  const canExtractWorkflows = phase === 'plan' || phase === 'umsetzung';
   const wfFromRaw = canExtractWorkflows && Array.isArray(raw.workflows)
     ? raw.workflows
         .map((w, i) => normalizeWorkflow(w, i))
