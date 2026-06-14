@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   // Editor-Turn-Notiz anhängen, damit das LLM Expressions korrekt setzen / Fehler beheben kann.
   const runtimeHints = [
     body.ioContext?.trim() ? `Verfügbare Eingangsdaten je Schritt:\n${body.ioContext.trim()}` : '',
-    body.runDataSummary?.trim() ? `Letzter Testlauf (Ausschnitt):\n${body.runDataSummary.trim()}` : '',
+    body.runDataSummary?.trim() ? `Letzter Testlauf — Status & Output je Schritt (für die Datenfluss-Analyse):\n${body.runDataSummary.trim()}` : '',
   ].filter(Boolean).join('\n\n');
   if (runtimeHints) {
     coachContext.editorHistory = [
@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
           workflowName: body.workflow.title,
           structureChanged,
           changedStepIds: result.stepConfigUpdates ? Object.keys(result.stepConfigUpdates) : undefined,
+          userId: user.id,
         });
         result.mcpSynced = true;
         const parts: string[] = [];

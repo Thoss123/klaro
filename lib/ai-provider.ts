@@ -114,16 +114,22 @@ export class GeminiProvider implements AIProvider {
 
     let chat = model.startChat({ history: normalizedHistory });
     
-    // We need a helper function to process the stream since we might need to do it multiple times for tool calls
+    // We need a helper function to process the stream since we might need to do it multiple times for tool calls.
+    // Text is buffered per stream and only flushed when the stream contained NO tool calls:
+    // in tool rounds the model often emits a premature answer and answers again after the
+    // results — flushing every round would concatenate duplicate answers (see MistralProvider).
     const processStream = async (res: any, currentChat: any) => {
+      let roundText = '';
+      let hadCalls = false;
       for await (const chunk of res.stream) {
          const chunkText = chunk.text();
          if (chunkText) {
-             onChunk(chunkText);
+             roundText += chunkText;
          }
-         
+
          const calls = chunk.functionCalls();
          if (calls && calls.length > 0 && onToolCall) {
+            hadCalls = true;
             for (const call of calls) {
                // Execute the tool call
                let toolResult;
@@ -132,7 +138,7 @@ export class GeminiProvider implements AIProvider {
                } catch (e: any) {
                   toolResult = { error: e.message };
                }
-               
+
                // Send the result back to Gemini and continue streaming
                const nextResult = await currentChat.sendMessageStream([{
                   functionResponse: {
@@ -140,11 +146,12 @@ export class GeminiProvider implements AIProvider {
                      response: toolResult
                   }
                }]);
-               
+
                await processStream(nextResult, currentChat);
             }
          }
       }
+      if (!hadCalls && roundText) onChunk(roundText);
     };
     
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -178,9 +185,14 @@ export class GeminiProvider implements AIProvider {
   }
 }
 
+// Chat model for the coach. Default: Mistral Medium 3.5 — Mistral's agent-optimized
+// frontier model (markedly better tool-calling/instruction-following than Large 3,
+// which is the general-purpose flagship). Override via MISTRAL_CHAT_MODEL.
+const MISTRAL_CHAT_MODEL = process.env.MISTRAL_CHAT_MODEL || 'mistral-medium-latest';
+
 export class MistralProvider implements AIProvider {
   private client: Mistral;
-  
+
   constructor() {
     this.client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY || '' });
   }
@@ -212,17 +224,24 @@ export class MistralProvider implements AIProvider {
 
       const pending = new Map<number, MistralPendingToolCall>();
       const result = await this.client.chat.stream({
-        model: 'mistral-large-latest',
+        model: MISTRAL_CHAT_MODEL,
         messages,
         tools: toMistralTools(tools),
       });
+
+      // Buffer this round's text instead of streaming it live: in multi-round tool
+      // loops the model often emits a (premature) answer in the same round as a tool
+      // call, then answers AGAIN after seeing the results — live-streaming every round
+      // concatenates all of them into one garbled message. Text from a round that ends
+      // in tool calls is discarded; only a tool-free (final) round is flushed.
+      let roundText = '';
 
       for await (const chunk of result) {
         const choice = chunk.data.choices[0];
         const content = choice?.delta?.content;
         if (content) {
           const cleaned = stripLeakedToolFragments(content as string);
-          if (cleaned.trim()) onChunk(cleaned);
+          if (cleaned.trim()) roundText += cleaned;
         }
 
         const toolCalls = choice?.delta?.toolCalls;
@@ -233,7 +252,10 @@ export class MistralProvider implements AIProvider {
         }
       }
 
-      if (!pending.size || !onToolCall) return;
+      if (!pending.size || !onToolCall) {
+        if (roundText) onChunk(roundText);
+        return;
+      }
 
       const sorted = [...pending.entries()].sort((a, b) => a[0] - b[0]);
       const assistantToolCalls: Array<{
@@ -278,7 +300,10 @@ export class MistralProvider implements AIProvider {
         });
       }
 
-      if (!assistantToolCalls.length) return;
+      if (!assistantToolCalls.length) {
+        if (roundText) onChunk(roundText);
+        return;
+      }
 
       // Mistral requires: assistant (with toolCalls) → tool results. Last role must be "tool".
       messages.push({ role: 'assistant', content: '', toolCalls: assistantToolCalls });

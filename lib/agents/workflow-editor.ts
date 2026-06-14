@@ -11,6 +11,7 @@ import {
   nextOpenStepId,
 } from '@/lib/workflow-setup-coach';
 import { attachSubNode, defaultEntryForSlot, aiSlotsFor, isSubNodeOnlyType, STANDALONE_AI_NODE } from '@/lib/ai-subnodes';
+import { formatNodeMapForPrompt, swapTargets } from '@/lib/node-map';
 import { getCatalogIndex, getNodeByName, getN8nCatalog } from '@/lib/n8n-catalog';
 import { searchCatalogIndex } from '@/lib/n8n-categories';
 import { buildInitialParameters } from '@/lib/n8n-parameter-utils';
@@ -41,27 +42,8 @@ import {
   type WorkflowEditorCoachContext,
 } from '@/lib/workflow-editor-context';
 
-/** Bekannte Ziel-Nodes für „Schritt N → X" / „ändere … zu X". */
-const SWAP_TARGETS: [RegExp, string][] = [
-  [/openai|gpt|chatgpt|\bki\b/, '@n8n/n8n-nodes-langchain.openAi'],
-  [/mistral/, '@n8n/n8n-nodes-langchain.lmChatMistralCloud'],
-  [/anthropic|claude/, '@n8n/n8n-nodes-langchain.lmChatAnthropic'],
-  [/gemini/, '@n8n/n8n-nodes-langchain.lmChatGoogleGemini'],
-  [/ai.?agent|agent/, '@n8n/n8n-nodes-langchain.agent'],
-  [/gmail|e-?mail|mail/, 'n8n-nodes-base.gmail'],
-  [/slack/, 'n8n-nodes-base.slack'],
-  [/telegram/, 'n8n-nodes-base.telegram'],
-  [/youtube/, 'n8n-nodes-base.youTube'],
-  [/meta|facebook|instagram/, 'n8n-nodes-base.facebookGraphApi'],
-  [/notion/, 'n8n-nodes-base.notion'],
-  [/airtable/, 'n8n-nodes-base.airtable'],
-  [/google\s?sheets?|sheets|tabelle/, 'n8n-nodes-base.googleSheets'],
-  [/webhook/, 'n8n-nodes-base.webhook'],
-  [/schedule|zeitplan|cron|täglich|stündlich/, 'n8n-nodes-base.scheduleTrigger'],
-  [/code|javascript|script/, 'n8n-nodes-base.code'],
-  [/set|feld setzen|daten setzen/, 'n8n-nodes-base.set'],
-  [/http|api.?request|request/, 'n8n-nodes-base.httpRequest'],
-];
+/** Bekannte Ziel-Nodes für „Schritt N → X" / „ändere … zu X" — aus der Node-Map generiert. */
+const SWAP_TARGETS: [RegExp, string][] = swapTargets();
 
 /** Ziel-Node aus „… zu Slack", „→ OpenAI", „soll Gmail sein" extrahieren. */
 function extractTargetClause(msg: string): string {
@@ -462,7 +444,13 @@ STRIKTE REGELN FÜR DEINE ARBEIT:
    - SO GEHT'S: Das Modell kommt auch als Element in "steps", ABER mit dem speziellen Feld "subNodeOf": {"parentId": "id-des-agenten", "slot": "ai_languageModel"}. Zusätzlich musst du eine Edge von dem Modell zum Agenten setzen mit "connectionType": "ai_languageModel" (bzw. "ai_tool", "ai_memory").
 5. DATENFLUSS & EXPRESSIONS: Felder, die dynamische Daten aus Vorschritten brauchen (Texte, Emails), MÜSSEN n8n-Expressions mit vorangestelltem '=' verwenden (z.B. "={{ $json.body }}"). Nutze dafür die "VERFÜGBARE EINGANGSDATEN".
 6. VERHALTEN & MESSAGE: Du redest direkt mit dem User auf Deutsch. Nenne die betroffenen Schritte. Erkläre bei Fehlern die Ursache und wie du es behoben hast. Wenn er dich bittet, Mistral Large zu nehmen, setze bei den Parametern des Mistral-Sub-Nodes einfach "model": "mistral-large-latest". Bei "Code" Nodes MUSS der Code in den Parameter "jsCode" gesetzt werden. Bei "If" Nodes nutze "conditions". Sei smart, gib nicht auf, löse das Problem!
-7. EDGES LÖSCHEN/HINZUFÜGEN: Wenn du die Edges (Verbindungen) änderst, ersetze das "edges" Array komplett mit dem neuen Graphen. Schritt 1 MUSS immer ein Trigger (z.B. n8n-nodes-base.manualTrigger) sein.`;
+7. EDGES LÖSCHEN/HINZUFÜGEN: Wenn du die Edges (Verbindungen) änderst, ersetze das "edges" Array komplett mit dem neuen Graphen. Schritt 1 MUSS immer ein Trigger (z.B. n8n-nodes-base.manualTrigger) sein.
+8. NODE-MAP BEACHTEN: Unten bekommst du eine NODE-MAP mit Grundregeln, Bau-Patterns und Verdrahtungs-Hinweisen zu den relevanten Nodes. Halte dich exakt daran (Sub-Node-Slots, branch/targetInput, typische Operationen, Credential-Hinweise). Bei Google-Diensten: Der User verbindet sein Konto in 3 Klicks über Klaros zentrale OAuth-App — leite NIEMALS an, eigene OAuth-Clients oder API-Token in der Google Cloud Console anzulegen.
+9. TESTLAUF-ANALYSE (Daten fließen?): Wenn im Kontext „Letzter Testlauf — Status & Output je Schritt" steht, analysiere den Datenfluss von vorn nach hinten und sag dem User in der message konkret, ob die Daten richtig durchlaufen:
+   - Kam an JEDEM Schritt etwas an und wurde sinnvoll weitergegeben?
+   - Benenne leere Outputs („Schritt X liefert nichts — daher bekommt der nächste Schritt keine Daten"), fehlende/falsche Felder (erwartetes Feld fehlt im Output) und gescheiterte Schritte (Status FEHLER) — jeweils mit dem konkreten Schritt-Namen.
+   - Behebe die Ursache wenn möglich direkt (step_configs/parameters/Expressions auf "={{ $json.feld }}" anpassen, fehlende Zugänge/Felder benennen). Sei nicht vage.
+   - Empfiehl das Live-Schalten ERST, wenn der Test sauber durchläuft (alle Schritte ok, Daten fließen bis zum Schluss). Liegt kein Testlauf vor, erfinde keine Daten — sag, dass zuerst getestet werden sollte.`;
 
   const user = `Workflow: ${workflow.title}
 
@@ -477,6 +465,11 @@ ${JSON.stringify(workflow.edges ?? [], null, 2)}
 
 User-Anfrage: ${message}
 ${contextBlock}${formatInputSchemaForPrompt(workflow.steps, inputSchema)}${formatNodeErrorsForPrompt(nodeErrors)}
+${formatNodeMapForPrompt([
+    ...workflow.steps.map(s => s.n8nType).filter((t): t is string => !!t),
+    ...candidates.slice(0, 35).map(c => c.name),
+  ])}
+
 Kandidaten-Nodes (nur diese n8nTypes verwenden):
 ${candidates.slice(0, 35).map(c => `- ${c.name} (${c.displayName})`).join('\n')}`;
 

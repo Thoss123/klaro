@@ -34,6 +34,7 @@ export function getSourceType(relPath: string): KnowledgeSourceType {
   if (p.includes('/use-cases/')) return 'use_case';
   if (p.includes('/tools/')) return 'tool';
   if (p.includes('/templates/bausteine/')) return 'template_baustein';
+  if (p.includes('/node-map/')) return 'template_baustein';
   if (p.includes('/templates/workflows/')) return 'template_workflow';
   if (p.includes('/branchen/')) return 'branche';
   if (p.includes('/ui-guides/')) return 'ui_guide';

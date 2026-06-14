@@ -293,6 +293,7 @@ MOCK_N8N=false
 - `[x]` **`lib/workflow-generator.ts`:** Mapping Canvas-Steps → n8n-Nodes inkl. `KLARO:`-Namespace-Präfix (`withKlaroPrefix`); Unit-getestet. Live verifiziert (`KLARO: Reels Pipeline`).
 - `[x]` **Deploy-UI:** Phase 4 — Tool-Mapping, Credentials-Popup, `POST /api/n8n/workflows` (in `app/chat/page.tsx`); zusätzlich **`/workflows`-Tab** (Liste + Graph + Aktivieren/Test/Löschen). _Hinweis: ohne live n8n degradiert Deploy sauber zu `draft` (n8n-Fehler abgefangen)._
 - `[x]` **Execution Monitor:** Status-Pill + Ausführungen pro Workflow im `/workflows`-Tab aus `/api/n8n/executions`.
+- `[ ]` **Workflow teilen:** Nutzer können fertige Workflows per Link teilen, damit z.B. die IT oder externe Dienstleister die Credentials und Zugänge eintragen können (Credential-Delegation).
 - `[ ]` **E2E Test live:** Phase 1 → 4 mit live deploytem Workflow — wartet auf n8n-VPS (`MOCK_N8N`/Live). Mock-/Draft-Pfad + Orchestrierung E2E im Browser verifiziert.
 
 ---

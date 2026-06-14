@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
           changedStepIds: result.stepConfigUpdates
             ? Object.keys(result.stepConfigUpdates)
             : undefined,
+          userId: user.id,
         });
         result.mcpSynced = true;
         const parts: string[] = [];

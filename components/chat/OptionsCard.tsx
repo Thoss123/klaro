@@ -80,10 +80,10 @@ export default function OptionsCard({
   };
 
   return (
-    <div className="mb-2 rounded-2xl border border-gray-200 bg-gray-900/95 text-gray-100 shadow-lg overflow-hidden">
+    <div className="mb-2 rounded-2xl border border-gray-200 bg-white text-gray-800 shadow-md overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10">
-        <span className="text-sm font-medium text-gray-100 truncate">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+        <span className="text-sm font-medium text-gray-800 truncate">
           {options.question || 'Wähle eine Option'}
         </span>
         <div className="flex items-center gap-1 shrink-0">
@@ -96,7 +96,7 @@ export default function OptionsCard({
                 type="button"
                 onClick={() => setPage(p => Math.max(0, p - 1))}
                 disabled={page === 0}
-                className="p-1 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"
                 aria-label="Vorherige Optionen"
               >
                 <ChevronLeft size={16} />
@@ -105,7 +105,7 @@ export default function OptionsCard({
                 type="button"
                 onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))}
                 disabled={page >= pageCount - 1}
-                className="p-1 text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+                className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"
                 aria-label="Weitere Optionen"
               >
                 <ChevronRight size={16} />
@@ -115,7 +115,7 @@ export default function OptionsCard({
           <button
             type="button"
             onClick={onDismiss}
-            className="p-1 text-gray-400 hover:text-white transition-colors"
+            className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
             aria-label="Schließen"
           >
             <X size={16} />
@@ -124,26 +124,26 @@ export default function OptionsCard({
       </div>
 
       {/* Choices */}
-      <ul className="divide-y divide-white/5">
+      <ul className="divide-y divide-gray-100">
         {visible.map((choice, i) => (
           <li key={choice.id}>
             <button
               type="button"
               onClick={() => onSelect(choice.label)}
-              className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+              className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-indigo-50/60 transition-colors"
             >
-              <span className="shrink-0 w-5 text-sm tabular-nums text-gray-500 group-hover:text-gray-300">
+              <span className="shrink-0 w-5 text-sm tabular-nums text-gray-400 group-hover:text-indigo-500">
                 {start + i + 1}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm text-gray-100 truncate">{choice.label}</span>
+                <span className="block text-sm text-gray-800 truncate">{choice.label}</span>
                 {choice.detail && (
                   <span className="block text-xs text-gray-400 truncate">{choice.detail}</span>
                 )}
               </span>
               <ArrowUp
                 size={14}
-                className="shrink-0 rotate-90 text-gray-600 group-hover:text-gray-300 transition-colors"
+                className="shrink-0 rotate-90 text-gray-300 group-hover:text-indigo-500 transition-colors"
               />
             </button>
           </li>
@@ -151,19 +151,19 @@ export default function OptionsCard({
       </ul>
 
       {/* Custom answer */}
-      <form onSubmit={handleCustom} className="flex items-center gap-2 px-4 py-2.5 border-t border-white/10">
-        <Pencil size={14} className="shrink-0 text-gray-500" />
+      <form onSubmit={handleCustom} className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100">
+        <Pencil size={14} className="shrink-0 text-gray-400" />
         <input
           ref={inputRef}
           value={custom}
           onChange={e => setCustom(e.target.value)}
           placeholder="Eigene Antwort…"
-          className="flex-1 bg-transparent text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none"
+          className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
         {custom.trim() && (
           <button
             type="submit"
-            className="shrink-0 w-7 h-7 flex items-center justify-center bg-white text-gray-900 rounded-full hover:bg-gray-200 transition-colors"
+            className="shrink-0 w-7 h-7 flex items-center justify-center bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
             aria-label="Eigene Antwort senden"
           >
             <ArrowUp size={14} strokeWidth={2.5} />

@@ -329,6 +329,134 @@ export async function saveMessage(sessionId: string, role: 'user' | 'assistant',
   }
 }
 
+// ---- Message Feedback (Daumen hoch/runter + Umfrage) ----
+
+export type FeedbackContextMessage = { role: 'user' | 'assistant'; content: string }
+
+/**
+ * Insert a thumbs-up/down rating with phase + the last 5 chat messages as
+ * context (for later AI analysis). Returns the row id so the survey popup
+ * can attach problem/comment afterwards. Fails soft (returns null).
+ */
+export async function saveMessageFeedback(params: {
+  sessionId: string | null
+  messageId: string
+  rating: 'up' | 'down'
+  phase: string
+  context: FeedbackContextMessage[]
+}): Promise<string | null> {
+  const supabase = createSupabaseBrowserClient()
+  const { data: userData } = await supabase.auth.getUser()
+  const { data, error } = await supabase
+    .from('message_feedback')
+    .insert({
+      session_id: params.sessionId,
+      user_id: userData?.user?.id ?? null,
+      message_id: params.messageId,
+      rating: params.rating,
+      phase: params.phase,
+      context: params.context,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.warn('Error saving message feedback:', formatSupabaseError(error))
+    return null
+  }
+  return data.id
+}
+
+/** Attach survey results (rating switch, problem choice, free text) to an existing feedback row. */
+export async function updateMessageFeedback(
+  feedbackId: string,
+  fields: { rating?: 'up' | 'down'; problem?: string; comment?: string }
+): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  const { error } = await supabase
+    .from('message_feedback')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', feedbackId)
+
+  if (error) console.warn('Error updating message feedback:', formatSupabaseError(error))
+}
+
+// ---- Phasen-Feedback ("Wie hat es dir gefallen?") + Support-Meldungen ----
+
+/**
+ * Speichert das Phasen-Feedback-Popup (Zufriedenheit + Nutzen + optionaler
+ * Freitext) für eine abgeschlossene Phase. user_id aus der aktuellen Session.
+ * Fail-soft.
+ */
+export async function savePhaseFeedback(params: {
+  projectId: string | null
+  sessionId: string | null
+  phase: string
+  satisfaction: string
+  helpfulness: string
+  comment?: string
+}): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  const { data: userData } = await supabase.auth.getUser()
+  const { error } = await supabase.from('phase_feedback').insert({
+    project_id: params.projectId,
+    session_id: params.sessionId,
+    user_id: userData?.user?.id ?? null,
+    phase: params.phase,
+    satisfaction: params.satisfaction,
+    helpfulness: params.helpfulness,
+    comment: params.comment?.trim() || null,
+  })
+  if (error) console.warn('Error saving phase feedback:', formatSupabaseError(error))
+}
+
+/**
+ * Prüft, ob für dieses Projekt + diese Phase bereits Feedback existiert
+ * (Dedupe — kein Doppel-Popup). Fail-soft: bei Fehler false.
+ */
+export async function hasPhaseFeedback(projectId: string, phase: string): Promise<boolean> {
+  const supabase = createSupabaseBrowserClient()
+  const { data, error } = await supabase
+    .from('phase_feedback')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('phase', phase)
+    .limit(1)
+  if (error) {
+    console.warn('Error checking phase feedback:', formatSupabaseError(error))
+    return false
+  }
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * Speichert eine Problem-Meldung aus dem Hilfe-Button. message ist Pflicht,
+ * der Rest ist Kontext für die Triage. Fail-soft.
+ */
+export async function saveSupportRequest(params: {
+  sessionId: string | null
+  projectId: string | null
+  phase: string | null
+  category: string
+  message: string
+  url: string
+  userAgent: string
+}): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  const { data: userData } = await supabase.auth.getUser()
+  const { error } = await supabase.from('support_requests').insert({
+    user_id: userData?.user?.id ?? null,
+    session_id: params.sessionId,
+    project_id: params.projectId,
+    phase: params.phase,
+    category: params.category,
+    message: params.message.trim(),
+    url: params.url,
+    user_agent: params.userAgent,
+  })
+  if (error) console.warn('Error saving support request:', formatSupabaseError(error))
+}
+
 // ---- Canvas (Session-level, legacy) ----
 
 export async function saveCanvas(sessionId: string, canvasData: CanvasData): Promise<void> {
@@ -434,6 +562,72 @@ export async function saveProjectMemory(projectId: string, phase: string, summar
       .from('project_memory')
       .insert({ project_id: projectId, phase, summary })
   }
+}
+
+/**
+ * Cross-project context for returning users: what the company does, which
+ * workflows already run, who implemented last time — compact German text the
+ * coach uses for situation-aware Phase 1 (no re-asking known facts, check-in
+ * "same implementer? which department?"). Returns null for first-time users.
+ * RLS scopes the project list to the logged-in user.
+ */
+export async function loadCrossProjectContext(currentProjectId: string | null): Promise<string | null> {
+  const supabase = createSupabaseBrowserClient()
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('id, name, created_at')
+    .order('created_at', { ascending: false })
+
+  if (error || !projects?.length) return null
+  const others = projects.filter(p => p.id !== currentProjectId).slice(0, 5)
+  if (!others.length) return null
+
+  const blocks: string[] = []
+  for (const p of others) {
+    try {
+      const [{ data: pc }, { data: mems }] = await Promise.all([
+        supabase.from('project_canvas').select('data').eq('project_id', p.id).maybeSingle(),
+        supabase
+          .from('project_memory')
+          .select('phase, summary')
+          .eq('project_id', p.id)
+          .order('created_at', { ascending: true }),
+      ])
+      const canvas = (pc?.data ?? null) as CanvasData | null
+      const lines: string[] = [`Projekt „${p.name}“:`]
+
+      const company = canvas?.company
+      if (company?.offer) {
+        lines.push(
+          `- Unternehmen/Angebot: ${company.offer}` +
+            (company.target_customers ? ` (Zielkunden: ${company.target_customers})` : ''),
+        )
+      }
+      const impl = canvas?.implementer
+      if (impl?.who) {
+        lines.push(`- Umsetzer damals: ${impl.who}${impl.skill_level ? ` (Skill: ${impl.skill_level})` : ''}`)
+      }
+      const workflowTitles = (canvas?.workflows || []).map(w => w.title).filter(Boolean)
+      if (workflowTitles.length) lines.push(`- Gebaute Workflows: ${workflowTitles.join(' · ')}`)
+      const painPointTitles = (canvas?.pain_points || [])
+        .map(pp => (pp as { title?: string }).title)
+        .filter(Boolean)
+      if (painPointTitles.length) lines.push(`- Behandelte Pain Points: ${painPointTitles.slice(0, 6).join(' · ')}`)
+      if (canvas?.phase) lines.push(`- Erreichte Phase: ${canvas.phase}`)
+
+      // Memory summaries are long — only the most recent one, trimmed.
+      const lastMem = mems?.length ? mems[mems.length - 1] : null
+      if (lastMem?.summary) {
+        lines.push(`- Letzte Zusammenfassung (${lastMem.phase}): ${String(lastMem.summary).slice(0, 600)}`)
+      }
+
+      if (lines.length > 1) blocks.push(lines.join('\n'))
+    } catch {
+      // Skip a broken project rather than losing the whole context.
+    }
+  }
+
+  return blocks.length ? blocks.join('\n\n') : null
 }
 
 // ---- Phase ----

@@ -11,8 +11,10 @@ import {
 } from './n8n-mcp-bridge';
 import { updateN8nWorkflow } from './n8n';
 import {
+  alignAuthenticationParameter,
   buildN8nWorkflow,
   n8nNodeNameForStep,
+  resolveCredentialKey,
   type StepMapping,
 } from './workflow-generator';
 import type { StepConfig, Workflow, WorkflowStep } from './types';
@@ -31,22 +33,73 @@ export function buildMcpParameterOperations(
 
     const config = stepConfigs[step.id];
     const nodeName = n8nNodeNameForStep(step.label, index);
-    
-    // 1. Update parameters
-    const parameters = buildParameters(step, config);
-    if (parameters && Object.keys(parameters).length > 0) {
+    const mapping = mappings?.find(m => m.step_id === step.id);
+    const credentialKey = resolveCredentialKey(mapping, step) || config?.credentialType;
+    const credentialId = mapping?.credential_id;
+
+    // 1. Parameter aktualisieren — "authentication" dabei mit dem Credential abgleichen,
+    // sonst pusht der Sync gespeicherte Altwerte wie "none" zurück nach n8n und die
+    // Ausführung scheitert mit „does not have any credentials of type none defined".
+    const rawParameters = buildParameters(step, config);
+    if (rawParameters && Object.keys(rawParameters).length > 0) {
       ops.push({
         operation: 'updateNodeParameters',
         nodeName,
-        parameters,
+        parameters: alignAuthenticationParameter(rawParameters, credentialKey, !!credentialId),
       });
     }
 
-    // Note: n8n MCP update_workflow does NOT support setNodeCredential.
-    // Credentials must be updated via REST sync (structureChanged: true).
+    // 2. Credential direkt am Node setzen — n8n MCP update_workflow unterstützt
+    // setNodeCredential (live verifiziert). Vorher erreichten Credentials n8n nur
+    // beim vollen REST-Push (structureChanged), Panel-Saves ließen den Node ohne.
+    if (credentialKey && credentialId) {
+      ops.push({
+        operation: 'setNodeCredential',
+        nodeName,
+        credentialKey,
+        credentialId,
+        credentialName: `${credentialKey}-credential`,
+      });
+    }
   });
 
   return ops;
+}
+
+/**
+ * Fehlende n8n-Credential-IDs aus user_credentials nachschlagen (per tool_name
+ * oder credential_type). Editor-Chat & Co. rufen den Sync ohne aufgelöste
+ * Mappings auf — ohne diesen Schritt kämen Nodes dort nie an ihr Credential.
+ */
+export async function resolveCredentialIdsForMappings(
+  mappings: StepMapping[],
+  userId: string,
+  projectId?: string,
+): Promise<StepMapping[]> {
+  const unresolved = mappings.some(m => !m.credential_id && (m.tool || m.credential_type));
+  if (!unresolved) return mappings;
+
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from('user_credentials')
+    .select('tool_name, n8n_credential_id')
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  if (projectId) query = query.eq('project_id', projectId);
+  const { data: creds } = await query;
+
+  const credMap: Record<string, string> = {};
+  for (const c of creds ?? []) {
+    if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
+  }
+
+  return mappings.map(m => ({
+    ...m,
+    credential_id: m.credential_id
+      || (m.tool && credMap[m.tool])
+      || (m.credential_type && credMap[m.credential_type])
+      || undefined,
+  }));
 }
 
 export async function pushWorkflowJsonToN8n(
@@ -117,14 +170,20 @@ export interface SyncDeployedWorkflowInput {
   structureChanged?: boolean;
   changedStepIds?: string[];
   credentialMappings?: StepMapping[];
+  /** Ohne credentialMappings: Credential-IDs für diesen User aus der DB auflösen. */
+  userId?: string;
+  projectId?: string;
 }
 
-/** Nach Editor-Chat oder Panel-Save: Graph per REST, Parameter per MCP. */
+/** Nach Editor-Chat oder Panel-Save: Graph per REST, Parameter + Credentials per MCP. */
 export async function syncDeployedWorkflow(input: SyncDeployedWorkflowInput): Promise<{
   restUpdated: boolean;
   mcpAppliedOperations: number;
 }> {
-  const mappings = input.credentialMappings ?? buildMappingsFromWorkflow(input.workflow, input.stepConfigs);
+  let mappings = input.credentialMappings ?? buildMappingsFromWorkflow(input.workflow, input.stepConfigs);
+  if (!input.credentialMappings && input.userId) {
+    mappings = await resolveCredentialIdsForMappings(mappings, input.userId, input.projectId);
+  }
 
   let restUpdated = false;
   if (input.structureChanged) {

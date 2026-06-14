@@ -5,7 +5,7 @@ import { evaluateHistoryForCanvas, logSync, summarizeCanvasDiff } from '@/lib/sy
 import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { runCanvasPipeline } from '@/lib/agent-orchestration';
-import { mistralCompleteJson } from '@/lib/agents/llm';
+import { mistralCompleteJson, withRateLimitRetry } from '@/lib/agents/llm';
 
 export async function POST(req: NextRequest) {
   try {
@@ -97,13 +97,13 @@ export async function POST(req: NextRequest) {
 Behalte bestehende Einträge, ergänze oder aktualisiere — nichts erfinden.`;
     } else if (phase === 'analyse') {
       extractionInstruction = `Du extrahierst:
-- **company.change_appetite**: "minimal" | "balanced" | "bold" (NUR wenn Nutzer A/B/C explizit gewählt hat).
+- **pain_points** (NUR die bestehenden aus dem Canvas — KEINE neuen erfinden, Titel/Beschreibung nicht verändern): Wenn Nutzer und Coach im Chat eine **Reihenfolge/Priorisierung** der Pain Points festgelegt oder bestätigt haben, setze auf jedem betroffenen pain_point das Feld **rank** (Zahl, 1 = höchste Priorität, fortlaufend ohne Lücken). Ist im Chat keine Reihenfolge bestätigt, lass rank unverändert/weg.
 - **use_cases**: id, title, linked_pain_point, **tools** (string[]).
   **STRENG:** Jedes Tool muss wörtlich im Chat vom **Nutzer** vorkommen (z.B. "Canva", "Word", "ChatGPT").
   **VERBOTEN:** Standard-Listen, Branchen-Defaults, Vermutungen (kein Lightroom, Shutterstock, CapCut, etc. wenn nicht genannt).
   **tools** = leeres Array [] wenn für diesen Pain Point noch kein konkretes Produkt genannt wurde.
   Keine Ziel-Lösungen als Tool (kein "KI-gestützte Textgenerierung").
-  KEIN automation_level pro Use Case — nur company.change_appetite.
+  KEIN automation_level pro Use Case.
 - **implementer**: NUR wenn Nutzer explizit Computer-Skills, Admin-Zugänge, Zeit pro Woche oder „wer setzt um“ genannt hat (Felder: who, skill_level, automation_experience).
 - **documents** (optional): Tool-/Prozess-Notizen mit phase:'analyse' (z.B. "Aktuelle Marketing-Tools").
 **workflows:** NICHT setzen (weglassen oder []) — das ist Phase 3.
@@ -142,15 +142,15 @@ ${JSON.stringify(currentCanvas || {})}
 
 Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärungen.`;
 
-    // Call Mistral Small
-    const response = await client.chat.complete({
+    // Call Mistral Small — bei 429 (Rate-Limit) mit Backoff wiederholen statt abbrechen.
+    const response = await withRateLimitRetry(() => client.chat.complete({
       model: 'mistral-small-latest',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Chat Verlauf:\n${chatContext}` }
       ],
       responseFormat: { type: 'json_object' }
-    });
+    }));
 
     const raw = response.choices?.[0]?.message?.content;
     const newCanvasRaw = typeof raw === 'string' ? raw : '';

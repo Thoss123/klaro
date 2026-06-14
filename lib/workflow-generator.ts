@@ -55,6 +55,38 @@ export interface StepMapping {
   parameters?: Record<string, unknown>;
 }
 
+/** Credential-Typ-Schlüssel für einen Step ermitteln (Mapping > Tool-Map > Step). */
+export function resolveCredentialKey(
+  mapping?: Pick<StepMapping, 'credential_type' | 'tool'>,
+  step?: { credentialType?: string },
+): string | undefined {
+  return mapping?.credential_type
+    || (mapping?.tool ? CREDENTIAL_TYPE[mapping.tool] ?? undefined : undefined)
+    || step?.credentialType
+    || undefined;
+}
+
+/**
+ * "authentication"-Parameter mit dem Credential abgleichen. Viele n8n-Nodes (wie Airtable)
+ * rufen getCredentials(parameters.authentication) auf — steht dort "none", schlägt die
+ * Ausführung fehl mit „does not have any credentials of type \"none\" defined".
+ * Liefert eine Kopie; das Original bleibt unverändert.
+ */
+export function alignAuthenticationParameter(
+  parameters: Record<string, unknown>,
+  credentialKey: string | undefined,
+  hasCredentialId: boolean,
+): Record<string, unknown> {
+  const p = { ...parameters };
+  if (credentialKey && hasCredentialId) {
+    if (p.authentication === 'none' || !p.authentication) p.authentication = credentialKey;
+  } else if (p.authentication === 'none') {
+    // Ohne Credential verwirren wir n8n nicht mit "none" als gesuchtem Credential-Typ.
+    delete p.authentication;
+  }
+  return p;
+}
+
 /** All Klaro-deployed n8n workflows are namespaced with this prefix so they are
  *  instantly identifiable in the shared n8n instance. */
 export const KLARO_WORKFLOW_PREFIX = 'KLARO: ';
@@ -163,26 +195,15 @@ export function buildN8nWorkflow(
     const x = 200 + i * 250;
     const y = 300;
 
-    const credentialKey = mapping?.credential_type
-      || (mapping?.tool ? CREDENTIAL_TYPE[mapping.tool] : undefined)
-      || step.credentialType
-      || undefined;
+    const credentialKey = resolveCredentialKey(mapping, step);
     const credentials: Record<string, unknown> = {};
     if (credentialKey && mapping?.credential_id) {
       credentials[credentialKey] = {
         id: mapping.credential_id,
         name: `${credentialKey}-credential`,
       };
-      // Viele n8n-Nodes (wie Airtable) erwarten zusätzlich, dass der Parameter "authentication"
-      // auf den Namen des Credential-Typs gesetzt ist (sonst steht dort oft "none" und es knallt).
-      if (parameters.authentication === 'none' || !parameters.authentication) {
-        parameters.authentication = credentialKey;
-      }
-    } else {
-      // Falls kein Credential existiert, aber "authentication" gesetzt ist, n8n verwirren wir
-      // nicht mit "none", was er als Credential-Typ sucht.
-      if (parameters.authentication === 'none') delete parameters.authentication;
     }
+    parameters = alignAuthenticationParameter(parameters, credentialKey, !!mapping?.credential_id);
 
     nodes.push({
       id: step.id,

@@ -63,7 +63,6 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
     : 'border-[#c8c8d4]';
 
   const columnW = isSwitch ? 220 : LABEL_MAX_W;
-  const showToolbar = interactive && hovered;
 
   const stop = (fn?: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,40 +77,47 @@ function WorkflowFlowNodeComponent({ data, selected }: NodeProps<Node<FlowNodeDa
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Hover-Toolbar (n8n-Stil) */}
-      {showToolbar && (
-        <div className="nodrag absolute -top-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
-          <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md">
-            <button
-              type="button"
-              title="Konfigurieren"
-              onClick={stop(onClick)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-            >
-              <Settings2 size={16} />
-            </button>
-            <button
-              type="button"
-              title={disabled ? 'Aktivieren' : 'Deaktivieren'}
-              onClick={stop(onToggleDisabled)}
-              className={`flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 ${disabled ? 'text-amber-500' : 'text-gray-500 hover:text-gray-800'}`}
-            >
-              <Power size={16} />
-            </button>
-            {step.type !== 'trigger' && (
+      {/* Hover-Overlay: Tooltip (immer) + Aktions-Toolbar (nur interaktiv), gestapelt über dem Node */}
+      {hovered && (
+        <div className="nodrag absolute bottom-full left-1/2 -translate-x-1/2 z-30 flex flex-col items-center">
+          {/* Tooltip — erklärt, was dieser Schritt im Workflow macht */}
+          <div className="pointer-events-none mb-1 max-w-[240px] rounded-lg bg-gray-900/95 px-3 py-1.5 text-center text-[11px] font-medium leading-snug text-white shadow-lg">
+            {step.note || step.label}
+          </div>
+          {/* Aktions-Toolbar (n8n-Stil) — nur im interaktiven Editor */}
+          {interactive && (
+            <div className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md">
               <button
                 type="button"
-                title="Löschen"
-                onClick={stop(onDelete)}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-50 hover:text-red-600"
+                title="Konfigurieren"
+                onClick={stop(onClick)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
               >
-                <Trash2 size={16} />
+                <Settings2 size={16} />
               </button>
-            )}
-          </div>
-          {/* Invisible bridge so hover doesn't drop between node and toolbar —
+              <button
+                type="button"
+                title={disabled ? 'Aktivieren' : 'Deaktivieren'}
+                onClick={stop(onToggleDisabled)}
+                className={`flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 ${disabled ? 'text-amber-500' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                <Power size={16} />
+              </button>
+              {step.type !== 'trigger' && (
+                <button
+                  type="button"
+                  title="Löschen"
+                  onClick={stop(onDelete)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-50 hover:text-red-600"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          )}
+          {/* Invisible bridge so hover doesn't drop between node and overlay —
               breiter als der Node, damit der Hover auch auf dem Weg nach oben nicht abreißt. */}
-          <div className="h-5" style={{ width: columnW }} />
+          <div className="h-3" style={{ width: columnW }} />
         </div>
       )}
 

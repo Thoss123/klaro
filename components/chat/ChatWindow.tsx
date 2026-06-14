@@ -11,6 +11,8 @@ export default function ChatWindow({
   injectBeforeLastAssistant,
   isStreaming,
   className = '',
+  sessionId = null,
+  phase = 'diagnose',
 }: {
   messages: Message[]
   onEdit?: (id: string, newContent: string) => void
@@ -18,12 +20,26 @@ export default function ChatWindow({
   injectBeforeLastAssistant?: React.ReactNode
   isStreaming?: boolean
   className?: string
+  /** Für Daumen-Feedback: wird mit Phase + letzten 5 Nachrichten gespeichert */
+  sessionId?: string | null
+  phase?: string
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Auto-Scroll nur solange der Nutzer unten "klebt" — scrollt er während des
+  // Streamens hoch, bleibt seine Position erhalten (kein Zurückreißen).
+  const stickToBottomRef = useRef(true);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  };
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages, isStreaming]);
 
@@ -47,11 +63,28 @@ export default function ChatWindow({
       (lastMsg.role === 'assistant' && !lastVisibleText));
 
   return (
-    <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-8 bg-white ${className}`} ref={scrollRef}>
+    <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-8 bg-white ${className}`} ref={scrollRef} onScroll={handleScroll}>
       {visibleMessages.map((m, i) => (
         <React.Fragment key={m.id}>
           {i === lastAssistantIdx && injectBeforeLastAssistant}
-          <MessageBubble message={m} onEdit={onEdit} />
+          <MessageBubble
+            message={m}
+            onEdit={onEdit}
+            feedback={
+              m.role === 'assistant'
+                ? {
+                    sessionId,
+                    phase,
+                    recentMessages: visibleMessages
+                      .slice(Math.max(0, i - 4), i + 1)
+                      .map(msg => ({
+                        role: msg.role,
+                        content: stripInternalTags(msg.content).slice(0, 4000),
+                      })),
+                  }
+                : undefined
+            }
+          />
         </React.Fragment>
       ))}
       {showStreamLoader && <ChatPendingLoader />}

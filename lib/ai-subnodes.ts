@@ -31,6 +31,15 @@ const AI_PARENT_SLOTS: Record<string, AiSlot[]> = {
   [`${LC}chainLlm`]: [
     { slot: 'ai_languageModel', label: 'Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
   ],
+  [`${LC}informationExtractor`]: [
+    { slot: 'ai_languageModel', label: 'Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
+  ],
+  [`${LC}textClassifier`]: [
+    { slot: 'ai_languageModel', label: 'Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
+  ],
+  [`${LC}sentimentAnalysis`]: [
+    { slot: 'ai_languageModel', label: 'Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
+  ],
 };
 
 export const AI_CONNECTION_TYPES = new Set([

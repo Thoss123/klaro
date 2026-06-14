@@ -44,3 +44,6 @@ next-env.d.ts
 # local notes / test credentials — never commit (contains test logins)
 CLAUDE.md
 CLAUDE.local.md
+
+# Playwright MCP scratch output (screenshots, page snapshots, console logs)
+.playwright-mcp/

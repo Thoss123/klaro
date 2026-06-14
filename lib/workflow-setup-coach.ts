@@ -116,9 +116,8 @@ function guideForNode(step: WorkflowStep, workflow: Workflow, nr: number): strin
 
   if (short === 'gmail') {
     return `Schritt ${nr} — Gmail:${zweck}
-1. Gmail-Credential verbinden (OAuth in n8n nach Deploy).
-2. Operation: Nachricht senden — Empfänger/Betreff/Text aus vorherigem Schritt ({{ $json }}).
-3. API Key hier nur für Vorschau — OAuth wird beim Deploy angelegt.`;
+1. Google-Konto in 3 Klicks verbinden: „Mit Google verbinden" → Konto wählen → Bestätigen (zentrale Klaro-OAuth-App, kein eigener API-Zugang nötig).
+2. Operation: Nachricht senden — Empfänger/Betreff/Text aus vorherigem Schritt ({{ $json }}).`;
   }
 
   if (short === 'airtable') {

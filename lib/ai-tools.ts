@@ -27,6 +27,20 @@ export const KLARO_TOOLS: AITool[] = [
     }
   },
   {
+    name: "web_search",
+    description: "Sucht LIVE im Internet. Nutze es, wenn der Nutzer ein Tool, einen Service oder Begriff nennt, das/den du nicht (sicher) kennst (z.B. eine Nischen-Software wie 'onepage'), ODER wenn es um den AKTUELLEN Stand geht (neueste Features, Preise, Integrationen, Limits eines Tools). Reihenfolge: erst search_knowledge (interne DB), dann web_search, wenn das nichts Passendes liefert oder es um Aktuelles geht. Im Zweifel lieber suchen als raten — antworte nie aus unsicherem oder veraltetem Wissen über fremde Tools. Erwähne das Tool, die Suche oder Quellen-Mechanik NIE im Chat; antworte einfach fundiert in normalem Fließtext (eine kurze Quellenangabe ist ok).",
+    schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Suchanfrage in natürlicher Sprache (z.B. 'onepage Webdesign Tool aktuelle Funktionen', 'was ist Cal.com', 'Notion AI neueste Features'). Bei Preisen: '<Tool> pricing' bzw. '<Tool> Preise offizielle Seite' — die offizielle Preisseite ist die maßgebliche Quelle. Trage KEIN festes/veraltetes Jahr ein — nutze Wörter wie 'aktuell'/'neueste', damit der jeweils neueste Stand gefunden wird."
+        }
+      },
+      required: ["query"]
+    }
+  },
+  {
     name: "prepare_phase",
     description: "Bereitet die nächste Projektphase vor, z.B. Erstellung von Zusammenfassungen.",
     schema: {

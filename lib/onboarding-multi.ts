@@ -19,11 +19,12 @@ export function toggleMultiValue(current: string | undefined, value: string): st
 }
 
 /** Coach path when ziel may contain multiple selections (legacy comma data included). */
-export function resolveDiagnosePath(ziel: string | undefined): 'A' | 'B' | 'C' | 'D' {
+export function resolveDiagnosePath(ziel: string | undefined): 'A' | 'B' | 'C' | 'D' | 'E' {
   const parts = ziel
     ? [...new Set(ziel.split(/[,;·]/).map(s => s.trim()).filter(Boolean))]
     : [];
-  if (parts.some(p => p.includes('konkrete Ideen'))) return 'B';
+  if (parts.some(p => p.includes('Genauer Plan') || p.includes('nur noch umsetzen'))) return 'E';
+  if (parts.some(p => p.includes('konkrete Ideen') || p.includes('brauche Plan'))) return 'B';
   if (parts.some(p => p.includes('sinnvoll'))) return 'C';
   if (parts.some(p => p.includes('Briefing'))) return 'D';
   return 'A';

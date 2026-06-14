@@ -7,6 +7,7 @@ export type OnboardingData = {
   branche: string
   tempo: string
   unternehmensgroesse: string
+  technik_level?: string
   /** Preferred first name for chat (Anrede) */
   vorname?: string
   /** @deprecated use vorname */
@@ -156,6 +157,8 @@ export type CanvasData = {
   company?: CompanyProfile
   implementer?: ImplementerProfile
   phase: Phase
+  /** Neu: User configuration for workflow steps before deployment */
+  workflow_step_configs?: WorkflowStepConfigs
 }
 
 // Session

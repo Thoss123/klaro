@@ -22,19 +22,14 @@ Googles E-Mail-Dienst — in n8n als Node zum Lesen, Senden, Labeln und Durchsuc
 - Massenversand / Newsletter (> 500/Tag) → dediziertes Tool wie Brevo oder Mailjet.
 - Transaktionale System-Mails aus einer App → SMTP-Dienst (Postmark, Resend).
 
-## Credential einrichten — Schritt für Schritt
-### In Google Cloud Console
-1. console.cloud.google.com → Projekt anlegen.
-2. "APIs & Services" → "Library" → Gmail API aktivieren.
-3. "OAuth consent screen" → External → Pflichtfelder ausfüllen.
-4. "Credentials" → "Create Credentials" → "OAuth client ID" → Web application.
-5. Authorized redirect URI eintragen: `https://DEINE-N8N-DOMAIN/rest/oauth2-credential/callback`.
-6. Client ID und Client Secret kopieren.
+## Credential einrichten — 3 Klicks über Klaros zentrale Google-OAuth-App
+Kein eigener OAuth-Client nötig — keine Google Cloud Console, keine Client-ID/Secret, keine Token.
 
-### In Klaro
-1. Settings → Credentials → "+ Tool verbinden".
-2. Gmail auswählen.
-3. Client ID und Secret eintragen → "Mit Google anmelden" klicken und Zugriff bestätigen.
+1. Settings → Credentials → "+ Tool verbinden" → Gmail → **„Mit Google verbinden"** klicken.
+2. Im Google-Popup das **Konto auswählen**.
+3. Zugriff **bestätigen** — fertig.
+
+Hinweis: In Google-Workspace-Organisationen kann der Admin externe Apps blockieren — dann muss er Klaros App in der Admin Console freigeben. Bei „Zugriff verweigert": Verbindung trennen und die 3 Klicks wiederholen.
 
 ## n8n Node-Konfiguration
 ```json

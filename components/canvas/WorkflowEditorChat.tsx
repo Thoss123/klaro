@@ -10,7 +10,7 @@ import { Loader2, Send } from 'lucide-react';
 import ChatPendingLoader from '@/components/chat/ChatPendingLoader';
 import { StepConfig, Workflow, WorkflowEdge, WorkflowStep } from '@/lib/types';
 import type { WorkflowEditorCoachContext, WorkflowEditorChatTurn } from '@/lib/workflow-editor-context';
-import { inputFieldsForStep, type NodeRunLite } from '@/lib/workflow-io';
+import { inputFieldsForStep, summarizeRunForCoach, type NodeRunLite } from '@/lib/workflow-io';
 import ChatInput from '@/components/chat/ChatInput';
 import type { ChatAttachment } from '@/lib/chat-attachments';
 
@@ -93,11 +93,9 @@ export default function WorkflowEditorChat({
     setAttachments([]);
 
     try {
-      const flatRun = runData.flatMap(r =>
-        (r.json || []).slice(0, 3).map((item, i) =>
-          `[Run ${r.node} #${i}]: ${JSON.stringify(item)}`
-        )
-      );
+      // Analyse-freundliche Verdichtung des letzten Testlaufs (Status, Output-Felder, Fehler je Schritt),
+      // damit der Editor-Coach beurteilen kann, ob die Daten korrekt durch den Workflow fließen.
+      const runSummary = summarizeRunForCoach(workflow.steps, runData);
 
       const ioContext = workflow.steps.map(s => {
         const iF = inputFieldsForStep(s, workflow.steps, workflow.edges ?? [], runData);
@@ -121,7 +119,7 @@ export default function WorkflowEditorChat({
           coachContext,
           history: fullContext,
           attachments: currentAtt,
-          runDataSummary: flatRun.slice(0, 20).join('\n'),
+          runDataSummary: runSummary,
           ioContext,
         }),
       });

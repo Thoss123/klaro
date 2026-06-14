@@ -49,6 +49,8 @@ export default function WorkflowDeployCard({
   onAutoOpen,
   onWorkflowPersist,
   editorCoachContext,
+  fullPage = false,
+  onClose,
 }: {
   workflow: Workflow;
   projectId: string;
@@ -63,6 +65,10 @@ export default function WorkflowDeployCard({
   /** Bearbeitungen am Graph ins Projekt-Canvas zurückschreiben. */
   onWorkflowPersist?: (workflow: Workflow) => void;
   editorCoachContext?: WorkflowEditorCoachContext;
+  /** Editor füllt die ganze Seite (eigene Route) statt Karte + Popup. */
+  fullPage?: boolean;
+  /** Nur im fullPage-Modus: Zurück-Navigation. */
+  onClose?: () => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<WorkflowStep | null>(null);
@@ -512,6 +518,58 @@ export default function WorkflowDeployCard({
       setRunState('error');
     }
   };
+
+  if (fullPage) {
+    return (
+      <>
+        <WorkflowDeployModal
+          variant="page"
+          workflow={displayWorkflow}
+          projectId={projectId}
+          stepConfigs={stepConfigs}
+          activeStep={activeStep}
+          onStepClick={step => setActiveStep(step)}
+          onStepSave={handleStepConfigSaveWithSync}
+          workflowDbId={deployedWorkflowId}
+          onStepPanelClose={() => setActiveStep(null)}
+          onEdgesUpdate={handleEdgesUpdate}
+          onWorkflowUpdate={handleWorkflowUpdate}
+          onStepsUpdate={handleStepsUpdate}
+          onQuickInsert={handleQuickInsert}
+          onDeleteStep={handleDeleteStep}
+          onToggleStepDisabled={handleToggleStepDisabled}
+          onInsertOnEdge={handleInsertOnEdge}
+          onStepNodeTypeChange={handleStepNodeTypeChange}
+          onAddStep={handleAddStep}
+          onAddSubNode={handleAddSubNode}
+          deployed={deployed}
+          deployState={deployState}
+          runState={runState}
+          runData={runData}
+          deployError={deployError}
+          runError={runError}
+          allRequiredConfigured={allRequiredConfigured}
+          publishState={publishState}
+          publishError={publishError}
+          onDeploy={handleDeploy}
+          onRun={handleRun}
+          onPublish={handlePublish}
+          onClose={() => onClose?.()}
+          editorCoachContext={editorCoachContext}
+        />
+        <N8nNodePickerModal
+          open={!!subNodePicker}
+          onClose={() => setSubNodePicker(null)}
+          onSelect={handleSubNodeSelect}
+          title={subNodePicker ? `${subNodeLabel(subNodePicker.slot)} hinzufügen` : 'Sub-Node'}
+          subtitle="Passenden Baustein für den KI-Agenten wählen"
+          slotFilter={subNodePicker?.slot}
+          filterMode="no-trigger"
+          defaultCategory="ai"
+        />
+      </>
+    );
+  }
 
   return (
     <>

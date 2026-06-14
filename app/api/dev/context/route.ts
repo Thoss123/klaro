@@ -77,7 +77,13 @@ export async function POST(req: NextRequest) {
   const companyJson = canvas?.company ? JSON.stringify(canvas.company, null, 2) : '{}';
   systemPrompt = systemPrompt
     .replace(/{{pain_points}}/g, painPointsJson)
-    .replace(/{{company}}/g, companyJson);
+    .replace(/{{company}}/g, companyJson)
+    .replace(
+      /{{heute}}/g,
+      new Date().toLocaleDateString('de-DE', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      }),
+    );
 
   if (canvas?.use_cases) {
     systemPrompt = systemPrompt.replace(/{{use_cases}}/g, JSON.stringify(canvas.use_cases, null, 2));

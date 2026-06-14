@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import {
   buildMappingsFromWorkflow,
+  resolveCredentialIdsForMappings,
   resolveN8nWorkflowId,
   syncDeployedWorkflow,
 } from '@/lib/n8n-mcp-sync';
@@ -31,23 +32,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Workflow nicht deployed' }, { status: 404 });
   }
 
-  // Resolve n8n credential IDs for each tool
-  const { data: creds } = await supabase
-    .from('user_credentials')
-    .select('tool_name, n8n_credential_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active'); // project_id is optional but we can filter by it if available
-
-  const credMap: Record<string, string> = {};
-  for (const c of creds || []) {
-    if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
-  }
-
+  // n8n-Credential-IDs pro Tool auflösen (project_id optional — Lookup über alle Projekte).
   const baseMappings = buildMappingsFromWorkflow(body.workflow, body.step_configs ?? {});
-  const credentialMappings = baseMappings.map(m => ({
-    ...m,
-    credential_id: (m.tool && credMap[m.tool]) || (m.credential_type && credMap[m.credential_type]) || m.credential_id,
-  }));
+  const credentialMappings = await resolveCredentialIdsForMappings(baseMappings, user.id);
 
   try {
     const result = await syncDeployedWorkflow({

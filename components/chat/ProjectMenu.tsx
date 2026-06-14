@@ -22,6 +22,8 @@ interface ProjectMenuProps {
   onCreate: () => void;
   /** Called after a navigation action (e.g. to close the sidebar). */
   onNavigate?: () => void;
+  /** Phase navigation list — hidden on large screens (lives in the canvas panel there). */
+  showPhases?: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ export default function ProjectMenu({
   onDelete,
   onCreate,
   onNavigate,
+  showPhases = true,
 }: ProjectMenuProps) {
   const [projectName, setProjectName] = useState(currentProject?.name ?? '');
   const [isSaving, setIsSaving] = useState(false);
@@ -77,7 +80,7 @@ export default function ProjectMenu({
   return (
     <div className="flex flex-col gap-3">
       {/* Project name */}
-      <div>
+      <div className="md:hidden">
         <div className="px-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
           <span>Projekt</span>
           {isSaving && <span className="text-gray-300 normal-case font-medium">Speichert…</span>}
@@ -94,6 +97,7 @@ export default function ProjectMenu({
       </div>
 
       {/* Phase navigation */}
+      {showPhases && (
       <div>
         <div className="px-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Phasen</div>
         <div className="flex flex-col gap-0.5">
@@ -137,45 +141,9 @@ export default function ProjectMenu({
           })}
         </div>
       </div>
+      )}
 
-      {/* Project actions */}
-      <div className="flex flex-col gap-0.5">
-        <button
-          onClick={() => { onCreate(); onNavigate?.(); }}
-          className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-        >
-          <Plus size={16} className="text-gray-400" /> Neues Projekt
-        </button>
-
-        {!showDeleteConfirm ? (
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <Trash2 size={16} /> Projekt löschen
-          </button>
-        ) : (
-          <div className="px-2.5 py-2">
-            <p className="text-xs text-gray-600 mb-2.5 leading-relaxed">
-              Wirklich löschen? Alle Chats bleiben erhalten.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg py-2 transition-colors"
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={() => { onDelete(); setShowDeleteConfirm(false); onNavigate?.(); }}
-                className="flex-1 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg py-2 transition-colors"
-              >
-                Löschen
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Project actions removed as per user instruction */}
     </div>
   );
 }

@@ -228,21 +228,6 @@ export interface McpPrepareTestPinDataResult {
   };
 }
 
-/** Default pin rows for nodes that need simulated I/O (n8n test_workflow). */
-export function buildPinDataFromPrepare(prep: McpPrepareTestPinDataResult): Record<string, unknown> {
-  const pinData: Record<string, unknown> = {};
-  const emptyRow = [{ json: {} }];
-
-  for (const nodeName of Object.keys(prep.nodeSchemasToGenerate ?? {})) {
-    pinData[nodeName] = emptyRow;
-  }
-  for (const nodeName of prep.nodesWithoutSchema ?? []) {
-    pinData[nodeName] = emptyRow;
-  }
-
-  return pinData;
-}
-
 export async function mcpPrepareTestPinData(
   workflowId: string,
 ): Promise<McpPrepareTestPinDataResult> {
@@ -261,10 +246,44 @@ export async function mcpTestWorkflow(
   });
 }
 
-/** prepare_test_pin_data → test_workflow (pin bypass for creds/triggers). */
+// Kanonische Trigger-Erkennung (gleiche Regex wie n8n-mcp-search / workflow-sdk-codegen).
+const TRIGGER_NODE_RE = /Trigger$|\.webhook$|\.mcpTrigger$|\.formTrigger$/;
+
+/**
+ * Pin-Daten NUR für Trigger-Nodes bauen — damit der Workflow startet, ohne dass
+ * Action-/Credential-Nodes (Airtable, Gmail …) gepinnt werden. Gepinnte Nodes
+ * werden von n8n NICHT ausgeführt, sondern geben nur die Pin-Daten zurück.
+ *
+ * Der frühere Ansatz pinnte ALLE von prepare_test_pin_data gemeldeten Nodes
+ * (inkl. Credential-Nodes) mit leerem {json:{}} → der Airtable-Node lief nie echt
+ * und der Testlauf zeigte `[{}]` statt echtem Output. Jetzt laufen alle
+ * Nicht-Trigger-Nodes real und liefern echte Daten (wie der „Execute"-Button in n8n).
+ */
+export function buildTriggerPinData(
+  nodes: Array<{ name?: string; type?: string }>,
+): Record<string, unknown> {
+  const pinData: Record<string, unknown> = {};
+  for (const node of nodes) {
+    if (node?.name && node?.type && TRIGGER_NODE_RE.test(node.type)) {
+      pinData[node.name] = [{ json: {} }];
+    }
+  }
+  return pinData;
+}
+
+/**
+ * Echter Testlauf: nur Trigger pinnen, alle Action-Nodes real ausführen.
+ * So liefert „Testen" in Klaro denselben echten Node-Output wie n8n selbst.
+ */
 export async function mcpRunWorkflowTest(workflowId: string): Promise<McpTestWorkflowResult> {
-  const prep = await mcpPrepareTestPinData(workflowId);
-  const pinData = buildPinDataFromPrepare(prep);
+  let pinData: Record<string, unknown> = {};
+  try {
+    const details = await mcpGetWorkflowDetails(workflowId);
+    const nodes = (details?.workflow?.nodes as Array<{ name?: string; type?: string }> | undefined) ?? [];
+    pinData = buildTriggerPinData(nodes);
+  } catch {
+    // Ohne Node-Liste startet test_workflow beim ersten Trigger (ohne Pin).
+  }
   return mcpTestWorkflow(workflowId, pinData);
 }
 

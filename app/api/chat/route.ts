@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       systemPrompt = systemPrompt.replace(/{{ziel}}/g, onboarding.ziel || 'Nicht angegeben');
       systemPrompt = systemPrompt.replace(/{{ki_erfahrung}}/g, onboarding.ki_erfahrung || 'Nicht angegeben');
       systemPrompt = systemPrompt.replace(/{{wer_setzt_um}}/g, onboarding.wer_setzt_um || 'Nicht angegeben');
+      systemPrompt = systemPrompt.replace(/{{technik_level}}/g, onboarding.technik_level || 'Nicht angegeben');
       systemPrompt = systemPrompt.replace(/{{hindernis}}/g, onboarding.hindernis || 'Nicht angegeben');
       systemPrompt = systemPrompt.replace(/{{tempo}}/g, onboarding.tempo || 'Nicht angegeben');
       systemPrompt = systemPrompt.replace(/{{unternehmensgroesse}}/g, ugVal);
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
           pfadLogik = 'Pfad C: Der Nutzer will erst einmal evaluieren, ob KI überhaupt sinnvoll ist. Analysiere Prozesse und filtere eiskalt heraus, welche Ideen keinen Sinn machen. WICHTIG: Der Grundton deines Gesprächs muss trotzdem überzeugend PRO-KI sein! Wir wollen unser eigenes Automatisierungs-Tool nicht wegrationalisieren. Zeige ihm, dass KI an den *richtigen* Stellen massive Hebelwirkung hat.';
         } else if (path === 'D') {
           pfadLogik = 'Pfad D: Der Nutzer will am Ende ein Briefing für seine IT-Abteilung. Führe die Diagnose ganz normal durch, um die besten Hebel zu finden. Denke aber im Hinterkopf mit: Am Ende bauen wir kein technisches n8n Tool für ihn, sondern ein klares architektonisches Konzept/Briefing für die IT.';
+        } else if (path === 'E') {
+          pfadLogik = 'Pfad E: Der Nutzer hat einen genauen Plan und will nur noch umsetzen. Überspringe sämtliche Diagnose. Frage ihn direkt, wie dieser Plan aussieht, validiere ihn extrem kurz auf Machbarkeit und schließe Phase 1 schnell ab, damit ihr in Phase 2 und 3 gehen könnt.';
         } else {
           pfadLogik = 'Pfad A: Der Nutzer weiß noch nicht, wo er anfangen soll (Klassischer Flow). Führe die Diagnose ganz klassisch durch: Starte breit, suche Ineffizienzen und bohre tief, um konkrete Zeitfresser zu identifizieren.';
         }
@@ -107,6 +110,14 @@ export async function POST(req: NextRequest) {
     systemPrompt = systemPrompt.replace(/{{workflow_plans}}/g, workflowPlansJson);
     systemPrompt = systemPrompt.replace(/{{company}}/g, companyJson);
     systemPrompt = systemPrompt.replace(/{{tool_recommendations}}/g, formatToolRecommendations());
+
+    // Current date → the coach's sense of "now" (otherwise it anchors on its training cutoff,
+    // which makes "latest features/pricing" answers stale). German long format, e.g.
+    // "Freitag, 12. Juni 2026".
+    const heute = new Date().toLocaleDateString('de-DE', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+    systemPrompt = systemPrompt.replace(/{{heute}}/g, heute);
 
     if (canvas) {
       if (canvas.use_cases) {
@@ -179,6 +190,23 @@ export async function POST(req: NextRequest) {
                  } catch (e: any) {
                    console.error('[search_knowledge] failed:', e?.message);
                    return { treffer: [], hinweis: 'Wissensdatenbank nicht verfügbar — nutze dein eigenes Wissen.' };
+                 }
+               } else if (toolCall.name === 'web_search') {
+                 try {
+                   const { searchWeb } = await import('@/lib/web-search');
+                   const { answer, results, note } = await searchWeb(toolCall.args.query || '');
+                   console.log(`[web_search] "${toolCall.args.query}" → ${results.length} Treffer${note ? ' (' + note + ')' : ''}`);
+                   if (note && !results.length) {
+                     return { antwort: null, treffer: [], hinweis: note };
+                   }
+                   return {
+                     antwort: answer,
+                     treffer: results,
+                     hinweis: 'Aktuelle Web-Infos. STRIKTE QUELLENTREUE: Übernimm Zahlen, Preise, Plan-Namen und Feature-Listen NUR wörtlich aus antwort/treffer — ergänze NICHTS aus deinem Trainingswissen (das ist veraltet). Steht ein Detail nicht in den Treffern, sag ehrlich, dass du es nicht verlässlich weißt, und nenne die offizielle Seite (URL aus den Treffern). VERBOTEN im Chat: die Wörter Zapier, Make, n8n — auch wenn sie in den Treffern stehen. Übersetze sie in: „das Tool hat offene Schnittstellen, ich kann es direkt in deinen automatischen Ablauf einbinden". Antworte KOMPAKT (3–4 Sätze + ggf. eine kurze Liste) — keine großen Tabellen, keine erfundenen Zusatzpakete oder Rechenbeispiele. Erwähne die Suche nicht im Chat.',
+                   };
+                 } catch (e) {
+                   console.error('[web_search] failed:', (e as Error)?.message);
+                   return { antwort: null, treffer: [], hinweis: 'Web-Suche nicht verfügbar — nutze dein eigenes Wissen.' };
                  }
                } else if (toolCall.name === 'prepare_phase') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"prepare_phase","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));

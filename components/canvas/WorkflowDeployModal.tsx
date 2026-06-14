@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, Rocket, Play, AlertCircle, Power, PowerOff, Plus } from 'lucide-react';
+import { X, Check, Loader2, Rocket, Play, AlertCircle, Power, PowerOff, Plus, ArrowLeft } from 'lucide-react';
 import { Workflow, WorkflowStep, StepConfig } from '@/lib/types';
 import WorkflowFlowCanvas from './WorkflowFlowCanvas';
 import StepConfigPanel from './StepConfigPanel';
@@ -58,6 +58,7 @@ export default function WorkflowDeployModal({
   onPublish,
   onClose,
   editorCoachContext,
+  variant = 'modal',
 }: {
   workflow: Workflow;
   projectId?: string;
@@ -92,6 +93,8 @@ export default function WorkflowDeployModal({
   onPublish?: (activate: boolean) => void;
   onClose: () => void;
   editorCoachContext?: WorkflowEditorCoachContext;
+  /** 'modal' = Portal-Overlay (Standard), 'page' = füllt den Container ohne Overlay (eigene Route). */
+  variant?: 'modal' | 'page';
 }) {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -101,14 +104,17 @@ export default function WorkflowDeployModal({
   const [animatedRunData, setAnimatedRunData] = useState<NodeRun[]>([]);
   const [playbackNode, setPlaybackNode] = useState<string | null>(null);
 
-  const requestClose = () => setVisible(false);
+  const isPage = variant === 'page';
+  // Im Modal: sanftes Ausblenden über AnimatePresence; auf der Seite: direkt schließen (Navigation).
+  const requestClose = () => { if (isPage) onClose(); else setVisible(false); };
 
   useEffect(() => {
     setMounted(true);
+    if (isPage) return; // Page-Variante: kein body-scroll-lock — die Route bringt ihr eigenes Layout.
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, []);
+  }, [isPage]);
 
   // Animierte Wiedergabe des Testlaufs (pro Node 600ms)
   useEffect(() => {
@@ -180,47 +186,52 @@ export default function WorkflowDeployModal({
 
   if (!mounted) return null;
 
-  return createPortal(
-    <AnimatePresence onExitComplete={onClose}>
-      {visible && (
-        <motion.div
-          key="workflow-deploy-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-[5vh_5vw]"
-          onClick={requestClose}
-        >
-          {/* Toast: Testlauf-Ergebnis */}
-          <AnimatePresence>
-            {toast && (
-              <motion.div
-                key="run-toast"
-                initial={{ opacity: 0, y: -12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                onClick={e => { e.stopPropagation(); setToast(null); }}
-                className={`fixed top-6 right-6 z-[10001] max-w-md flex items-start gap-2 rounded-xl px-4 py-3 shadow-2xl cursor-pointer ${
-                  toast.kind === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
-                }`}
-              >
-                {toast.kind === 'error' ? <AlertCircle size={18} className="shrink-0 mt-0.5" /> : <Check size={18} className="shrink-0 mt-0.5" />}
-                <span className="text-sm leading-snug">{toast.text}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+  const cardClass = isPage
+    ? 'flex flex-col bg-white overflow-hidden w-full h-full'
+    : 'flex flex-col bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden w-full h-full max-w-[1400px] max-h-[90dvh]';
+
+  const inner = (
+    <>
+      {/* Toast: Testlauf-Ergebnis */}
+      <AnimatePresence>
+        {toast && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className="flex flex-col bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden w-full h-full max-w-[1400px] max-h-[90dvh]"
-            onClick={e => e.stopPropagation()}
+            key="run-toast"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            onClick={e => { e.stopPropagation(); setToast(null); }}
+            className={`fixed top-6 right-6 z-[10001] max-w-md flex items-start gap-2 rounded-xl px-4 py-3 shadow-2xl cursor-pointer ${
+              toast.kind === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+            }`}
           >
+            {toast.kind === 'error' ? <AlertCircle size={18} className="shrink-0 mt-0.5" /> : <Check size={18} className="shrink-0 mt-0.5" />}
+            <span className="text-sm leading-snug">{toast.text}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, scale: isPage ? 1 : 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: isPage ? 1 : 0.98 }}
+        transition={{ duration: 0.2 }}
+        className={cardClass}
+        onClick={e => e.stopPropagation()}
+      >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 bg-white">
-            <div className="min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
+              {isPage && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="shrink-0 w-9 h-9 -ml-1 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors"
+                  aria-label="Zurück zur Übersicht"
+                  title="Zurück"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+              )}
               <h2 className="font-bold text-gray-900 text-lg truncate">{workflow.title}</h2>
             </div>
             <div className="flex items-center gap-4 shrink-0">
@@ -269,14 +280,16 @@ export default function WorkflowDeployModal({
               {runState === 'error' && <span className="inline-flex items-center gap-1 text-xs text-red-500"><AlertCircle size={13} /> {runError}</span>}
               {publishState === 'error' && publishError && <span className="inline-flex items-center gap-1 text-xs text-red-500"><AlertCircle size={13} /> {publishError}</span>}
 
-              <button
-                type="button"
-                onClick={requestClose}
-                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors ml-2"
-                aria-label="Schließen"
-              >
-                <X size={20} />
-              </button>
+              {!isPage && (
+                <button
+                  type="button"
+                  onClick={requestClose}
+                  className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors ml-2"
+                  aria-label="Schließen"
+                >
+                  <X size={20} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -375,28 +388,49 @@ export default function WorkflowDeployModal({
           )}
 
           {/* Footer removed */}
-        </motion.div>
+      </motion.div>
 
-          <N8nNodePickerModal
-          open={addPickerOpen}
-          onClose={() => { setAddPickerOpen(false); setPendingInsertEdge(null); }}
-          onSelect={(entry) => {
-            if (pendingInsertEdge) {
-              onInsertOnEdge?.(pendingInsertEdge, entry);
-            } else {
-              onAddStep(entry);
-            }
-            setAddPickerOpen(false);
-            setPendingInsertEdge(null);
-          }}
-          title={pendingInsertEdge ? 'Schritt anfügen' : 'Neuen Schritt hinzufügen'}
-          filterMode={
-            workflow.steps.length === 0 
-              ? 'trigger-only' 
-              : pendingInsertEdge ? 'no-trigger' : 'all'
+      <N8nNodePickerModal
+        open={addPickerOpen}
+        onClose={() => { setAddPickerOpen(false); setPendingInsertEdge(null); }}
+        onSelect={(entry) => {
+          if (pendingInsertEdge) {
+            onInsertOnEdge?.(pendingInsertEdge, entry);
+          } else {
+            onAddStep(entry);
           }
-          defaultCategory={workflow.steps.length === 0 ? 'trigger' : undefined}
-        />
+          setAddPickerOpen(false);
+          setPendingInsertEdge(null);
+        }}
+        title={pendingInsertEdge ? 'Schritt anfügen' : 'Neuen Schritt hinzufügen'}
+        filterMode={
+          workflow.steps.length === 0
+            ? 'trigger-only'
+            : pendingInsertEdge ? 'no-trigger' : 'all'
+        }
+        defaultCategory={workflow.steps.length === 0 ? 'trigger' : undefined}
+      />
+    </>
+  );
+
+  // Page-Variante: füllt den Container der Route (kein Portal/Overlay).
+  if (isPage) {
+    return <div className="relative flex h-full w-full flex-col bg-white">{inner}</div>;
+  }
+
+  return createPortal(
+    <AnimatePresence onExitComplete={onClose}>
+      {visible && (
+        <motion.div
+          key="workflow-deploy-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-[5vh_5vw]"
+          onClick={requestClose}
+        >
+          {inner}
         </motion.div>
       )}
     </AnimatePresence>,

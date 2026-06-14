@@ -189,7 +189,7 @@ export default function ChatInput({
             onClick={() => fileInputRef.current?.click()}
             className="w-8 h-8 flex shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 active:bg-gray-200 rounded-full transition-colors"
             aria-label="Datei oder Bild anhängen"
-            title="Datei oder Bild anhängen — Strg+V für Bild aus Zwischenablage"
+            title="Datei oder Bild anhängen"
           >
             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={18} />}
           </button>
@@ -202,18 +202,6 @@ export default function ChatInput({
                 onChange(e.target.value);
                 e.target.style.height = 'auto';
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
-              }}
-              onPaste={e => {
-                const items = e.clipboardData?.items;
-                if (!items || uploading || disabled) return;
-                for (const item of items) {
-                  if (item.type.startsWith('image/')) {
-                    e.preventDefault();
-                    const file = item.getAsFile();
-                    if (file) void uploadFile(file);
-                    return;
-                  }
-                }
               }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -228,7 +216,7 @@ export default function ChatInput({
                   ? 'Sprich jetzt…'
                   : uploading
                     ? 'Wird hochgeladen…'
-                    : 'Antworten… (Strg+V für Bilder)'
+                    : 'Antworten…'
               }
               rows={1}
               disabled={voiceState === 'transcribing'}

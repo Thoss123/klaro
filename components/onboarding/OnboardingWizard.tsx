@@ -57,8 +57,12 @@ const ZIEL_OPTIONS: WizardOption[] = [
     value: 'Weiß nicht, wo wir anfangen sollen',
   },
   {
-    label: 'Wir haben schon konkrete Ideen — brauchen einen klaren Umsetzungsplan',
-    value: 'Habe schon konkrete Ideen',
+    label: 'Wir haben schon erste Ideen — brauchen aber einen klaren Umsetzungsplan',
+    value: 'Habe Ideen, brauche Plan',
+  },
+  {
+    label: 'Wir haben einen genauen Plan — und wollen diesen jetzt 1:1 umsetzen',
+    value: 'Genauer Plan, nur noch umsetzen',
   },
   {
     label: 'Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt',
@@ -68,6 +72,13 @@ const ZIEL_OPTIONS: WizardOption[] = [
     label: 'Wir wollen unserer IT oder einem Dienstleister ein klares Briefing geben',
     value: 'Will meiner IT ein Briefing geben',
   },
+];
+
+const TECHNIK_OPTIONS: WizardOption[] = [
+  { label: 'Wenig bis gar nicht — wir brauchen einfache Erklärungen', value: 'Wenig versiert' },
+  { label: 'Basiswissen — wir können Software bedienen und verstehen die Basics', value: 'Basiswissen' },
+  { label: 'Fortgeschritten — wir können Tools verknüpfen (z.B. Zapier, Make)', value: 'Fortgeschritten' },
+  { label: 'Sehr versiert — wir programmieren selbst oder arbeiten mit APIs', value: 'Sehr versiert' },
 ];
 
 const UMSETZER_OPTIONS: WizardOption[] = [
@@ -101,7 +112,7 @@ const ROLLE_OPTIONS: WizardOption[] = [
   { label: 'Sonstige Rolle', value: 'Sonstige Rolle' },
 ];
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -270,7 +281,7 @@ export default function OnboardingWizard() {
         return (
           <QuestionStep
             title="Wer soll KI-Lösungen bei euch später umsetzen?"
-            subtitle="Klaro baut in Phase 4 vieles automatisch — jemand muss es aber anbinden und pflegen."
+            subtitle="Klaro baut vieles automatisch — du kannst den fertigen Workflow später einfach teilen, damit jemand Technischeres die Zugänge hinzufügen kann."
             options={UMSETZER_OPTIONS}
             value={data.wer_setzt_um}
             onSelect={(v) => updateData('wer_setzt_um', v)}
@@ -279,6 +290,18 @@ export default function OnboardingWizard() {
           />
         );
       case 7:
+        return (
+          <QuestionStep
+            title="Wie technisch versiert seid ihr?"
+            subtitle="Das hilft uns, Erklärungen und Tools auf eurem Level zu halten."
+            options={TECHNIK_OPTIONS}
+            value={data.technik_level}
+            onSelect={(v) => updateData('technik_level', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 8:
         return (
           <QuestionStep
             title="Was hat euch bisher ausgebremst?"
@@ -291,7 +314,7 @@ export default function OnboardingWizard() {
             mode="multi"
           />
         );
-      case 8:
+      case 9:
         return (
           <QuestionStep
             title="Bis wann möchtest du erste spürbare Ergebnisse?"
@@ -303,7 +326,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 9:
+      case 10:
         return (
           <TextQuestionStep
             title="Wie dürfen wir dich im Chat ansprechen?"
@@ -315,7 +338,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 10:
+      case 11:
         return (
           <TextQuestionStep
             title="Wie heißt dein Unternehmen?"
@@ -327,7 +350,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 11:
+      case 12:
         if (existingAccount) {
           return (
             <OnboardingExistingAccount
