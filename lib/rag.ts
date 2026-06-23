@@ -7,7 +7,8 @@ export type KnowledgeSourceType =
   | 'template_baustein'
   | 'template_workflow'
   | 'branche'
-  | 'ui_guide';
+  | 'ui_guide'
+  | 'wissen';
 
 export interface KnowledgeMatch {
   id: string;
@@ -42,9 +43,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * plan: concrete solutions+templates · umsetzung: build details.
  */
 const PHASE_TYPE_MAP: Record<string, KnowledgeSourceType[]> = {
-  diagnose: ['use_case', 'branche', 'ui_guide'],
-  analyse: ['use_case', 'tool', 'branche', 'ui_guide'],
-  plan: ['use_case', 'tool', 'template_baustein', 'template_workflow'],
+  diagnose: ['use_case', 'branche', 'ui_guide', 'wissen'],
+  analyse: ['use_case', 'tool', 'branche', 'ui_guide', 'wissen'],
+  plan: ['use_case', 'tool', 'template_baustein', 'template_workflow', 'wissen'],
   umsetzung: ['tool', 'template_baustein', 'template_workflow', 'ui_guide'],
 };
 

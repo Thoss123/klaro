@@ -1,5 +1,5 @@
 /**
- * Converts a Klaro Phase-3 Workflow into a deployable n8n workflow JSON.
+ * Converts an Axantilo Phase-3 Workflow into a deployable n8n workflow JSON.
  * The model decides which tool handles each step in Phase 4 chat.
  * This generator takes the step-level tool decisions and builds valid n8n JSON.
  */
@@ -47,7 +47,7 @@ export const NODE_TYPE: Record<string, { type: string; version: number }> = {
 
 export interface StepMapping {
   step_id: string;
-  tool?: string;           // legacy Klaro tool key
+  tool?: string;           // legacy Axantilo tool key
   n8n_type?: string;       // n8n node type, e.g. n8n-nodes-base.gmail
   type_version?: number;
   credential_id?: string;
@@ -87,18 +87,18 @@ export function alignAuthenticationParameter(
   return p;
 }
 
-/** All Klaro-deployed n8n workflows are namespaced with this prefix so they are
+/** All Axantilo-deployed n8n workflows are namespaced with this prefix so they are
  *  instantly identifiable in the shared n8n instance. */
-export const KLARO_WORKFLOW_PREFIX = 'KLARO: ';
+export const AXANTILO_WORKFLOW_PREFIX = 'AXANTILO: ';
 
-/** Ensure a workflow name carries the KLARO: prefix exactly once. */
-export function withKlaroPrefix(name: string): string {
+/** Ensure a workflow name carries the AXANTILO: prefix exactly once. */
+export function withAxantiloPrefix(name: string): string {
   const clean = (name || '').trim();
-  if (clean.toUpperCase().startsWith('KLARO:')) {
+  if (clean.toUpperCase().startsWith('AXANTILO:')) {
     // Normalize spacing after the colon.
-    return KLARO_WORKFLOW_PREFIX + clean.replace(/^klaro:\s*/i, '');
+    return AXANTILO_WORKFLOW_PREFIX + clean.replace(/^axantilo:\s*/i, '');
   }
-  return KLARO_WORKFLOW_PREFIX + (clean || 'Workflow');
+  return AXANTILO_WORKFLOW_PREFIX + (clean || 'Workflow');
 }
 
 function randId(): string {
@@ -267,7 +267,7 @@ export function buildN8nWorkflow(
 
   return {
     // n8n workflows are namespaced so they're identifiable in the shared instance.
-    name: withKlaroPrefix(workflowName),
+    name: withAxantiloPrefix(workflowName),
     nodes,
     connections,
     // WICHTIG: n8n REST POST /workflows lehnt `active` als read-only ab (400) → weglassen,
@@ -289,7 +289,7 @@ function sanitizeName(label: string, index: number): string {
 function getDefaultParameters(tool: string, step: WorkflowStep): Record<string, any> {
   switch (tool) {
     case 'webhook':
-      return { httpMethod: 'POST', path: `klaro-${step.id}`, responseMode: 'onReceived' };
+      return { httpMethod: 'POST', path: `axantilo-${step.id}`, responseMode: 'onReceived' };
     case 'schedule':
       return { rule: { interval: [{ field: 'hours', minutesInterval: 24 }] } };
     case 'decision':

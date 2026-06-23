@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
-import type { KlaroN8nCategory } from '@/lib/n8n-categories';
+import type { AxantiloN8nCategory } from '@/lib/n8n-categories';
 import N8nNodePicker from './N8nNodePicker';
 import type { WorkflowStep } from '@/lib/types';
 
@@ -30,7 +30,7 @@ export default function N8nNodePickerModal({
   subtitle?: string;
   currentType?: string;
   filterMode?: 'all' | 'trigger-only' | 'no-trigger';
-  defaultCategory?: KlaroN8nCategory | null;
+  defaultCategory?: AxantiloN8nCategory | null;
   slotFilter?: string;
   onClose: () => void;
   onSelect: (entry: N8nCatalogIndexEntry) => void;

@@ -19,7 +19,7 @@ export default function Hero() {
             Workflows bauen & umsetzen.
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-gray-500 leading-relaxed max-w-md">
-            Klaro stellt die richtigen Fragen, füllt deinen Plan live — und baut
+            Axantilo stellt die richtigen Fragen, füllt deinen Plan live — und baut
             daraus Automatisierungen, die du wirklich umsetzen kannst.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3">
@@ -30,10 +30,10 @@ export default function Hero() {
               Kostenlos starten
             </Link>
             <ScrollAnchorLink
-              href="#so-arbeitet-klaro"
+              href="#so-arbeitet-axantilo"
               className="inline-flex items-center justify-center text-gray-600 hover:text-gray-900 font-semibold text-base px-6 py-3.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
             >
-              So arbeitet Klaro
+              So arbeitet Axantilo
             </ScrollAnchorLink>
             </div>
           </div>

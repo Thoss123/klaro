@@ -24,7 +24,7 @@ function slugPath(workflow: Workflow, step: WorkflowStep): string {
     .replace(/[^a-z0-9äöüß]+/gi, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 24);
-  return `klaro-${base || 'wf'}-${step.id.replace(/[^a-z0-9]/gi, '').slice(-6)}`;
+  return `axantilo-${base || 'wf'}-${step.id.replace(/[^a-z0-9]/gi, '').slice(-6)}`;
 }
 
 /** Sinnvolle Default-Parameter pro Node-Typ (Webhook, Schedule, Gmail …). */
@@ -55,7 +55,7 @@ export function suggestParametersForStep(
       resource: 'message',
       operation: 'send',
       sendTo: '={{ $json.email || $json.to }}',
-      subject: '={{ $json.subject || "Nachricht von Klaro" }}',
+      subject: '={{ $json.subject || "Nachricht von Axantilo" }}',
       message: '={{ $json.body || $json.text }}',
     };
   }
@@ -116,7 +116,7 @@ function guideForNode(step: WorkflowStep, workflow: Workflow, nr: number): strin
 
   if (short === 'gmail') {
     return `Schritt ${nr} — Gmail:${zweck}
-1. Google-Konto in 3 Klicks verbinden: „Mit Google verbinden" → Konto wählen → Bestätigen (zentrale Klaro-OAuth-App, kein eigener API-Zugang nötig).
+1. Google-Konto in 3 Klicks verbinden: „Mit Google verbinden" → Konto wählen → Bestätigen (zentrale Axantilo-OAuth-App, kein eigener API-Zugang nötig).
 2. Operation: Nachricht senden — Empfänger/Betreff/Text aus vorherigem Schritt ({{ $json }}).`;
   }
 

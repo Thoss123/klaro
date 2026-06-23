@@ -23,7 +23,7 @@ export default function Home() {
       <footer className="border-t border-gray-200 bg-slate-50">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
-            Klaro © {new Date().getFullYear()} — Made in Austria
+            Axantilo © {new Date().getFullYear()} — Made in Austria
           </p>
           <div className="flex items-center gap-6">
             <Link

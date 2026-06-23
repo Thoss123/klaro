@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { loadProjects, loadSessions, createProject, createSession, loadSessionOnboarding, ensureDefaultProject, updateProjectName, deleteProject } from '@/lib/supabase-chat';
+import { loadProjects, loadSessions, createProject, createSession, loadSessionOnboarding, ensureDefaultProject, updateProjectName, deleteProject, devResetUserData } from '@/lib/supabase-chat';
 import { Project, SessionSummary } from '@/lib/types';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
-import { Plus, Folder, LogOut, MoreHorizontal, Trash2, Pencil, ExternalLink, Check, X, Workflow as WorkflowIcon } from 'lucide-react';
+import { Plus, Folder, LogOut, MoreHorizontal, Trash2, Pencil, ExternalLink, Check, X, Workflow as WorkflowIcon, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const PHASE_CONFIG: Record<string, { label: string; pill: string }> = {
@@ -121,6 +121,22 @@ export default function DashboardPage() {
     router.push('/');
   };
 
+  // DEV ONLY: wipe all projects/sessions for the logged-in user and restart the
+  // onboarding — same account, no re-signup. Fast loop for testing the flow.
+  const [resetting, setResetting] = useState(false);
+  const handleDevRestart = async () => {
+    if (!userId || resetting) return;
+    if (!window.confirm('Dev: Alle Projekte & Chats löschen und Onboarding neu starten?')) return;
+    setResetting(true);
+    try {
+      await devResetUserData(userId);
+      router.push('/onboarding?dev=1');
+    } catch (err) {
+      console.error('Dev restart failed', err);
+      setResetting(false);
+    }
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-gray-400 text-sm">Lade...</div>;
   }
@@ -131,7 +147,7 @@ export default function DashboardPage() {
       <nav className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-600 text-white font-bold text-lg">K</span>
-          <span className="font-bold text-gray-900 text-lg">Klaro</span>
+          <span className="font-bold text-gray-900 text-lg">Axantilo</span>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -141,6 +157,16 @@ export default function DashboardPage() {
           >
             <WorkflowIcon size={16} /> <span className="hidden sm:inline">Workflows</span>
           </button>
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={handleDevRestart}
+              disabled={resetting}
+              className="flex items-center gap-2 text-sm font-semibold text-amber-700 hover:text-amber-800 transition-colors px-3 py-2 rounded-lg hover:bg-amber-50 disabled:opacity-50"
+              title="DEV: Account zurücksetzen & Onboarding neu starten"
+            >
+              <RotateCcw size={16} /> <span className="hidden sm:inline">{resetting ? 'Reset…' : 'Restart (Dev)'}</span>
+            </button>
+          )}
           <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-gray-100" title="Ausloggen">
             <LogOut size={18} />
           </button>

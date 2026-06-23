@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { clsx } from 'clsx';
 import { User, Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Message } from '@/lib/types';
-import { stripInternalTags } from '@/lib/strip-internal-tags';
+import { stripInternalTags, cleanupBotFormatting } from '@/lib/strip-internal-tags';
 import { parseUserAttachments } from '@/lib/chat-attachments';
 import MessageFeedbackSurvey from './MessageFeedbackSurvey';
 import {
@@ -22,6 +22,24 @@ export type MessageFeedbackContext = {
 
 // Tabellen (Tool-Vergleiche) hübsch + horizontal scrollbar — der Chat ist schmal.
 const markdownComponents: Components = {
+  strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="text-gray-700">{children}</li>,
+  a: ({ children, href }) => <a href={href} className="text-indigo-600 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+  // react-markdown v10 entfernte die `inline`-Prop — Inline vs. Block selbst herleiten
+  // (Block-Code hat eine language-Klasse oder enthält Zeilenumbrüche).
+  code: ({ children, className }) => {
+    const isInline = !className && !String(children ?? '').includes('\n');
+    return isInline ? (
+      <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">{children}</code>
+    ) : (
+      <code className="block bg-gray-100 p-3 rounded-lg mb-2 overflow-x-auto text-sm font-mono text-gray-800">{children}</code>
+    );
+  },
+  pre: ({ children }) => <pre className="bg-gray-100 p-3 rounded-lg mb-2 overflow-x-auto">{children}</pre>,
   table: ({ children }) => (
     <div className="overflow-x-auto -mx-1 my-3 rounded-lg border border-gray-200">
       <table className="!my-0 w-full min-w-[420px] text-xs">{children}</table>
@@ -33,6 +51,9 @@ const markdownComponents: Components = {
   td: ({ children }) => (
     <td className="border-t border-gray-100 px-3 py-2 align-top text-gray-600">{children}</td>
   ),
+  h1: ({ children }) => <h1 className="text-xl font-bold mb-3 text-gray-900 [&_strong]:font-bold [&_strong]:text-inherit">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 text-gray-900 [&_strong]:font-bold [&_strong]:text-inherit">{children}</h2>,
+  h3: ({ children }) => <h3 className="font-semibold mb-2 text-gray-900 [&_strong]:font-semibold [&_strong]:text-inherit">{children}</h3>,
 };
 
 export default function MessageBubble({ message, feedback }: { message: Message, onEdit?: (id: string, newContent: string) => void, feedback?: MessageFeedbackContext }) {
@@ -79,7 +100,10 @@ export default function MessageBubble({ message, feedback }: { message: Message,
 
   const { text: userText, attachments: userAttachments } =
     role === 'user' ? parseUserAttachments(content) : { text: content, attachments: [] };
-  const visibleContent = stripInternalTags(role === 'user' ? userText : content);
+  let visibleContent = stripInternalTags(role === 'user' ? userText : content);
+  if (role === 'assistant') {
+    visibleContent = cleanupBotFormatting(visibleContent);
+  }
 
   const isPhase4Only = content.includes('<request_credential>') || content.includes('<deploy_workflow>') || content.includes('<test_workflow>') || content.includes('<activate_workflow>');
 
@@ -122,14 +146,14 @@ export default function MessageBubble({ message, feedback }: { message: Message,
           </button>
           <button
             onClick={() => handleThumb('up')}
-            className={clsx('p-1 transition-colors rounded-md hover:bg-gray-100/80', thumbState === 'up' ? 'text-indigo-600' : 'hover:text-gray-700')}
+            className={clsx('p-1 transition-colors rounded-md hover:bg-gray-100/80', thumbState === 'up' ? 'text-gray-600' : 'hover:text-gray-700')}
             title="Gute Antwort"
           >
             <ThumbsUp size={14} fill={thumbState === 'up' ? 'currentColor' : 'none'} />
           </button>
           <button
             onClick={() => handleThumb('down')}
-            className={clsx('p-1 transition-colors rounded-md hover:bg-gray-100/80', thumbState === 'down' ? 'text-red-500' : 'hover:text-gray-700')}
+            className={clsx('p-1 transition-colors rounded-md hover:bg-gray-100/80', thumbState === 'down' ? 'text-gray-600' : 'hover:text-gray-700')}
             title="Schlechte Antwort"
           >
             <ThumbsDown size={14} fill={thumbState === 'down' ? 'currentColor' : 'none'} />
@@ -172,7 +196,7 @@ export default function MessageBubble({ message, feedback }: { message: Message,
               className="prose prose-sm max-w-none prose-invert"
               style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{visibleContent}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{visibleContent}</ReactMarkdown>
             </div>
           )}
         </div>

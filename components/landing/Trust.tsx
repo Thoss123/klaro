@@ -5,7 +5,7 @@ const POINTS = [
   { icon: MapPin, text: 'Entwickelt in Österreich' },
   { icon: ShieldCheck, text: 'DSGVO · Daten in der EU' },
   { icon: Plug, text: 'Deine Tools und Zugänge — nur was du verbindest' },
-  { icon: UserCheck, text: 'Bei wichtigen Schritten fragt Klaro dich — nichts ohne dein Okay' },
+  { icon: UserCheck, text: 'Bei wichtigen Schritten fragt Axantilo dich — nichts ohne dein Okay' },
 ];
 
 export default function Trust() {

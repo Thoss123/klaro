@@ -34,7 +34,7 @@ export default function ProductShowcase() {
 
   const startWithIntro = () => {
     const text = intro.trim();
-    if (text) localStorage.setItem('klaro_intro_message', text);
+    if (text) localStorage.setItem('axantilo_intro_message', text);
     router.push('/onboarding');
   };
 
@@ -58,7 +58,7 @@ export default function ProductShowcase() {
           </span>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-800 leading-none truncate">
-              Klaro Coach
+              Axantilo Coach
             </p>
             <p className="text-xs text-gray-400 mt-1">Online</p>
           </div>

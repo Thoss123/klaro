@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Workflow-Editor-Chat — gleicher Klaro-Kontext wie Haupt-Chat,
+ * Workflow-Editor-Chat — gleicher Axantilo-Kontext wie Haupt-Chat,
  * Antworten bleiben nur im Editor (nicht im linken Chat-Flow).
  */
 

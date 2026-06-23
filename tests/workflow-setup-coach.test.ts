@@ -24,7 +24,7 @@ describe('suggestParametersForStep', () => {
     const step = workflow.steps[0];
     const p = suggestParametersForStep(step, workflow);
     expect(p.httpMethod).toBe('POST');
-    expect(String(p.path)).toMatch(/^klaro-/);
+    expect(String(p.path)).toMatch(/^axantilo-/);
     expect(p.responseMode).toBe('onReceived');
   });
 

@@ -1,5 +1,5 @@
 /**
- * Synchronisiert Klaro-Workflow-Änderungen mit n8n (REST + MCP partial update).
+ * Synchronisiert Axantilo-Workflow-Änderungen mit n8n (REST + MCP partial update).
  */
 
 import { createSupabaseServerClient } from '@/lib/supabase-server';

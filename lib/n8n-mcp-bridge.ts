@@ -273,7 +273,7 @@ export function buildTriggerPinData(
 
 /**
  * Echter Testlauf: nur Trigger pinnen, alle Action-Nodes real ausführen.
- * So liefert „Testen" in Klaro denselben echten Node-Output wie n8n selbst.
+ * So liefert „Testen" in Axantilo denselben echten Node-Output wie n8n selbst.
  */
 export async function mcpRunWorkflowTest(workflowId: string): Promise<McpTestWorkflowResult> {
   let pinData: Record<string, unknown> = {};

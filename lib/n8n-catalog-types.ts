@@ -96,7 +96,7 @@ export interface N8nCatalogIndexEntry {
   hasCredentials: boolean;
   credentialTypes: string[];
   iconPath: string | null;
-  klaroCategory: string;
+  axantiloCategory: string;
 }
 
 export interface NodeResolverResult {

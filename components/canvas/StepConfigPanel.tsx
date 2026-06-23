@@ -6,20 +6,15 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Check, Loader2, Replace, Trash2 } from 'lucide-react';
+import { X, Loader2, Replace, Trash2 } from 'lucide-react';
 import { WorkflowStep, StepConfig } from '@/lib/types';
 import type { N8nCredentialTypeDescription, N8nNodeTypeDescription } from '@/lib/n8n-catalog-types';
 import N8nParameterForm, { type N8nParameterFormValue } from './N8nParameterForm';
 import N8nNodePickerModal from './N8nNodePickerModal';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
-import { mergeParameters } from '@/lib/n8n-parameter-utils';
 import type { IoField, NodeRunLite } from '@/lib/workflow-io';
 import N8nNodeIcon from './N8nNodeIcon';
-
-function resolveNodeVersion(node: N8nNodeTypeDescription): number {
-  const v = node.version;
-  return Array.isArray(v) ? v[v.length - 1] : (v ?? 1);
-}
+import { isOAuthCredentialType } from '@/lib/oauth-config';
 
 export default function StepConfigPanel({
   step,
@@ -50,12 +45,15 @@ export default function StepConfigPanel({
   const [error, setError] = useState('');
   const [formValue, setFormValue] = useState<N8nParameterFormValue | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const loadedTypeRef = useRef<string | null>(null);
 
   const n8nType = step.n8nType || existing?.n8nType;
 
-  const loadNode = useCallback(async (typeName: string) => {
+  // Preferred credential type: aus Step-Config oder node-map — überstimmt credentials[0]
+  // des Katalogs (z. B. gmailOAuth2 statt googleApi/Service-Account).
+  const preferredCredType = existing?.credentialType || step.credentialType;
+
+  const loadNode = useCallback(async (typeName: string, preferredCred?: string) => {
     setLoading(true);
     setError('');
     try {
@@ -64,7 +62,15 @@ export default function StepConfigPanel({
       const data = await res.json();
       setNode(data.node);
       loadedTypeRef.current = typeName;
-      const credType = data.node?.credentials?.[0]?.name;
+      const nodeCredNames: string[] = (data.node?.credentials ?? []).map((c: { name: string }) => c.name);
+      // Priority: 1) step's explicit credentialType, 2) any OAuth type in the list,
+      // 3) first in catalog (e.g. googleApi Service Account).
+      // This ensures Gmail → gmailOAuth2, Outlook → microsoftOutlookOAuth2Api,
+      // even when the catalog puts a service-account type first.
+      const credType =
+        (preferredCred && nodeCredNames.includes(preferredCred) ? preferredCred : null)
+        ?? nodeCredNames.find(isOAuthCredentialType)
+        ?? nodeCredNames[0];
       if (credType) {
         const credRes = await fetch(`/api/n8n/catalog?credential=${encodeURIComponent(credType)}`);
         if (credRes.ok) {
@@ -83,16 +89,21 @@ export default function StepConfigPanel({
   }, []);
 
   useEffect(() => {
-    setFormValue(null);
-    setError('');
     loadedTypeRef.current = null;
-    if (!n8nType) {
-      setLoading(false);
-      setNode(null);
-      return;
+    // Reset derived state before loading so stale values aren't visible.
+    // Using startTransition-style batching via a single async kick.
+    async function resetAndLoad() {
+      setFormValue(null);
+      setError('');
+      if (!n8nType) {
+        setLoading(false);
+        setNode(null);
+        return;
+      }
+      await loadNode(n8nType, preferredCredType);
     }
-    loadNode(n8nType);
-  }, [step.id, n8nType, loadNode]);
+    resetAndLoad();
+  }, [step.id, n8nType, preferredCredType, loadNode]);
 
   const handlePickerSelect = (entry: N8nCatalogIndexEntry) => {
     onNodeTypeChange?.(step.id, entry.name, entry.version);

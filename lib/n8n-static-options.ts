@@ -1,6 +1,6 @@
 /**
  * Statische Dropdown-Optionen für n8n-Properties, die loadOptions nutzen
- * (Mistral/OpenAI Modelle etc.) — Klaro kann n8n-interne loadOptions nicht ausführen.
+ * (Mistral/OpenAI Modelle etc.) — Axantilo kann n8n-interne loadOptions nicht ausführen.
  */
 
 import type { N8nPropertyOption } from './n8n-catalog-types';

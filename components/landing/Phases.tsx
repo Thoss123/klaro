@@ -15,7 +15,7 @@ const PHASES = [
     title: '2. Analyse',
     subtitle: 'Tools & Setup',
     icon: BarChart3,
-    desc: 'Ist-Tools, Automatisierungspotenzial und Umsetzer-Profil — alles aus dem Gespräch.',
+    desc: 'Ist-Tools und Automatisierungspotenzial — alles aus dem Gespräch.',
     outputs: ['Tool-Stack', 'Use Cases'],
     iconClass: 'bg-violet-50 text-violet-600 border-violet-100',
   },
@@ -31,7 +31,7 @@ const PHASES = [
     title: '4. Umsetzung',
     subtitle: 'Go-Live',
     icon: Rocket,
-    desc: 'Klaro baut die Automatisierung, du hinterlegst Zugänge — dann Livegang und Testlauf.',
+    desc: 'Axantilo baut die Automatisierung, du hinterlegst Zugänge — dann Livegang und Testlauf.',
     outputs: ['Fertiger Ablauf', 'Live'],
     iconClass: 'bg-emerald-50 text-emerald-600 border-emerald-100',
     highlight: true,
@@ -43,7 +43,7 @@ export default function Phases() {
     <section className={`${section} ${sectionY} bg-white`} id="phasen">
       <h2 className={h2}>Vier Phasen. Ein durchgängiger Weg.</h2>
       <p className={lead}>
-        Nicht nur Chat und Notizen: Klaro hält Kontext über die gesamte Journey
+        Nicht nur Chat und Notizen: Axantilo hält Kontext über die gesamte Journey
         und liefert am Ende umsetzbare Automatisierung.
       </p>
 
@@ -111,7 +111,7 @@ export default function Phases() {
             ))}
           </div>
           <p className="text-sm text-gray-600 leading-relaxed lg:max-w-md">
-            Gespräch und Roadmap laufen parallel — Klaro übernimmt Fakten aus dem
+            Gespräch und Roadmap laufen parallel — Axantilo übernimmt Fakten aus dem
             Dialog. In Phase 4 wird aus dem Plan die fertige Automatisierung;
             du gibst nur noch Zugänge, Texte und Freigabe-Kanäle ein.
           </p>

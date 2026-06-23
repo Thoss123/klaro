@@ -1,4 +1,4 @@
-# Klaro App - MVP Todos
+# Axantilo App - MVP Todos
 
 ## 1. Setup (Erledigt)
 - [x] Next.js 14 Projekt initialisiert

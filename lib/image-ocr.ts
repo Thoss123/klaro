@@ -44,3 +44,38 @@ export async function extractTextFromImage(
   const text = parseOcrPages(data?.pages);
   return text || undefined;
 }
+
+/**
+ * Extract text from a PDF via Mistral OCR (mistral-ocr-latest) — Fallback für
+ * gescannte/bildbasierte PDFs, aus denen pdf-parse keinen Text bekommt.
+ * Nutzt document_url (data-URI), nicht image_url.
+ */
+export async function extractTextFromPdf(
+  base64: string,
+  apiKey: string,
+): Promise<string | undefined> {
+  const res = await fetch('https://api.mistral.ai/v1/ocr', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OCR_MODEL,
+      document: {
+        type: 'document_url',
+        document_url: `data:application/pdf;base64,${base64}`,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    console.warn('[ocr] Mistral PDF OCR failed:', err?.message || res.status);
+    return undefined;
+  }
+
+  const data = await res.json();
+  const text = parseOcrPages(data?.pages);
+  return text || undefined;
+}

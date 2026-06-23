@@ -1,7 +1,7 @@
 /**
  * Node-Map — zentrale „Bedienungsanleitung" für den Workflow-Agent.
  *
- * Single Source of Truth dafür, welche n8n-Nodes Klaro kennt, wie man sie
+ * Single Source of Truth dafür, welche n8n-Nodes Axantilo kennt, wie man sie
  * verdrahtet und welche Bau-Patterns es gibt. Speist:
  *  - swapTargets(): Alias-Erkennung für Heuristik-Edits (ersetzt SWAP_TARGETS)
  *  - formatNodeMapForPrompt(): kompakter Prompt-Block für den Editor-Agent —
@@ -21,6 +21,8 @@ export interface NodeMapEntry {
   /** User-Phrasen, die auf diesen Node zeigen ("mail", "tabelle", …). Reihenfolge = Priorität. */
   aliases: string[];
   role: NodeRole;
+  /** Credential ist zentral von Axantilo verwaltet — Nutzer muss nichts einrichten. */
+  centralCredential?: boolean;
   /** Nur als Sub-Node an einem AI-Parent nutzbar (Slot), nie im Hauptflow. */
   subNodeSlot?: 'ai_languageModel' | 'ai_memory' | 'ai_tool' | 'ai_outputParser' | 'ai_embedding';
   credentialType?: string;
@@ -31,7 +33,13 @@ export interface NodeMapEntry {
 }
 
 /** Google-Auth läuft zentral: User klickt nur Verbinden → Konto wählen → Bestätigen. */
-const GOOGLE_AUTH = 'Auth: 3-Klick-Login über Klaros zentrale Google-OAuth-App (Verbinden → Konto wählen → Bestätigen) — der User legt KEINEN eigenen OAuth-Client an.';
+const GOOGLE_AUTH = 'Auth: 3-Klick-Login über Axantilos zentrale Google-OAuth-App (Verbinden → Konto wählen → Bestätigen) — der User legt KEINEN eigenen OAuth-Client an.';
+
+/** Resend SMTP läuft über Axantilos zentralen Account — Nutzer muss nichts einrichten. */
+const RESEND_AUTH = 'Auth: Zentral via Axantilo (Resend SMTP, hello@axantilo.com) — kein Setup für den Nutzer, Credential ist automatisch gesetzt.';
+
+/** Twilio läuft über Axantilos zentralen Account — Nutzer muss nichts einrichten. */
+const TWILIO_AUTH = 'Auth: Zentral via Axantilo (Twilio-Konto, Axantilo-Nummer) — kein Setup für den Nutzer, Credential ist automatisch gesetzt.';
 
 export const NODE_MAP: NodeMapEntry[] = [
   // ── Trigger ──────────────────────────────────────────────────────────────
@@ -466,11 +474,12 @@ export const NODE_MAP: NodeMapEntry[] = [
   {
     n8nType: 'n8n-nodes-base.emailSend',
     displayName: 'Send Email (SMTP)',
-    aliases: ['smtp', 'mail versenden smtp'],
+    aliases: ['smtp', 'mail versenden smtp', 'resend', 'transaktions-mail', 'system-mail'],
     role: 'action',
     credentialType: 'smtp',
+    centralCredential: true,
     typicalOps: ['send', 'sendAndWait'],
-    wiringNote: 'Direkter SMTP-Versand (eigener Mailserver/Postmark/Resend); fromEmail/toEmail/subject/text setzen.',
+    wiringNote: `Transaktions-Mails via Axantilo-Domain (hello@axantilo.com). fromEmail/toEmail/subject/text als Expressions. ${RESEND_AUTH}`,
   },
   {
     n8nType: 'n8n-nodes-base.whatsApp',
@@ -478,8 +487,9 @@ export const NODE_MAP: NodeMapEntry[] = [
     aliases: ['whatsapp'],
     role: 'action',
     credentialType: 'whatsAppApi',
+    centralCredential: true,
     typicalOps: ['message:send', 'message:sendAndWait'],
-    wiringNote: 'Nachricht über WhatsApp Business Cloud API; braucht Meta-Business-Konto + Phone Number ID.',
+    wiringNote: `WhatsApp-Nachricht senden; to (Empfänger-Nummer +49…) und message setzen. ${TWILIO_AUTH}`,
   },
   {
     n8nType: 'n8n-nodes-base.twilio',
@@ -487,8 +497,9 @@ export const NODE_MAP: NodeMapEntry[] = [
     aliases: ['twilio', 'sms'],
     role: 'action',
     credentialType: 'twilioApi',
+    centralCredential: true,
     typicalOps: ['sms:send', 'call:make'],
-    wiringNote: 'SMS/Anrufe versenden; from-Nummer muss eine Twilio-Nummer sein.',
+    wiringNote: `SMS versenden; to (Empfänger +49…) und body als Expressions. ${TWILIO_AUTH}`,
   },
   {
     n8nType: 'n8n-nodes-base.discord',
@@ -960,7 +971,7 @@ const UNIVERSAL_RULES = [
   'Sub-Node-only-Typen (lmChat*, memory*, tool*, embeddings*) NIE in den Hauptflow — immer per subNodeOf + connectionType-Edge an einen AI-Parent.',
   'IF/Switch-Ausgänge über branch auf den Edges; Merge-Eingänge über targetInput.',
   'Dynamische Felder als Expression mit führendem "=": "={{ $json.feld }}".',
-  'Google-Dienste (Gmail, Sheets, Docs, Drive, Calendar, YouTube): Auth läuft über Klaros zentrale Google-OAuth-App — der User verbindet sein Konto in 3 Klicks, NIEMALS eigene OAuth-Clients/Token anleiten.',
+  'Google-Dienste (Gmail, Sheets, Docs, Drive, Calendar, YouTube): Auth läuft über Axantilos zentrale Google-OAuth-App — der User verbindet sein Konto in 3 Klicks, NIEMALS eigene OAuth-Clients/Token anleiten.',
 ];
 
 const byType = new Map(NODE_MAP.map(e => [e.n8nType, e]));

@@ -1,5 +1,5 @@
 /**
- * Klaro/n8n-Workflow-JSON → n8n Workflow SDK Code für MCP validate_workflow.
+ * Axantilo/n8n-Workflow-JSON → n8n Workflow SDK Code für MCP validate_workflow.
  */
 
 const TRIGGER_RE = /Trigger$|\.webhook$|\.mcpTrigger$|\.formTrigger$/;
@@ -32,7 +32,7 @@ export function workflowJsonToSdkCode(workflowJson: N8nWorkflowJsonForSdk): stri
   if (nodes.length === 0) {
     return `import { workflow, trigger } from '@n8n/workflow-sdk';
 const start = trigger({ type: 'n8n-nodes-base.manualTrigger', version: 1, config: { name: 'Start' } });
-export default workflow('klaro-empty', 'Empty').add(start);`;
+export default workflow('axantilo-empty', 'Empty').add(start);`;
   }
 
   const defs = nodes.map((node, i) => {
@@ -46,9 +46,9 @@ export default workflow('klaro-empty', 'Empty').add(start);`;
   });
 
   const wfId = escapeJsString(
-    (workflowJson.name || 'klaro-workflow').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'klaro-workflow',
+    (workflowJson.name || 'axantilo-workflow').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40) || 'axantilo-workflow',
   );
-  const wfName = escapeJsString(workflowJson.name || 'Klaro Workflow');
+  const wfName = escapeJsString(workflowJson.name || 'Axantilo Workflow');
 
   let chain = `export default workflow('${wfId}', '${wfName}').add(${varName(0)})`;
   for (let i = 1; i < nodes.length; i++) {

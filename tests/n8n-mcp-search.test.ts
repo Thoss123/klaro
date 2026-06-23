@@ -22,6 +22,6 @@ describe('parseMcpSearchNodesResults', () => {
     expect(entries[0].name).toBe('n8n-nodes-base.slack');
     expect(entries[0].displayName).toBe('Slack');
     expect(entries[0].version).toBe(2.5);
-    expect(entries[1].klaroCategory).toBe('trigger');
+    expect(entries[1].axantiloCategory).toBe('trigger');
   });
 });

@@ -27,7 +27,7 @@ export default function OnboardingExistingAccount({
       <div className="text-center">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Dieser Account existiert bereits</h2>
         <p className="text-gray-500 text-base max-w-md mx-auto">
-          Für <strong className="text-gray-800">{email}</strong> gibt es schon einen Klaro-Account.
+          Für <strong className="text-gray-800">{email}</strong> gibt es schon einen Axantilo-Account.
           Wir legen keine zweite Registrierung an und überschreiben keine bestehenden Daten.
         </p>
       </div>

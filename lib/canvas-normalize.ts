@@ -1,4 +1,4 @@
-import type { CanvasData, CanvasDocument, CompanyProfile, PainPoint, Phase, UseCase, Workflow, WorkflowStep } from '@/lib/types';
+import type { CanvasData, CanvasDocument, CompanyProfile, DataLayer, DocumentTemplate, PainPoint, Phase, TemplatePlaceholder, UseCase, Workflow, WorkflowStep } from '@/lib/types';
 
 /** Coerce LLM JSON values to safe display/save strings. */
 export function toDisplayText(value: unknown): string {
@@ -185,6 +185,55 @@ function normalizeDocument(raw: unknown, index: number): CanvasDocument | null {
   return { ...doc, phase: doc.phase ?? inferDocumentPhase(doc) };
 }
 
+function normalizePlaceholder(raw: unknown): TemplatePlaceholder | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  const key = toDisplayText(p.key).replace(/[{}]/g, '').trim();
+  if (!key) return null;
+  return {
+    key,
+    label: toDisplayText(p.label) || key,
+    description: toDisplayText(p.description) || undefined,
+    example: toDisplayText(p.example) || undefined,
+  };
+}
+
+export function normalizeDocumentTemplate(raw: unknown, index: number): DocumentTemplate | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  const title = toDisplayText(t.title);
+  const content = toDisplayText(t.content);
+  if (!title || !content) return null;
+
+  const role = toDisplayText(t.role).toLowerCase() === 'input' ? 'input' : 'output';
+  const delivery = toDisplayText(t.delivery).toLowerCase() === 'text' ? 'text' : 'document';
+  const source = toDisplayText(t.source).toLowerCase() === 'user_upload' ? 'user_upload' : 'axantilo_generated';
+  const tfRaw = toDisplayText(t.target_format).toLowerCase();
+  const target_format = (['google_docs', 'google_sheets', 'text', 'email', 'whatsapp'] as const)
+    .find(v => v === tfRaw);
+  const sfRaw = toDisplayText(t.source_format).toLowerCase();
+  const source_format = sfRaw === 'pdf' ? 'pdf' : sfRaw === 'text' ? 'text' : undefined;
+
+  const placeholders = (Array.isArray(t.placeholders) ? t.placeholders : [])
+    .map(normalizePlaceholder)
+    .filter((p): p is TemplatePlaceholder => p !== null);
+
+  return {
+    id: toDisplayText(t.id) || `tmpl_${index + 1}`,
+    title,
+    linked_workflow: toDisplayText(t.linked_workflow) || undefined,
+    role,
+    delivery,
+    target_format,
+    source,
+    source_file_url: toDisplayText(t.source_file_url) || undefined,
+    source_format,
+    content,
+    placeholders,
+    example_filled: toDisplayText(t.example_filled) || undefined,
+  };
+}
+
 function normalizeWorkflowStep(raw: unknown, index: number): WorkflowStep | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Record<string, unknown>;
@@ -278,6 +327,23 @@ function normalizePainPoint(raw: unknown, index: number): PainPoint | null {
   };
 }
 
+function normalizeDataLayer(raw: unknown, current?: DataLayer): DataLayer | undefined {
+  if (!raw && !current) return undefined;
+  const src = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : undefined;
+  const cur = current;
+
+  const source_type = toDisplayText(src?.source_type ?? cur?.source_type) || 'none';
+  const source_name = toDisplayText(src?.source_name ?? cur?.source_name) || undefined;
+  const notes = toDisplayText(src?.notes ?? cur?.notes) || undefined;
+  const auto_provisioned =
+    typeof (src?.auto_provisioned ?? cur?.auto_provisioned) === 'boolean'
+      ? (src?.auto_provisioned ?? cur?.auto_provisioned) as boolean
+      : undefined;
+
+  if (source_type === 'none' && !source_name && !notes) return cur;
+  return { source_type, source_name, auto_provisioned, notes };
+}
+
 /** Sanitize full canvas payload from Mistral before DB + React. */
 export function normalizeCanvasData(
   raw: Record<string, unknown>,
@@ -317,25 +383,17 @@ export function normalizeCanvasData(
   const workflows =
     wfFromRaw.length > 0 ? mergeWorkflows(wfKept, wfFromRaw) : wfKept;
 
-  const impRaw = raw.implementer;
-  let implementer = current?.implementer;
-  if (phase === 'analyse' && impRaw && typeof impRaw === 'object') {
-    const imp = impRaw as Record<string, unknown>;
-    const who = toDisplayText(imp.who);
-    const skill = toDisplayText(imp.skill_level);
-    if (who || skill) {
-      implementer = {
-        id: toDisplayText(imp.id) || 'impl_1',
-        is_chatter: Boolean(imp.is_chatter),
-        who: who || 'Unbekannt',
-        skill_level:
-          skill === 'keine' || skill === 'grundkenntnisse' || skill === 'fortgeschritten' || skill === 'experte'
-            ? skill
-            : 'grundkenntnisse',
-        automation_experience: toDisplayText(imp.automation_experience) || '',
-      };
-    }
-  }
+  const data_layer = normalizeDataLayer(raw.data_layer, current?.data_layer);
+
+  // Vorlagen werden vom Templatisierungs-Worker direkt aufs Canvas geschrieben;
+  // der LLM-Canvas-Extraktor erzeugt sie nicht. Daher aus `current` erhalten
+  // (oder aus `raw` übernehmen, falls doch vorhanden) statt zu verwerfen.
+  const tmplRaw = Array.isArray(raw.document_templates)
+    ? raw.document_templates
+    : current?.document_templates;
+  const document_templates = (Array.isArray(tmplRaw) ? tmplRaw : [])
+    .map((t, i) => normalizeDocumentTemplate(t, i))
+    .filter((t): t is DocumentTemplate => t !== null);
 
   return {
     pain_points: pain_points.length > 0 ? pain_points : (current?.pain_points ?? []),
@@ -344,7 +402,8 @@ export function normalizeCanvasData(
     workflow_plans: Array.isArray(current?.workflow_plans) ? current.workflow_plans : undefined,
     documents: documents.length > 0 ? documents : (current?.documents ?? []).map((d, i) => normalizeDocument(d, i)).filter((d): d is CanvasDocument => d !== null),
     company,
-    implementer,
     phase: (phase as CanvasData['phase']) || current?.phase || 'diagnose',
+    data_layer,
+    document_templates: document_templates.length > 0 ? document_templates : undefined,
   };
 }

@@ -1,5 +1,5 @@
 /**
- * Dynamische Dropdown-Optionen, die Klaro direkt über die externe API lädt
+ * Dynamische Dropdown-Optionen, die Axantilo direkt über die externe API lädt
  * (z. B. Airtable Bases/Tables). n8n-interne listSearch-/loadOptions-Methoden
  * können wir nicht ausführen — also sprechen wir die Anbieter-API selbst an,
  * mit dem entschlüsselten User-Credential.
@@ -30,7 +30,7 @@ export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-/** Kann Klaro für dieses Node/Property live Optionen von der externen API laden? */
+/** Kann Axantilo für dieses Node/Property live Optionen von der externen API laden? */
 export function supportsDynamicOptions(nodeType: string, propertyName: string): boolean {
   return /airtable/i.test(nodeType) && (propertyName === 'base' || propertyName === 'table');
 }

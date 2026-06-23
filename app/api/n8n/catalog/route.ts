@@ -7,7 +7,7 @@ import {
   getCredentialByName,
 } from '@/lib/n8n-catalog';
 import { filterIndexByCategory, searchCatalogIndex } from '@/lib/n8n-categories';
-import type { KlaroN8nCategory } from '@/lib/n8n-categories';
+import type { AxantiloN8nCategory } from '@/lib/n8n-categories';
 import { isN8nMcpConfigured, mcpSearchNodes } from '@/lib/n8n-mcp-bridge';
 import { mergeCatalogSearchResults, parseMcpSearchNodesResults } from '@/lib/n8n-mcp-search';
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
   const nodeType = req.nextUrl.searchParams.get('node');
   const credType = req.nextUrl.searchParams.get('credential');
-  const category = req.nextUrl.searchParams.get('category') as KlaroN8nCategory | null;
+  const category = req.nextUrl.searchParams.get('category') as AxantiloN8nCategory | null;
   const q = req.nextUrl.searchParams.get('q');
   const indexOnly = req.nextUrl.searchParams.get('index') === '1';
 

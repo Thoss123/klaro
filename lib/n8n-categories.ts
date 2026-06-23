@@ -4,7 +4,7 @@
 
 import type { N8nCatalogIndexEntry, N8nNodeTypeDescription } from './n8n-catalog-types';
 
-export type KlaroN8nCategory =
+export type AxantiloN8nCategory =
   | 'ai'
   | 'action'
   | 'data'
@@ -13,8 +13,8 @@ export type KlaroN8nCategory =
   | 'human'
   | 'trigger';
 
-export type KlaroN8nCategoryMeta = {
-  id: KlaroN8nCategory;
+export type AxantiloN8nCategoryMeta = {
+  id: AxantiloN8nCategory;
   label: string;
   /** Kurzbeschreibung in der Kategorieliste */
   pickerDescription: string;
@@ -22,7 +22,7 @@ export type KlaroN8nCategoryMeta = {
 };
 
 /** Reihenfolge wie n8n „What happens next?“ */
-export const KLARO_N8N_CATEGORY_ORDER: KlaroN8nCategory[] = [
+export const AXANTILO_N8N_CATEGORY_ORDER: AxantiloN8nCategory[] = [
   'ai',
   'action',
   'data',
@@ -32,7 +32,7 @@ export const KLARO_N8N_CATEGORY_ORDER: KlaroN8nCategory[] = [
   'trigger',
 ];
 
-export const KLARO_N8N_CATEGORIES: KlaroN8nCategoryMeta[] = [
+export const AXANTILO_N8N_CATEGORIES: AxantiloN8nCategoryMeta[] = [
   {
     id: 'ai',
     label: 'KI',
@@ -79,9 +79,9 @@ export const KLARO_N8N_CATEGORIES: KlaroN8nCategoryMeta[] = [
 
 export function pickerCategoriesForMode(
   filterMode: 'all' | 'trigger-only' | 'no-trigger',
-): KlaroN8nCategoryMeta[] {
-  const ordered = KLARO_N8N_CATEGORY_ORDER.map(
-    id => KLARO_N8N_CATEGORIES.find(c => c.id === id)!,
+): AxantiloN8nCategoryMeta[] {
+  const ordered = AXANTILO_N8N_CATEGORY_ORDER.map(
+    id => AXANTILO_N8N_CATEGORIES.find(c => c.id === id)!,
   );
   if (filterMode === 'trigger-only') {
     return ordered.filter(c => c.id === 'trigger');
@@ -129,8 +129,8 @@ function hasCategory(node: N8nNodeTypeDescription, cat: string): boolean {
   return (node.codex?.categories || []).some(c => c.toLowerCase().includes(cat.toLowerCase()));
 }
 
-/** Classify a node into a Klaro picker category. */
-export function classifyNode(node: N8nNodeTypeDescription): KlaroN8nCategory {
+/** Classify a node into an Axantilo picker category. */
+export function classifyNode(node: N8nNodeTypeDescription): AxantiloN8nCategory {
   const name = node.name || '';
   const groups = node.group || [];
 
@@ -219,23 +219,23 @@ export function buildCatalogIndex(nodes: N8nNodeTypeDescription[]): N8nCatalogIn
       hasCredentials: credentialTypes.length > 0,
       credentialTypes,
       iconPath: resolveIconPath(node),
-      klaroCategory: classifyNode(node),
+      axantiloCategory: classifyNode(node),
     };
   });
 }
 
 export function filterIndexByCategory(
   index: N8nCatalogIndexEntry[],
-  category: KlaroN8nCategory,
+  category: AxantiloN8nCategory,
 ): N8nCatalogIndexEntry[] {
-  return index.filter(e => e.klaroCategory === category);
+  return index.filter(e => e.axantiloCategory === category);
 }
 
-/** Infer Klaro workflow step type from catalog entry. */
+/** Infer Axantilo workflow step type from catalog entry. */
 export function stepTypeFromCatalogEntry(
   entry: N8nCatalogIndexEntry,
 ): 'trigger' | 'action' | 'ai' | 'decision' | 'human' | 'output' {
-  switch (entry.klaroCategory) {
+  switch (entry.axantiloCategory) {
     case 'trigger': return 'trigger';
     case 'ai': return 'ai';
     case 'flow': return 'decision';

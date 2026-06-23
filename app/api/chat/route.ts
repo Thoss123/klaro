@@ -1,11 +1,17 @@
 import { getSystemPrompt } from '@/lib/claude'
 import { NextRequest } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { stripInternalTags } from '@/lib/strip-internal-tags'
 import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels'
 import { resolveDiagnosePath } from '@/lib/onboarding-multi'
 import { formatToolRecommendations } from '@/lib/tool-recommendations'
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans'
+import type { DocumentTemplate } from '@/lib/types'
+import type { KnowledgeSourceType } from '@/lib/rag'
+
+/** Tool-Call vom Provider — args sind beliebiges JSON aus dem LLM. */
+type ToolCall = { name: string; args: Record<string, unknown> }
+/** Sicheres Lesen eines String-Arguments aus den (untypisierten) Tool-Args. */
+const argStr = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +35,7 @@ export async function POST(req: NextRequest) {
       const firmenname = onboarding.firmenname?.trim() || 'Nicht angegeben';
       const rolle = onboarding.rolle_im_unternehmen?.trim() || 'Nicht angegeben';
       const anredeText = isSolo
-        ? `Sprich den Nutzer mit dem Vornamen "${vorname}" an (Du-Form). Keine Dialog-Präfixe ("${vorname}:", "Klaro:").`
+        ? `Sprich den Nutzer mit dem Vornamen "${vorname}" an (Du-Form). Keine Dialog-Präfixe ("${vorname}:", "Axantilo:").`
         : `Sprich die Gruppe mit "ihr" an; Ansprechpartner: ${vorname}. Keine Dialog-Präfixe.`;
 
       const brancheVal = onboarding.branche?.trim() || 'Nicht angegeben'
@@ -90,6 +96,11 @@ export async function POST(req: NextRequest) {
       console.warn('⚠️  No onboarding data received — all placeholders stay unreplaced!')
     }
 
+    // Data layer context for Phase 3/4 prompts
+    const { formatDataLayerForPrompt } = await import('@/lib/data-layer');
+    const dataLayerText = formatDataLayerForPrompt(canvas?.data_layer);
+    systemPrompt = systemPrompt.replace(/{{data_layer}}/g, dataLayerText);
+
     const painPointsJson =
       canvas?.pain_points?.length
         ? JSON.stringify(canvas.pain_points, null, 2)
@@ -105,6 +116,22 @@ export async function POST(req: NextRequest) {
     const companyJson = canvas?.company
       ? JSON.stringify(canvas.company, null, 2)
       : '{}';
+    // Vorhandene Dokument-Vorlagen (kompakt — ohne den vollen Inhalt, damit der Prompt schlank bleibt).
+    const templatesSummary = (canvas?.document_templates ?? []).map((t: DocumentTemplate) => ({
+      id: t.id,
+      title: t.title,
+      linked_workflow: t.linked_workflow,
+      role: t.role,
+      delivery: t.delivery,
+      source: t.source,
+      placeholders: t.placeholders.map((p: { key: string }) => p.key),
+      has_example: !!t.example_filled,
+    }));
+    const documentTemplatesJson = templatesSummary.length
+      ? JSON.stringify(templatesSummary, null, 2)
+      : '[]';
+    systemPrompt = systemPrompt.replace(/{{document_templates}}/g, documentTemplatesJson);
+
     systemPrompt = systemPrompt.replace(/{{pain_points}}/g, painPointsJson);
     systemPrompt = systemPrompt.replace(/{{workflows}}/g, workflowsJson);
     systemPrompt = systemPrompt.replace(/{{workflow_plans}}/g, workflowPlansJson);
@@ -138,7 +165,7 @@ export async function POST(req: NextRequest) {
 
     // Parse messages
     const lastMessage = messages[messages.length - 1]?.content || ' ';
-    const history = messages.slice(0, -1).map((m: any) => {
+    const history = messages.slice(0, -1).map((m: { role: string; content?: string }) => {
       let text = m.content || ' ';
       if (m.role === 'assistant') {
         text = stripInternalTags(text) || ' ';
@@ -148,6 +175,42 @@ export async function POST(req: NextRequest) {
         content: text
       };
     });
+
+    // ── Auto-Injection: thematisch passendes Hintergrundwissen ────────────────
+    // Anders als das coach-getriebene search_knowledge laden wir 'wissen'-Einträge
+    // (Strategie/Aufklärung) automatisch, wenn sie zur aktuellen Nutzernachricht UND
+    // zur aktuellen Phase passen — so erreicht das Wissen den Nutzer, auch wenn der
+    // Coach das Tool nicht von sich aus aufruft.
+    try {
+      const PHASE_NR: Record<string, string> = {
+        diagnose: '1', analyse: '2', plan: '3', umsetzung: '4',
+      };
+      const phaseNr = PHASE_NR[currentPhase];
+      if (phaseNr && lastMessage.trim().length > 1) {
+        const { searchKnowledge } = await import('@/lib/rag');
+        const wissenHits = await searchKnowledge({
+          query: lastMessage,
+          types: ['wissen'],
+          matchCount: 3,
+          threshold: 0.5,
+        });
+        // Nach Phase filtern: Frontmatter `phase` ist als String gespeichert (z.B. "[2, 3]").
+        const relevant = wissenHits.filter((h) => {
+          const p = h?.metadata?.phase;
+          if (p === undefined || p === null || String(p).trim() === '') return true; // ungetaggt → überall ok
+          return String(p).includes(phaseNr);
+        });
+        if (relevant.length > 0) {
+          const block = relevant.map((h) => `### ${h.title}\n${h.content}`).join('\n\n---\n\n');
+          systemPrompt +=
+            `\n\n## HINTERGRUNDWISSEN (thematisch relevant)\n` +
+            `Nutze diese Hintergrundinfos, um den Nutzer fundiert aufzuklären — erwähne die Datenbank/Quelle NIE und erfinde nichts dazu:\n\n${block}\n`;
+          console.log(`[wissen-inject] phase=${currentPhase} → ${relevant.length}/${wissenHits.length} Einträge injiziert`);
+        }
+      }
+    } catch (e: unknown) {
+      console.error('[wissen-inject] failed (fail-open):', (e instanceof Error ? e.message : String(e)));
+    }
 
     // Streaming Response zurückgeben
     const readableStream = new ReadableStream({
@@ -160,7 +223,7 @@ export async function POST(req: NextRequest) {
             (chunk: string) => {
                controller.enqueue(new TextEncoder().encode(chunk));
             },
-            async (toolCall: any) => {
+            async (toolCall: ToolCall) => {
                console.log('[Tool Call Execution]:', toolCall.name, toolCall.args);
 
                if (toolCall.name === 'search_knowledge') {
@@ -168,8 +231,8 @@ export async function POST(req: NextRequest) {
                    const { searchKnowledge } = await import('@/lib/rag');
                    const kategorie = typeof toolCall.args.kategorie === 'string' ? toolCall.args.kategorie : undefined;
                    const matches = await searchKnowledge({
-                     query: toolCall.args.query || '',
-                     types: kategorie ? ([kategorie] as any) : undefined,
+                     query: argStr(toolCall.args.query),
+                     types: kategorie ? ([kategorie] as KnowledgeSourceType[]) : undefined,
                      matchCount: 4,
                      threshold: 0.4,
                    });
@@ -178,7 +241,7 @@ export async function POST(req: NextRequest) {
                      return { treffer: [], hinweis: 'Keine passenden Einträge gefunden — nutze dein eigenes Wissen, ohne zu erfinden.' };
                    }
                    return {
-                     treffer: matches.map((m: any) => ({
+                     treffer: matches.map((m) => ({
                        titel: m.title,
                        art: m.source_type,
                        relevanz: Math.round(m.similarity * 100) / 100,
@@ -187,15 +250,15 @@ export async function POST(req: NextRequest) {
                      })),
                      hinweis: 'Verwende nur Treffer, die zur Branche und Situation des Nutzers passen. Ignoriere unpassende oder wenig relevante Einträge und erfinde nichts dazu.',
                    };
-                 } catch (e: any) {
-                   console.error('[search_knowledge] failed:', e?.message);
+                 } catch (e: unknown) {
+                   console.error('[search_knowledge] failed:', (e instanceof Error ? e.message : String(e)));
                    return { treffer: [], hinweis: 'Wissensdatenbank nicht verfügbar — nutze dein eigenes Wissen.' };
                  }
                } else if (toolCall.name === 'web_search') {
                  try {
                    const { searchWeb } = await import('@/lib/web-search');
-                   const { answer, results, note } = await searchWeb(toolCall.args.query || '');
-                   console.log(`[web_search] "${toolCall.args.query}" → ${results.length} Treffer${note ? ' (' + note + ')' : ''}`);
+                   const { answer, results, note } = await searchWeb(argStr(toolCall.args.query));
+                   console.log(`[web_search] "${argStr(toolCall.args.query)}" → ${results.length} Treffer${note ? ' (' + note + ')' : ''}`);
                    if (note && !results.length) {
                      return { antwort: null, treffer: [], hinweis: note };
                    }
@@ -213,41 +276,41 @@ export async function POST(req: NextRequest) {
                  return { status: 'success', message: `Phase ${toolCall.args.next_phase} prepared.` };
                } else if (toolCall.name === 'deploy_workflow') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"deploy_workflow","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
-                 return { status: 'success', n8n_workflow_id: 'mock-123', url: 'https://workflows.klaro.ai/workflow/mock-123' };
+                 return { status: 'success', n8n_workflow_id: 'mock-123', url: 'https://workflows.axantilo.com/workflow/mock-123' };
                } else if (toolCall.name === 'test_workflow') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"test_workflow","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  return { status: 'success', logs: ['Execution started', 'Node 1 executed', 'Success'] };
                } else if (toolCall.name === 'request_credential') {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"request_credential","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  return { status: 'pending', message: 'User has been prompted for credentials in the UI. Await confirmation.' };
-               } else if (toolCall.name === 'create_workflow_plan') {
-                 if (currentPhase !== 'plan') {
-                   return { status: 'error', message: 'create_workflow_plan nur in Phase 3 erlaubt.' };
+               } else if (toolCall.name === 'create_document_template') {
+                 if (currentPhase !== 'plan' && currentPhase !== 'umsetzung') {
+                   return { status: 'error', message: 'create_document_template nur in Phase 3 oder 4.' };
                  }
                  if (!project_id) {
-                   return { status: 'error', message: 'Kein Projekt — create_workflow_plan abgebrochen.' };
+                   return { status: 'error', message: 'Kein Projekt — create_document_template abgebrochen.' };
                  }
-                 // Ladezustand an UI senden
-                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"create_workflow_plan","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"create_document_template","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  try {
                    const origin = new URL(req.url).origin;
                    const cookie = req.headers.get('cookie') ?? '';
-                   const res = await fetch(`${origin}/api/canvas-worker/create-plan`, {
+                   const res = await fetch(`${origin}/api/canvas-worker/create-template`, {
                      method: 'POST',
                      headers: { 'Content-Type': 'application/json', cookie },
-                     body: JSON.stringify({
-                       project_id,
-                       ...toolCall.args
-                     }),
+                     body: JSON.stringify({ project_id, ...toolCall.args }),
                    });
                    const data = await res.json();
                    if (!res.ok) {
-                     return { status: 'error', message: data.error || 'Erstellen fehlgeschlagen' };
+                     return { status: 'error', message: data.error || 'Vorlage erstellen fehlgeschlagen' };
                    }
-                   return { status: 'success', message: 'Plan erfolgreich auf dem Canvas platziert. Sag dem Nutzer, dass er ihn rechts sehen kann.' };
-                 } catch (e: any) {
-                   console.error('[create_workflow_plan] fetch failed:', e?.message);
-                   return { status: 'error', message: 'Erstellen fehlgeschlagen.' };
+                   return {
+                     status: 'success',
+                     template_id: data.template_id,
+                     message: `Vorlage liegt rechts auf dem Canvas (${data.placeholder_count ?? 0} Platzhalter). Sag dem Nutzer, dass er sie sehen kann, und erkläre kurz, welche Felder automatisch gefüllt werden.`,
+                   };
+                 } catch (e: unknown) {
+                   console.error('[create_document_template] fetch failed:', (e instanceof Error ? e.message : String(e)));
+                   return { status: 'error', message: 'Vorlage erstellen fehlgeschlagen.' };
                  }
                } else if (toolCall.name === 'edit_workflow') {
                  if (currentPhase !== 'umsetzung') {
@@ -268,8 +331,8 @@ export async function POST(req: NextRequest) {
                      supabase,
                      user.id,
                      project_id,
-                     toolCall.args.workflow_id,
-                     toolCall.args.instruction || toolCall.args.message || '',
+                     argStr(toolCall.args.workflow_id),
+                     argStr(toolCall.args.instruction) || argStr(toolCall.args.message),
                    );
                    if (!out.ok) {
                      return { status: 'error', message: out.error };
@@ -286,8 +349,8 @@ export async function POST(req: NextRequest) {
                        ? `Workflow „${out.workflow.title}" wurde angepasst: ${out.editorMessage}`
                        : out.editorMessage,
                    };
-                 } catch (e: any) {
-                   console.error('[edit_workflow] failed:', e?.message);
+                 } catch (e: unknown) {
+                   console.error('[edit_workflow] failed:', (e instanceof Error ? e.message : String(e)));
                    return { status: 'error', message: 'Workflow-Anpassung fehlgeschlagen.' };
                  }
                } else if (toolCall.name === 'build_workflow') {
@@ -334,8 +397,8 @@ export async function POST(req: NextRequest) {
                        ? `Workflow „${data.workflow?.title}" war schon gebaut.`
                        : `Workflow „${data.workflow?.title}" ist jetzt fertig gebaut und auf dem Canvas sichtbar.`,
                    };
-                 } catch (e: any) {
-                   console.error('[build_workflow] fetch failed:', e?.message);
+                 } catch (e: unknown) {
+                   console.error('[build_workflow] fetch failed:', (e instanceof Error ? e.message : String(e)));
                    return { status: 'error', message: 'Build fehlgeschlagen.' };
                  }
                } else if (toolCall.name === 'research_solutions') {
@@ -353,8 +416,8 @@ export async function POST(req: NextRequest) {
                    });
                    const data = await res.json();
                    return data; // { options: [...] } back to the coach
-                 } catch (e: any) {
-                   console.error('[research_solutions] fetch failed:', e?.message);
+                 } catch (e: unknown) {
+                   console.error('[research_solutions] fetch failed:', (e instanceof Error ? e.message : String(e)));
                    // Fail open: coach falls back to its own knowledge.
                    return { options: [], note: 'Recherche nicht verfügbar — nutze eigenes Wissen.' };
                  }
@@ -364,7 +427,7 @@ export async function POST(req: NextRequest) {
             Array.isArray(attachments) ? attachments : undefined,
             currentPhase
           );
-        } catch (err: any) {
+        } catch (err: unknown) {
            console.error('Provider Stream Error:', err);
            controller.enqueue(new TextEncoder().encode('\n\n[System Error: KI antwortet nicht richtig. Fallback oder Retry erforderlich.]'));
         } finally {
@@ -380,8 +443,8 @@ export async function POST(req: NextRequest) {
         'Connection': 'keep-alive',
       },
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('API Chat Error:', error);
-    return new Response(error.message || 'Internal Server Error', { status: 500 });
+    return new Response(error instanceof Error ? error.message : 'Internal Server Error', { status: 500 });
   }
 }

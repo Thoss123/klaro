@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { ensureDataLayer } from '@/lib/data-layer';
 import { createN8nWorkflow, updateN8nWorkflow, activateN8nWorkflow, deactivateN8nWorkflow, deleteN8nWorkflow } from '@/lib/n8n';
 import { isN8nMcpConfigured, mcpRunWorkflowTest } from '@/lib/n8n-mcp-bridge';
 import { buildMappingsFromWorkflow } from '@/lib/n8n-mcp-sync';
@@ -7,6 +8,7 @@ import { validateWorkflowForDeploy } from '@/lib/n8n-workflow-validate';
 import { validateWorkflowJsonWithSdk } from '@/lib/n8n-sdk-validate';
 import { buildN8nWorkflow, StepMapping } from '@/lib/workflow-generator';
 import { Workflow, StepConfig } from '@/lib/types';
+import { buildCentralCredMap } from '@/lib/central-credentials';
 
 // POST /api/n8n/workflows — deploy a workflow
 export async function POST(req: NextRequest) {
@@ -24,6 +26,9 @@ export async function POST(req: NextRequest) {
     skip_validate?: boolean;
     canvas_workflow_id?: string;
   };
+
+  // Auto-provision data layer if not yet set up (idempotent, fire-and-forget)
+  ensureDataLayer(user.id, project_id).catch(() => {});
 
   if (!skip_validate) {
     const validation = await validateWorkflowForDeploy(workflow, step_configs ?? {});
@@ -43,7 +48,8 @@ export async function POST(req: NextRequest) {
     .eq('project_id', project_id)
     .eq('status', 'active');
 
-  const credMap: Record<string, string> = {};
+  // Central credentials (Resend SMTP, Twilio, …) come first — user_credentials can override.
+  const credMap: Record<string, string> = { ...buildCentralCredMap() };
   for (const c of creds || []) {
     if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
   }
@@ -103,10 +109,10 @@ export async function POST(req: NextRequest) {
         mcpTest = { status: 'error', error: e instanceof Error ? e.message : 'MCP-Test fehlgeschlagen' };
       }
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     // WICHTIG: Fehler NICHT verschlucken. Vorher wurde still ein „draft" gespeichert,
     // die UI dachte „deployed", und der Testlauf schlug mit „not deployed" fehl.
-    deployError = e?.message || 'n8n-Deploy fehlgeschlagen';
+    deployError = e instanceof Error ? e.message : 'n8n-Deploy fehlgeschlagen';
     console.error('n8n deploy failed:', deployError);
   }
 
@@ -197,7 +203,7 @@ export async function PATCH(req: NextRequest) {
       .eq('project_id', wf.project_id)
       .eq('status', 'active');
 
-    const credMap: Record<string, string> = {};
+    const credMap: Record<string, string> = { ...buildCentralCredMap() };
     for (const c of creds || []) {
       if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
     }
@@ -233,8 +239,8 @@ export async function PATCH(req: NextRequest) {
     } else if (action === 'update' && wf.n8n_workflow_id && nextWorkflowJson) {
       await updateN8nWorkflow(wf.n8n_workflow_id, nextWorkflowJson);
     }
-  } catch (e: any) {
-    console.error('n8n PATCH failed:', e.message);
+  } catch (e: unknown) {
+    console.error('n8n PATCH failed:', e instanceof Error ? e.message : e);
   }
 
   const { data } = await supabase

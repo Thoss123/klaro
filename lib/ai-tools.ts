@@ -1,25 +1,32 @@
 import { FunctionDeclaration, SchemaType } from '@google/generative-ai';
 
+/** JSON-Schema-artige Tool-Parameter-Definition (an Mistral/Gemini übergeben). */
+export interface ToolSchema {
+  type: string;
+  properties: Record<string, Record<string, unknown>>;
+  required?: string[];
+}
+
 export interface AITool {
   name: string;
   description: string;
-  schema: any;
+  schema: ToolSchema;
 }
 
-export const KLARO_TOOLS: AITool[] = [
+export const AXANTILO_TOOLS: AITool[] = [
   {
     name: "search_knowledge",
-    description: "Durchsucht Klaros zentrale Wissensdatenbank: Tool-Anleitungen, UI-How-tos (wie man etwas in Klaro macht), abgedeckte Use-Cases, Branchen-Infos und Workflow-Bausteine. Nutze es, BEVOR du antwortest, wenn: der Nutzer fragt WIE man etwas in Klaro oder einem Tool macht; ein Tool eingerichtet/verbunden werden soll; oder du einen Workflow bzw. einen Schritt vorschlagen oder bauen willst. Die Treffer haben einen Relevanz-Score (similarity) und Metadaten (z.B. branche). Verwende nur, was zur Situation des Nutzers passt — ignoriere unpassende Treffer (falsche Branche, falsches Tool, niedrige Relevanz) und erfinde nichts dazu. Erwähne das Tool oder die Datenbank NIE im Chat.",
+    description: "Durchsucht Axantilos zentrale Wissensdatenbank: Tool-Anleitungen, UI-How-tos (wie man etwas in Axantilo macht), abgedeckte Use-Cases, Branchen-Infos und Workflow-Bausteine. Nutze es, BEVOR du antwortest, wenn: der Nutzer fragt WIE man etwas in Axantilo oder einem Tool macht; ein Tool eingerichtet/verbunden werden soll; oder du einen Workflow bzw. einen Schritt vorschlagen oder bauen willst. Die Treffer haben einen Relevanz-Score (similarity) und Metadaten (z.B. branche). Verwende nur, was zur Situation des Nutzers passt — ignoriere unpassende Treffer (falsche Branche, falsches Tool, niedrige Relevanz) und erfinde nichts dazu. Erwähne das Tool oder die Datenbank NIE im Chat.",
     schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Wonach gesucht wird, in natürlicher Sprache (z.B. 'Gmail in n8n verbinden', 'Angebot aus Gesprächsnotiz automatisieren', 'Credential in Klaro hinterlegen')."
+          description: "Wonach gesucht wird, in natürlicher Sprache (z.B. 'Gmail in n8n verbinden', 'Angebot aus Gesprächsnotiz automatisieren', 'Credential in Axantilo hinterlegen')."
         },
         kategorie: {
           type: "string",
-          enum: ["tool", "ui_guide", "use_case", "branche", "template_baustein", "template_workflow"],
+          enum: ["tool", "ui_guide", "use_case", "branche", "template_baustein", "template_workflow", "wissen"],
           description: "Optional: auf eine Wissensart einschränken. Weglassen, um alles zu durchsuchen."
         }
       },
@@ -181,39 +188,67 @@ export const KLARO_TOOLS: AITool[] = [
     }
   },
   {
-    name: "create_workflow_plan",
-    description: "Erstellt den konkreten Ablaufplan für einen Workflow und legt ihn live auf dem Canvas ab. Nutze dieses Tool in Phase 3, sobald sich der Nutzer für eine spezifische Automatisierungs-Lösung entschieden hat.",
+    name: "create_document_template",
+    description: "Legt eine wiederverwendbare Dokument-/Nachrichten-Vorlage für einen Workflow (Angebot, Vertrag, E-Mail, WhatsApp, Report, KI-Prompt) live auf dem Canvas ab. WICHTIG: Du (der Coach) baust die Vorlage selbst — du hast den hochgeladenen Muster-Text und den ganzen Gesprächskontext. Schau dir das Muster an (oder entwirf neu), erkenne selbst, welche Stellen fallabhängig sind (Kundenname, Beträge, Datum, Positionen) und welche immer gleich bleiben (Firmenkopf, Standardsätze, Struktur). Die variablen Stellen ersetzt du durch Platzhalter {{snake_case_key}}; den Rest lässt du wörtlich stehen. Übergib den fertigen Vorlagentext in `content`, die Platzhalter-Liste in `placeholders` und ein vollständig ausgefülltes, ANONYMISIERTES Beispiel in `example_filled` (das Original mit personenbezogenen/privaten Daten durch realistische Fake-Werte ersetzt — dient der Laufzeit-KI als Stil-Beispiel im System-Prompt). Das System erfindet nichts — es speichert nur, was du mitgibst. Nutzbar in Phase 3 (wenn der Nutzer ein Muster hochlädt) und Phase 4 (Einbau in den Workflow).",
     schema: {
       type: "object",
       properties: {
         title: {
           type: "string",
-          description: "Titel des Workflows (z.B. 'Lead Qualifizierung')"
+          description: "Titel der Vorlage (z.B. 'Angebot — Vorlage', 'Onboarding-E-Mail')"
         },
-        description: {
+        linked_workflow: {
           type: "string",
-          description: "Kurze Beschreibung des Workflows"
+          description: "id des Workflows, zu dem die Vorlage gehört (z.B. wf_1). Leer lassen, wenn keiner passt."
         },
-        pain_point_id: {
+        role: {
           type: "string",
-          description: "ID des zugehörigen Pain Points (z.B. 'pp_1')"
+          enum: ["input", "output"],
+          description: "Verbraucht der Workflow das Dokument (input, z.B. eingehende Anfrage) oder erzeugt er es (output, z.B. das fertige Angebot)?"
         },
-        steps: {
+        delivery: {
+          type: "string",
+          enum: ["document", "text"],
+          description: "document = echtes Datei-Template (Angebot/Vertrag) mit Platzhalter-Ersatz. text = KI erzeugt den Text je Lauf (einfache Mail/Nachricht). Echte Dokumente → document; einfache Mails/Nachrichten → text (selbst entscheiden)."
+        },
+        target_format: {
+          type: "string",
+          enum: ["google_docs", "google_sheets", "text", "email", "whatsapp"],
+          description: "Zielformat zur Laufzeit. Angebot/Vertrag → google_docs; Tabelle/Liste → google_sheets; Mail → email; Nachricht → whatsapp/text."
+        },
+        source: {
+          type: "string",
+          enum: ["user_upload", "axantilo_generated"],
+          description: "Woher die Vorlage stammt: user_upload (aus hochgeladenem Muster templatisiert) oder axantilo_generated (neu entworfen)."
+        },
+        source_file_url: {
+          type: "string",
+          description: "Optional: URL des hochgeladenen Original-Dokuments (zur Referenz)."
+        },
+        content: {
+          type: "string",
+          description: "Der fertige Vorlagentext (Markdown/Text), den DU gebaut hast — konkrete Werte bereits durch {{platzhalter}} ersetzt. Bei Tabellen/Sheets als Markdown-Tabelle mit Platzhaltern in den Zellen."
+        },
+        example_filled: {
+          type: "string",
+          description: "Ein vollständig AUSGEFÜLLTES Beispiel der Vorlage (keine Platzhalter mehr) — bei source=user_upload der Original-Text, aber mit personenbezogenen/privaten Daten anonymisiert (echte Namen/Beträge/Adressen → realistische Fake-Werte wie 'Mustermann GmbH'). Bei axantilo_generated ein plausibles erfundenes Beispiel. Geht als Few-Shot-Beispiel in den System-Prompt der Laufzeit-KI."
+        },
+        placeholders: {
           type: "array",
+          description: "Alle im content verwendeten Platzhalter. Jeder Platzhalter im content MUSS hier gelistet sein und umgekehrt.",
           items: {
             type: "object",
             properties: {
-              label: { type: "string", description: "Name des Schritts (z.B. 'Neue E-Mail', 'Daten extrahieren')" },
-              tool: { type: "string", description: "Verwendetes Tool (z.B. 'gmail', 'openai', 'slack', 'webhook', 'schedule', 'if')" },
-              type: { type: "string", enum: ["trigger", "action", "ai", "human", "decision"], description: "Kategorie des Schritts" },
-              description: { type: "string", description: "Was genau in diesem Schritt passiert" }
+              key: { type: "string", description: "Schlüssel in snake_case, ohne Klammern, z.B. kunde_name" },
+              label: { type: "string", description: "Anzeige-Label, z.B. Kundenname" },
+              description: { type: "string", description: "Optional: woher der Wert kommt / was reinkommt" },
+              example: { type: "string", description: "Optional: Beispielwert, z.B. 'Mustermann GmbH'" }
             },
-            required: ["label", "tool", "type"]
-          },
-          description: "Die einzelnen Workflow-Schritte in chronologischer Reihenfolge."
+            required: ["key", "label"]
+          }
         }
       },
-      required: ["title", "description", "pain_point_id", "steps"]
+      required: ["title", "role", "delivery", "source", "content", "placeholders"]
     }
   }
 ];
@@ -221,12 +256,15 @@ export const KLARO_TOOLS: AITool[] = [
 /** Phase-gated tool list — research_solutions is Phase 3 only; build_workflow is Phase 4 only. */
 export function getToolsForPhase(phase: string): AITool[] {
   if (phase === 'plan') {
-    return KLARO_TOOLS.filter(t => t.name !== 'build_workflow');
+    return AXANTILO_TOOLS.filter(t => t.name !== 'build_workflow');
   }
   if (phase === 'umsetzung') {
-    return KLARO_TOOLS.filter(t => t.name !== 'research_solutions');
+    return AXANTILO_TOOLS.filter(t => t.name !== 'research_solutions');
   }
-  return KLARO_TOOLS.filter(t => t.name !== 'research_solutions' && t.name !== 'build_workflow');
+  // Phase 1/2: weder Recherche, noch Build, noch Vorlagen-Templatisierung.
+  return AXANTILO_TOOLS.filter(
+    t => t.name !== 'research_solutions' && t.name !== 'build_workflow' && t.name !== 'create_document_template',
+  );
 }
 
 // Helper for Gemini
@@ -286,9 +324,9 @@ export function toGeminiTools(tools: AITool[]): FunctionDeclaration[] {
 }
 
 // Helper for Mistral
-export function toMistralTools(tools: AITool[]): any[] {
+export function toMistralTools(tools: AITool[]) {
   return tools.map(tool => ({
-    type: 'function',
+    type: 'function' as const,
     function: {
       name: tool.name,
       description: tool.description,

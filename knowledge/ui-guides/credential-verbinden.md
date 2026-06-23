@@ -3,7 +3,7 @@ type: ui_guide
 bereich: credentials
 ---
 
-# Ein Tool / Credential in Klaro verbinden
+# Ein Tool / Credential in Axantilo verbinden
 
 ## Wo in der App
 Sidebar → Settings → Tab „Credentials".

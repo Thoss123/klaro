@@ -1,5 +1,5 @@
 /**
- * Konvertiert Klaro/n8n-Workflow-JSON in n8n Workflow-SDK-Code für validate_workflow (MCP).
+ * Konvertiert Axantilo/n8n-Workflow-JSON in n8n Workflow-SDK-Code für validate_workflow (MCP).
  */
 
 const TRIGGER_TYPES = new Set([
@@ -76,8 +76,8 @@ function mainChainOrder(
 
 /** Erzeugt SDK-Quellcode für MCP validate_workflow. */
 export function workflowJsonToSdkCode(workflow: N8nJsonWorkflow): string {
-  const wfId = 'klaro-validate';
-  const wfName = escString(workflow.name || 'KLARO: Workflow');
+  const wfId = 'axantilo-validate';
+  const wfName = escString(workflow.name || 'AXANTILO: Workflow');
   const ordered = mainChainOrder(workflow.nodes, workflow.connections ?? {});
 
   const varNames = ordered.map((_, i) => `n${i}`);

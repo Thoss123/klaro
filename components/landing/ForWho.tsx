@@ -5,7 +5,7 @@ const PERSONAS = [
   {
     icon: Briefcase,
     title: 'Geschäftsführung',
-    text: 'KI ist wichtig — aber keine Zeit für Tool-Chaos. Klaro liefert Plan und optional die erste laufende Automatisierung.',
+    text: 'KI ist wichtig — aber keine Zeit für Tool-Chaos. Axantilo liefert Plan und optional die erste laufende Automatisierung.',
   },
   {
     icon: Wrench,
@@ -22,7 +22,7 @@ const PERSONAS = [
 export default function ForWho() {
   return (
     <section className={`${section} ${sectionY} bg-slate-50 border-y border-gray-200/80`}>
-      <h2 className={h2}>Für wen ist Klaro?</h2>
+      <h2 className={h2}>Für wen ist Axantilo?</h2>
       <p className={lead}>KMU und Teams, die vom Gespräch bis zur Automatisierung kommen wollen.</p>
 
       <div className="mt-14 grid md:grid-cols-3 gap-5">

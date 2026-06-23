@@ -7,6 +7,6 @@ export function smoothScrollToId(id: string): void {
   el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
 
   window.dispatchEvent(
-    new CustomEvent('klaro-scroll-section', { detail: { id } })
+    new CustomEvent('axantilo-scroll-section', { detail: { id } })
   );
 }

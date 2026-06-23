@@ -1,5 +1,5 @@
 /**
- * NodeResolver Agent — maps abstract Klaro steps → concrete n8n node types.
+ * NodeResolver Agent — maps abstract Axantilo steps → concrete n8n node types.
  */
 
 import type { WorkflowStep } from '@/lib/types';
@@ -24,9 +24,11 @@ const GENERIC_NODES = new Set([
 ]);
 
 function preferAiNode(index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
+  // Bevorzugt der AI Agent (echte Agent-Struktur: Chat-Model-Sub-Node, Tools, Memory).
+  // Fällt auf den eigenständigen OpenAI-Node zurück, wenn der Agent nicht im Katalog ist.
   return (
-    index.find(e => e.name === '@n8n/n8n-nodes-langchain.openAi')
-    ?? index.find(e => e.name === '@n8n/n8n-nodes-langchain.agent')
+    index.find(e => e.name === '@n8n/n8n-nodes-langchain.agent')
+    ?? index.find(e => e.name === '@n8n/n8n-nodes-langchain.openAi')
     ?? index.find(e => e.name === 'n8n-nodes-base.openAi')
     ?? index.find(e => e.displayName === 'OpenAI')
   );
@@ -127,7 +129,7 @@ function makeResult(stepId: string, entry: N8nCatalogIndexEntry): NodeResolverRe
 /** Letzter Ausweg pro Step-Typ — jeder Schritt MUSS einen echten n8n-Node bekommen. */
 const FALLBACK_BY_TYPE: Record<string, string> = {
   trigger: 'n8n-nodes-base.manualTrigger',
-  ai: '@n8n/n8n-nodes-langchain.openAi',
+  ai: '@n8n/n8n-nodes-langchain.agent',
   decision: 'n8n-nodes-base.if',
   output: 'n8n-nodes-base.set',
   action: 'n8n-nodes-base.httpRequest',
@@ -165,10 +167,10 @@ function buildResolverPrompt(
 ): { system: string; user: string } {
   const candidateList = candidates
     .slice(0, 50)
-    .map(c => `- ${c.name} (${c.displayName}) [${c.klaroCategory}]`)
+    .map(c => `- ${c.name} (${c.displayName}) [${c.axantiloCategory}]`)
     .join('\n');
 
-  const system = `Du bist der NodeResolver in Klaro — mappe abstrakte Workflow-Schritte auf konkrete n8n-Node-Typen.
+  const system = `Du bist der NodeResolver in Axantilo — mappe abstrakte Workflow-Schritte auf konkrete n8n-Node-Typen.
 Wähle NUR aus der Kandidatenliste. Antworte AUSSCHLIESSLICH mit JSON:
 {"steps":[{"step_id":"...","n8n_type":"...","type_version":1,"parameters":{},"credential_type":"..."}]}
 parameters: nur sinnvolle Defaults aus dem Schritt-Kontext (sonst leeres Objekt).

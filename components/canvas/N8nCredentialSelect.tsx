@@ -1,45 +1,114 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Plus, Loader2, X, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Key, Loader2, X, Check } from 'lucide-react';
 import type { N8nCredentialTypeDescription } from '@/lib/n8n-catalog-types';
+import { resolveOAuthProvider, OAUTH_PROVIDERS, normalizeCredentialTypeName, type OAuthProvider } from '@/lib/oauth-config';
+
+type StoredCredential = {
+  id: string;
+  tool_name: string;
+  credential_type: string;
+  status: string;
+  n8n_credential_id: string | null;
+  created_at?: string;
+};
+
+function useOAuthConnect({
+  oauthProvider,
+  projectId,
+  toolName,
+  credentialTypeName,
+  onSuccess,
+}: {
+  oauthProvider: OAuthProvider | null;
+  projectId?: string;
+  toolName: string;
+  credentialTypeName: string;
+  onSuccess: (credId: string) => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!oauthProvider) return;
+    function onMessage(e: MessageEvent) {
+      const data = e.data as { type?: string; ok?: boolean; credentialId?: string; error?: string };
+      if (data?.type !== 'axantilo_oauth') return;
+      setConnecting(false);
+      if (data.ok && data.credentialId) {
+        setError('');
+        onSuccess(data.credentialId);
+      } else if (data.error) {
+        setError(data.error);
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [oauthProvider, onSuccess]);
+
+  const connect = useCallback(() => {
+    if (!oauthProvider) return;
+    setError('');
+    setConnecting(true);
+    const returnUrl = window.location.pathname + window.location.search;
+    const url = `/api/oauth/${oauthProvider}?` + new URLSearchParams({
+      project_id: projectId ?? '',
+      tool_name: toolName,
+      n8n_credential_type: credentialTypeName,
+      return_url: returnUrl,
+    }).toString();
+    const popup = window.open(url, 'axantilo_oauth', 'width=600,height=720');
+    if (!popup) {
+      window.location.href = url;
+    }
+  }, [oauthProvider, projectId, toolName, credentialTypeName]);
+
+  return { connecting, error, connect, setError };
+}
 
 export default function N8nCredentialSelect({
   projectId,
   toolName,
+  n8nType,
   credentialType,
   value,
   onChange,
 }: {
   projectId?: string;
   toolName: string;
+  n8nType?: string;
   credentialType: N8nCredentialTypeDescription;
   value?: string;
   onChange: (val: string) => void;
 }) {
-  const [credentials, setCredentials] = useState<any[]>([]);
+  const [credentials, setCredentials] = useState<StoredCredential[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+
+  const oauthProvider = resolveOAuthProvider(credentialType.name, n8nType);
+
+  const refetchCredentials = useCallback(async () => {
+    const url = projectId ? `/api/n8n/credentials?project_id=${projectId}` : '/api/n8n/credentials';
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.credentials || []) as StoredCredential[];
+  }, [projectId]);
 
   useEffect(() => {
     async function fetchCredentials() {
       setLoading(true);
       try {
-        const url = projectId ? `/api/n8n/credentials?project_id=${projectId}` : '/api/n8n/credentials';
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          const creds = data.credentials || [];
-          setCredentials(creds);
-          
-          // Auto-Select if exactly one credential exists for this tool
-          if (!value) {
-            const toolCreds = creds.filter((c: any) => c.tool_name === toolName);
-            if (toolCreds.length === 1 && toolCreds[0].n8n_credential_id) {
-              onChange(toolCreds[0].n8n_credential_id);
-            }
+        const creds = await refetchCredentials();
+        setCredentials(creds);
+
+        if (!value) {
+          const toolCreds = creds.filter((c: StoredCredential) => c.tool_name === toolName);
+          if (toolCreds.length === 1 && toolCreds[0].n8n_credential_id) {
+            onChange(toolCreds[0].n8n_credential_id);
           }
         }
       } catch (e) {
@@ -49,47 +118,117 @@ export default function N8nCredentialSelect({
       }
     }
     fetchCredentials();
-  }, [projectId, toolName, value, onChange]);
+  }, [projectId, toolName, value, onChange, refetchCredentials]);
 
-  // Filter credentials specific to this tool
   const toolCredentials = credentials.filter(c => c.tool_name === toolName);
-
   const selectedCred = toolCredentials.find(c => c.n8n_credential_id === value);
+  const isConnected = Boolean(selectedCred?.n8n_credential_id || value);
+
+  const handleOAuthSuccess = useCallback(async (credId: string) => {
+    const creds = await refetchCredentials();
+    setCredentials(creds);
+    onChange(credId);
+  }, [onChange, refetchCredentials]);
+
+  const oauth = useOAuthConnect({
+    oauthProvider,
+    projectId,
+    toolName,
+    credentialTypeName: normalizeCredentialTypeName(credentialType.name) || credentialType.name,
+    onSuccess: handleOAuthSuccess,
+  });
 
   const handleDelete = async () => {
     if (!selectedCred) return;
-    if (!confirm('Sicher, dass du dieses Credential löschen willst?')) return;
+    if (!confirm('Sicher, dass du diese Verbindung trennen willst?')) return;
     setLoading(true);
     try {
       const res = await fetch('/api/n8n/credentials', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selectedCred.id })
+        body: JSON.stringify({ id: selectedCred.id }),
       });
       if (res.ok) {
         setCredentials(prev => prev.filter(c => c.id !== selectedCred.id));
         onChange('');
       } else {
-        alert('Fehler beim Löschen des Credentials.');
+        alert('Fehler beim Trennen der Verbindung.');
       }
     } catch (e) {
       console.error(e);
-      alert('Fehler beim Löschen.');
+      alert('Fehler beim Trennen.');
     } finally {
       setLoading(false);
     }
   };
+
+  // OAuth-Tools (Google, Microsoft, …): direkter Verbinden-Button — kein Dropdown/Popup.
+  if (oauthProvider) {
+    const label = OAUTH_PROVIDERS[oauthProvider].label;
+    return (
+      <div className="space-y-3">
+        {isConnected ? (
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+            <Check size={16} className="text-emerald-600 shrink-0" />
+            <span className="text-sm font-medium text-emerald-800 flex-1">{label} verbunden</span>
+            <button
+              type="button"
+              onClick={oauth.connect}
+              disabled={loading || oauth.connecting}
+              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+            >
+              Erneut verbinden
+            </button>
+            {selectedCred && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={loading}
+                className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+              >
+                Trennen
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Verbinde dein <span className="font-semibold">{label}</span>-Konto in drei Klicks —
+              Konto wählen, bestätigen, fertig. Kein API-Key nötig.
+            </p>
+            <button
+              type="button"
+              onClick={oauth.connect}
+              disabled={loading || oauth.connecting}
+              className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {oauth.connecting
+                ? <><Loader2 size={16} className="animate-spin" /> Warte auf Bestätigung…</>
+                : <>Mit {label} verbinden</>}
+            </button>
+            <p className="text-[11px] text-gray-500 flex items-start gap-1.5">
+              <Key size={12} className="shrink-0 mt-0.5" />
+              Es öffnet sich ein Login-Fenster von {label}. Die Zugangsdaten werden sicher gespeichert —
+              Axantilo sieht dein Passwort nie.
+            </p>
+          </>
+        )}
+        {oauth.error && (
+          <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{oauth.error}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
       <div className="flex gap-2 items-center">
         <div className="relative flex-1">
           <select
-            value={selectedCred ? selectedCred.n8n_credential_id : value || ''}
+            value={(selectedCred ? selectedCred.n8n_credential_id : value) || ''}
             onChange={(e) => {
               if (e.target.value === 'new') {
                 setModalOpen(true);
-                // Don't change actual value yet
               } else {
                 onChange(e.target.value);
               }
@@ -99,7 +238,7 @@ export default function N8nCredentialSelect({
           >
             <option value="" disabled>Zugangsdaten auswählen…</option>
             {toolCredentials.map(c => (
-              <option key={c.id} value={c.n8n_credential_id}>
+              <option key={c.id} value={c.n8n_credential_id ?? ''}>
                 {credentialType.displayName} (Gespeichert)
               </option>
             ))}
@@ -107,7 +246,7 @@ export default function N8nCredentialSelect({
           </select>
           <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         </div>
-        
+
         {selectedCred && (
           <div className="flex gap-1 shrink-0">
             <button
@@ -139,11 +278,9 @@ export default function N8nCredentialSelect({
         mode={selectedCred ? 'edit' : 'create'}
         onSuccess={(credId) => {
           setModalOpen(false);
-          // Refetch to get the new credential in the list
-          fetch(projectId ? `/api/n8n/credentials?project_id=${projectId}` : '/api/n8n/credentials')
-            .then(res => res.json())
-            .then(data => {
-              setCredentials(data.credentials || []);
+          refetchCredentials()
+            .then(creds => {
+              setCredentials(creds);
               onChange(credId);
             });
         }}
@@ -173,10 +310,7 @@ function N8nCredentialModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  if (!open || !mounted) return null;
+  if (!open || typeof document === 'undefined') return null;
 
   const handleSave = async () => {
     if (!apiKey.trim()) {
@@ -205,8 +339,8 @@ function N8nCredentialModal({
       } else {
         throw new Error('Credential konnte nicht gespeichert werden.');
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -257,7 +391,7 @@ function N8nCredentialModal({
           </p>
 
           {error && <p className="mt-4 text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-          
+
           <div className="mt-6 flex gap-3">
             <button
               onClick={onClose}

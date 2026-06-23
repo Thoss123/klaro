@@ -175,7 +175,7 @@ function getChatBackgroundStatus(
   if (running.length > 0) {
     const researching = running.some(a => a.type === 'research_solutions');
     if (researching) {
-      return 'Klaro recherchiert Lösungsansätze — du kannst schon weiterschreiben.';
+      return 'Axantilo recherchiert Lösungsansätze — du kannst schon weiterschreiben.';
     }
     return 'Canvas und Memory werden im Hintergrund aktualisiert — du kannst schon weiterschreiben.';
   }
@@ -502,6 +502,13 @@ function ChatPageContent() {
   const [preparedNextSessionId, setPreparedNextSessionId] = useState<string | null>(null);
   // Phase-4-Abschluss: „Was kommt als Nächstes?" (weiterer Workflow / neuer Bereich) läuft.
   const [isNextStepBusy, setIsNextStepBusy] = useState(false);
+  // Kurzer Hinweis-Toast (z. B. „keine Internetverbindung") — blendet sich selbst aus.
+  const [netToast, setNetToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!netToast) return;
+    const t = setTimeout(() => setNetToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [netToast]);
   const [agentActions, setAgentActions] = useState<AgentAction[]>([]);
   const [pendingWelcome, setPendingWelcome] = useState<{ sessionId: string, onboarding?: OnboardingData } | null>(null);
   // Synchronous in-memory lock: prevents concurrent isHiddenInit calls racing through
@@ -958,7 +965,7 @@ function ChatPageContent() {
       }
 
       // Cross-project context: what this user's company already did in OTHER projects
-      // (built workflows, company profile, implementer). Lets the coach recognize
+      // (built workflows, company profile). Lets the coach recognize
       // returning users in Phase 1 instead of starting cold. Cached per project.
       let crossProjectText: string | null = null;
       const projKey = projId ?? null;
@@ -1116,7 +1123,7 @@ function ChatPageContent() {
           projectId: projId,
           phase: chatPhase,
         });
-        const aid = addAction('canvas_update', `Klaro strukturiert das Canvas neu...`);
+        const aid = addAction('canvas_update', `Aktualisiere Canvas…`);
         const workerHistory = [
           ...payloadMessages,
           { role: 'assistant', content: stripInternalTags(assistantContent) },
@@ -1148,7 +1155,7 @@ function ChatPageContent() {
                 chatPhase
               );
               setCanvasData(withSessionPhase(normalized, chatPhase));
-              completeAction(aid, 'Canvas erfolgreich aktualisiert');
+              completeAction(aid, 'Canvas aktualisiert');
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
               completeAction(aid, `Canvas: ${canvasSkipUserLabel(reason, data.detail)}`);
@@ -1180,9 +1187,15 @@ function ChatPageContent() {
           const m = assistantContent.match(/<canvas_update>([\s\S]*?)<\/canvas_update>/);
           if (m) {
             shownCanvasActions.add('coach_canvas');
-            const aid = addAction('canvas_update', 'Canvas wird aktualisiert…');
+            const aid = addAction('canvas_update', 'Aktualisiere Canvas…');
             const ok = applyCoachCanvasUpdate(m[1]);
-            completeAction(aid, ok ? 'Canvas aktualisiert' : 'Canvas: nichts Neues');
+            // Das Schreiben ist synchron/instant — kurz den Running-Zustand stehen
+            // lassen (wie beim Memory-Tool-Call), damit „Aktualisiere Canvas…" mit
+            // Spinner/Shimmer sichtbar ist, bevor es auf „Canvas aktualisiert" kippt.
+            setTimeout(
+              () => completeAction(aid, ok ? 'Canvas aktualisiert' : 'Canvas: nichts Neues'),
+              900,
+            );
           }
         }
 
@@ -1219,13 +1232,49 @@ function ChatPageContent() {
           }
         }
 
+        // <workflow_plan>{…}</workflow_plan> — der Coach legt in Phase 3 selbst einen
+        // Workflow-Plan ins Canvas (kein Tool-Call mehr). Tag parsen, an create-plan-Route
+        // schicken; Supabase Realtime liefert das fertige Canvas zurück.
+        if (assistantContent.includes('</workflow_plan>')) {
+          const planMatches = Array.from(
+            assistantContent.matchAll(/<workflow_plan>([\s\S]*?)<\/workflow_plan>/g),
+          );
+          planMatches.forEach(match => {
+            const key = `workflow_plan_${match[1]}`;
+            if (shownCanvasActions.has(key)) return;
+            const planProjId = currentProject?.id;
+            if (!planProjId) return;
+            let plan: { title?: string; description?: string; pain_point_id?: string; steps?: unknown };
+            try {
+              plan = JSON.parse(match[1].trim());
+            } catch {
+              return; // Tag noch unvollständig / kaputtes JSON — beim nächsten Chunk erneut versuchen
+            }
+            if (!plan.pain_point_id || !Array.isArray(plan.steps)) return;
+            shownCanvasActions.add(key);
+            const aid = addAction('create_workflow_plan', 'Aktualisiere Canvas…');
+            fetch('/api/canvas-worker/create-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ project_id: planProjId, ...plan }),
+            })
+              .then(res => {
+                completeAction(aid, res.ok ? 'Canvas aktualisiert' : 'Canvas: Plan fehlgeschlagen');
+              })
+              .catch(() => completeAction(aid, 'Canvas: Plan fehlgeschlagen'));
+          });
+        }
+
         // Process tool calls from the stream
         const toolMatches = Array.from(assistantContent.matchAll(/<tool_call>([\s\S]*?)<\/tool_call>/g));
         if (toolMatches.length > 0) {
           toolMatches.forEach(match => {
             try {
               const toolCall = JSON.parse(match[1]);
-              const key = `tool_${match.index}`;
+              // Content-based key (not match.index): a <stream_reset> truncates the
+              // buffer, so indices shift between rounds — an index key would collide
+              // and skip a later tool call. The JSON payload is a stable dedup key.
+              const key = `tool_${match[1]}`;
               if (!shownCanvasActions.has(key)) {
                 shownCanvasActions.add(key);
                 if (toolCall.type === 'deploy_workflow') {
@@ -1240,9 +1289,6 @@ function ChatPageContent() {
                 } else if (toolCall.type === 'research_solutions') {
                   const aid = addAction('research_solutions', `Recherchiere Lösungsansätze…`);
                   setTimeout(() => completeAction(aid, `Recherche abgeschlossen`), 4000);
-                } else if (toolCall.type === 'create_workflow_plan') {
-                  const aid = addAction('create_workflow_plan', `Erstelle Workflow-Plan…`);
-                  setTimeout(() => completeAction(aid, `Plan erfolgreich auf dem Canvas platziert`), 2500);
                 } else if (toolCall.type === 'build_workflow') {
                   const wfId = toolCall.args?.workflow_id as string | undefined;
                   const aid = addAction('build_workflow', `Baue Workflow live…`);
@@ -1267,6 +1313,17 @@ function ChatPageContent() {
               }
             } catch (e) {}
           });
+        }
+
+        // <stream_reset> — der Coach hat in einer Tool-Runde voreilig live geantwortet;
+        // verwirf den bisher angezeigten Text, nur die finale Antwort soll stehen bleiben.
+        // Tag-Seiteneffekte vor dem Reset (Tool-Calls, Builds) sind bereits gefeuert und
+        // über shownCanvasActions inhaltsbasiert dedupliziert. Die Canvas-Schreib-Flags
+        // lösen wir, damit die finale Runde das Canvas autoritativ (neu) schreiben kann.
+        if (assistantContent.includes('</stream_reset>')) {
+          assistantContent = assistantContent.replace(/[\s\S]*<\/stream_reset>/, '');
+          shownCanvasActions.delete('coach_canvas');
+          shownCanvasActions.delete('trigger_canvas');
         }
 
         // Raw content keeps <options> etc. for OptionsCard; MessageBubble strips for display.
@@ -1435,6 +1492,12 @@ function ChatPageContent() {
         console.log('Stream aborted');
       } else {
         console.error('Chat API Error:', err);
+        // Netzwerk-/Offline-Fehler dem Nutzer als Toast zeigen (statt nur Konsole).
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          setNetToast('Keine Internetverbindung — bitte erneut senden.');
+        } else if (err.name === 'TypeError' || /fetch|network|Failed to fetch/i.test(err?.message || '')) {
+          setNetToast('Verbindung fehlgeschlagen — bitte erneut senden.');
+        }
       }
     } finally {
       streamReaderRef.current = null;
@@ -1867,13 +1930,12 @@ function ChatPageContent() {
       await summarizeUmsetzungToMemory();
       const newName = `${currentProject.name} — weiterer Bereich`;
       const newProjectId = await createProject(userId, newName);
-      // Seed: nur Firma + Umsetzer übernehmen, der Rest startet leer.
+      // Seed: nur Firma übernehmen, der Rest startet leer.
       const seed: CanvasData = {
         ...emptyCanvas,
         company: canvasData.company,
-        implementer: canvasData.implementer,
       };
-      const hint = `Bekannte Firma, neuer Bereich. Firmen-Infos und Umsetzer sind bereits bekannt (siehe Canvas/Historie). Bestätige zu Beginn nur kurz, ob das alles noch passt, statt alles neu abzufragen, und finde dann die Zeitfresser im NEUEN Unternehmensbereich.`;
+      const hint = `Bekannte Firma, neuer Bereich. Firmen-Infos sind bereits bekannt (siehe Canvas/Historie). Bestätige zu Beginn nur kurz, ob das alles noch passt, statt alles neu abzufragen, und finde dann die Zeitfresser im NEUEN Unternehmensbereich.`;
       const ob = { ...(onboarding || {}), memory: hint } as OnboardingData;
       const newId = await createSession(ob, userId, 'diagnose', hint, seed, newProjectId);
       setCurrentProject({ id: newProjectId, name: newName });
@@ -2082,9 +2144,23 @@ function ChatPageContent() {
     </div>
   );
 
+  // Live-Indikator fürs Canvas: an, solange eine Canvas-bezogene Aktion läuft
+  // (Worker-Strukturierung, Workflow-Build/-Plan/-Edit). So sieht der Nutzer, dass
+  // sich das Canvas gleich ändert, und denkt während der Hintergrund-Latenz nicht,
+  // es sei eingefroren.
+  const isCanvasUpdating = agentActions.some(
+    a =>
+      a.status === 'running' &&
+      (a.type === 'canvas_update' ||
+        a.type === 'create_workflow_plan' ||
+        a.type === 'build_workflow' ||
+        a.type === 'edit_workflow'),
+  );
+
   const roadmapCanvasEl = (
     <RoadmapCanvas
       data={canvasData}
+      isUpdating={isCanvasUpdating}
       currentPhase={sessions.find(s => s.id === currentSessionId)?.phase || canvasData.phase || 'diagnose'}
       maxReachedPhase={maxReachedPhase}
       onPhaseClick={handlePhaseCircleClick}
@@ -2359,7 +2435,7 @@ function ChatPageContent() {
                             Nächste Phase wird vorbereitet
                           </p>
                           <p className="text-sm text-indigo-800 mt-1.5 leading-snug">
-                            Klaro fasst <strong>{currentPhaseLabel}</strong> zusammen und richtet{' '}
+                            Axantilo fasst <strong>{currentPhaseLabel}</strong> zusammen und richtet{' '}
                             <strong>{nextPhaseLabel}</strong> ein (Memory, Canvas, neue Session).
                             Das läuft im Hintergrund — du kannst weiter im Chat schreiben.
                           </p>
@@ -2442,6 +2518,21 @@ function ChatPageContent() {
                 </motion.div>
               );
             })()}
+
+            {/* Netzwerk-/Offline-Toast */}
+            <AnimatePresence>
+              {netToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 12 }}
+                  className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-xl"
+                  role="alert"
+                >
+                  {netToast}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {!isLoadingSession && (
               <>

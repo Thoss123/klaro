@@ -45,13 +45,17 @@ const GROESSE_OPTIONS: WizardOption[] = [
 
 const ERFAHRUNG_OPTIONS: WizardOption[] = [
   { label: 'Noch gar nicht — wir fangen bei null an', value: 'Komplettes Neuland' },
-  { label: 'Wir haben schon mit ChatGPT & Co. experimentiert', value: 'Haben schon damit rumgespielt' },
-  { label: 'Einzelne Tools laufen, aber ohne System', value: 'Nutzen es regelmäßig aber unsystematisch' },
-  { label: 'Es gibt schon Automatisierungen oder Workflows', value: 'Haben schon Workflows im Einsatz' },
+  { label: 'Wir nutzen ChatGPT oder ähnliche Tools', value: 'Nutzen ChatGPT oder ähnliche Tools' },
+  { label: 'Wir automatisieren bereits einzelne Prozesse mit KI', value: 'Automatisieren bereits einzelne Prozesse' },
+  { label: 'KI gehört bei uns fest zum Arbeitsalltag', value: 'AI first' },
 ];
 
 /** Stored in DB as readable text — chat route matches via keywords */
 const ZIEL_OPTIONS: WizardOption[] = [
+  {
+    label: 'Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt',
+    value: 'Will wissen, ob KI für uns sinnvoll ist',
+  },
   {
     label: 'Wir wissen noch nicht, wo wir mit KI und Automatisierung anfangen sollen',
     value: 'Weiß nicht, wo wir anfangen sollen',
@@ -64,21 +68,12 @@ const ZIEL_OPTIONS: WizardOption[] = [
     label: 'Wir haben einen genauen Plan — und wollen diesen jetzt 1:1 umsetzen',
     value: 'Genauer Plan, nur noch umsetzen',
   },
-  {
-    label: 'Wir wollen erst prüfen, ob sich KI für uns überhaupt lohnt',
-    value: 'Will wissen, ob KI für uns sinnvoll ist',
-  },
-  {
-    label: 'Wir wollen unserer IT oder einem Dienstleister ein klares Briefing geben',
-    value: 'Will meiner IT ein Briefing geben',
-  },
 ];
 
 const TECHNIK_OPTIONS: WizardOption[] = [
   { label: 'Wenig bis gar nicht — wir brauchen einfache Erklärungen', value: 'Wenig versiert' },
   { label: 'Basiswissen — wir können Software bedienen und verstehen die Basics', value: 'Basiswissen' },
-  { label: 'Fortgeschritten — wir können Tools verknüpfen (z.B. Zapier, Make)', value: 'Fortgeschritten' },
-  { label: 'Sehr versiert — wir programmieren selbst oder arbeiten mit APIs', value: 'Sehr versiert' },
+  { label: 'Fortgeschritten — wir finden uns mit API Keys und Co. zurecht', value: 'Fortgeschritten' },
 ];
 
 const UMSETZER_OPTIONS: WizardOption[] = [
@@ -97,9 +92,9 @@ const HINDERNIS_OPTIONS: WizardOption[] = [
 ];
 
 const TEMPO_OPTIONS: WizardOption[] = [
-  { label: 'So schnell wie möglich — erste Quick Wins diese Woche', value: 'Diese Woche' },
-  { label: 'Innerhalb des nächsten Monats', value: 'Innerhalb eines Monats' },
-  { label: 'Kein fester Zeitdruck — wir planen strukturiert', value: 'Kein Zeitdruck' },
+  { label: 'Schnell ans Ziel — eine pragmatische Lösung reicht mir', value: 'Schnell pragmatisch' },
+  { label: 'Tempo ist mir nicht so wichtig — Hauptsache, die Lösung passt zu uns', value: 'Offen flexible' },
+  { label: 'Gründlichkeit vor Tempo — lieber eine vollständige, saubere Lösung', value: 'Gründlichkeit' },
 ];
 
 const ROLLE_OPTIONS: WizardOption[] = [
@@ -112,15 +107,71 @@ const ROLLE_OPTIONS: WizardOption[] = [
   { label: 'Sonstige Rolle', value: 'Sonstige Rolle' },
 ];
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 11;
+
+// DEV ONLY: sensible defaults so the dev "Restart" loop can click through (or
+// skip) onboarding instantly. Picks the first option value of each question.
+const DEV_DEFAULTS: OnboardingData = {
+  branche: BRANCHE_OPTIONS[0].value,
+  unternehmensgroesse: GROESSE_OPTIONS[0].value,
+  ki_erfahrung: ERFAHRUNG_OPTIONS[0].value,
+  ziel: ZIEL_OPTIONS[0].value,
+  rolle_im_unternehmen: ROLLE_OPTIONS[0].value,
+  wer_setzt_um: UMSETZER_OPTIONS[0].value,
+  technik_level: TECHNIK_OPTIONS[0].value,
+  hindernis: HINDERNIS_OPTIONS[0].value,
+  tempo: TEMPO_OPTIONS[0].value,
+  vorname: 'Dev',
+  firmenname: 'Dev GmbH',
+};
 
 export default function OnboardingWizard() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<Partial<OnboardingData>>({});
+  // DEV: prefill answers when arriving via the dashboard "Restart" button
+  // (?dev=1) so the flow can be clicked through — or skipped — instantly.
+  const [data, setData] = useState<Partial<OnboardingData>>(() => {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('dev') === '1'
+    ) {
+      return { ...DEV_DEFAULTS };
+    }
+    return {};
+  });
   const [existingAccount, setExistingAccount] = useState<{ email: string; password: string } | null>(null);
   const [existingAccountBusy, setExistingAccountBusy] = useState(false);
   const [existingAccountError, setExistingAccountError] = useState<string | null>(null);
+  // DEV: when arriving from the dashboard "Restart" button we're already logged
+  // in. Detect that so the final step skips re-signup, and prefill answers.
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const isDev = process.env.NODE_ENV === 'development';
+
+  useEffect(() => {
+    if (!isDev) return;
+    createSupabaseBrowserClient().auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // DEV: build a complete payload (fill any gaps with defaults) and start a
+  // fresh project + chat for the already-logged-in user — no re-signup.
+  const handleDevSkip = async () => {
+    const supabase = createSupabaseBrowserClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push('/login'); return; }
+    try {
+      const payload = { ...DEV_DEFAULTS, ...buildPayload() } as OnboardingData;
+      const projectId = await ensureDefaultProject(session.user.id);
+      const sessionId = await createSession(payload, session.user.id, 'diagnose', undefined, undefined, projectId);
+      clearOnboardingStorage();
+      router.push(`/chat?id=${sessionId}`);
+    } catch (e) {
+      console.error('Dev skip failed', e);
+    }
+  };
 
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
@@ -130,7 +181,7 @@ export default function OnboardingWizard() {
   };
 
   const buildPayload = (): OnboardingData => {
-    const intro = typeof window !== 'undefined' ? localStorage.getItem('klaro_intro_message') : null;
+    const intro = typeof window !== 'undefined' ? localStorage.getItem('axantilo_intro_message') : null;
     return (intro ? { ...data, intro_message: intro } : data) as OnboardingData;
   };
 
@@ -143,7 +194,7 @@ export default function OnboardingWizard() {
 
   const clearOnboardingStorage = () => {
     localStorage.removeItem('pending_onboarding');
-    localStorage.removeItem('klaro_intro_message');
+    localStorage.removeItem('axantilo_intro_message');
   };
 
   const handleAuthSuccess = async () => {
@@ -217,7 +268,7 @@ export default function OnboardingWizard() {
         return (
           <QuestionStep
             title="In welcher Branche ist dein Unternehmen tätig?"
-            subtitle="Damit Klaro von Anfang an branchentypische Prozesse versteht."
+            subtitle="Damit Axantilo von Anfang an branchentypische Prozesse versteht."
             options={BRANCHE_OPTIONS}
             value={data.branche}
             onSelect={(v) => updateData('branche', v)}
@@ -280,18 +331,6 @@ export default function OnboardingWizard() {
       case 6:
         return (
           <QuestionStep
-            title="Wer soll KI-Lösungen bei euch später umsetzen?"
-            subtitle="Klaro baut vieles automatisch — du kannst den fertigen Workflow später einfach teilen, damit jemand Technischeres die Zugänge hinzufügen kann."
-            options={UMSETZER_OPTIONS}
-            value={data.wer_setzt_um}
-            onSelect={(v) => updateData('wer_setzt_um', v)}
-            onNext={nextStep}
-            onBack={prevStep}
-          />
-        );
-      case 7:
-        return (
-          <QuestionStep
             title="Wie technisch versiert seid ihr?"
             subtitle="Das hilft uns, Erklärungen und Tools auf eurem Level zu halten."
             options={TECHNIK_OPTIONS}
@@ -301,7 +340,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 8:
+      case 7:
         return (
           <QuestionStep
             title="Was hat euch bisher ausgebremst?"
@@ -314,11 +353,11 @@ export default function OnboardingWizard() {
             mode="multi"
           />
         );
-      case 9:
+      case 8:
         return (
           <QuestionStep
-            title="Bis wann möchtest du erste spürbare Ergebnisse?"
-            subtitle="Beeinflusst, wie fokussiert der Coach die nächsten Schritte plant."
+            title="Wie wichtig ist dir Tempo bei der Umsetzung?"
+            subtitle="Hilft dem Coach, die Prioritäten richtig zu setzen."
             options={TEMPO_OPTIONS}
             value={data.tempo}
             onSelect={(v) => updateData('tempo', v)}
@@ -326,7 +365,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 10:
+      case 9:
         return (
           <TextQuestionStep
             title="Wie dürfen wir dich im Chat ansprechen?"
@@ -338,7 +377,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 11:
+      case 10:
         return (
           <TextQuestionStep
             title="Wie heißt dein Unternehmen?"
@@ -350,7 +389,7 @@ export default function OnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 12:
+      case 11:
         if (existingAccount) {
           return (
             <OnboardingExistingAccount
@@ -365,6 +404,24 @@ export default function OnboardingWizard() {
                 setExistingAccountError(null);
               }}
             />
+          );
+        }
+        if (isLoggedIn) {
+          // Already signed in (e.g. dev restart) — skip the auth wall entirely.
+          return (
+            <div className="flex flex-col gap-6 text-center">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Fast geschafft!</h2>
+                <p className="text-gray-500">Du bist bereits angemeldet — wir starten direkt einen neuen Chat.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAuthSuccess}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+              >
+                Chat starten <ArrowRight size={20} />
+              </button>
+            </div>
           );
         }
         return (
@@ -401,6 +458,17 @@ export default function OnboardingWizard() {
           ))}
         </div>
       </div>
+
+      {isDev && isLoggedIn && (
+        <button
+          type="button"
+          onClick={handleDevSkip}
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 shadow-lg transition-colors"
+          title="DEV: Onboarding überspringen, direkt in den Chat"
+        >
+          ⚡ Skip (Dev) <ArrowRight size={16} />
+        </button>
+      )}
 
       <div className="flex-1 flex items-center justify-center p-6 pb-32">
         <div className="w-full max-w-xl">

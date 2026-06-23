@@ -17,7 +17,7 @@ const INDEX: N8nCatalogIndexEntry[] = [
     hasCredentials: true,
     credentialTypes: ['gmailOAuth2'],
     iconPath: null,
-    klaroCategory: 'action',
+    axantiloCategory: 'action',
   },
   {
     name: '@n8n/n8n-nodes-langchain.openAi',
@@ -29,7 +29,7 @@ const INDEX: N8nCatalogIndexEntry[] = [
     hasCredentials: true,
     credentialTypes: ['openAiApi'],
     iconPath: null,
-    klaroCategory: 'ai',
+    axantiloCategory: 'ai',
   },
 ];
 

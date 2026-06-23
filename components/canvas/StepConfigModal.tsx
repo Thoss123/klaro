@@ -97,7 +97,7 @@ export default function StepConfigModal({
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const webhookUrl = `https://n8n.deinefirma.de/webhook/klaro-${step.id}`;
+  const webhookUrl = `https://n8n.deinefirma.de/webhook/axantilo-${step.id}`;
 
   const handleSave = () => {
     setError('');

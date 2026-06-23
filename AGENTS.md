@@ -16,8 +16,8 @@
 
 ## Learned Workspace Facts
 
-- This workspace is **Klaro** (Next.js AI automation coach for KMU), not the Innoweso project referenced in user rules.
-- Klaro guides users through four phases: Diagnose → Analyse → Plan → Umsetzung; Phase 4 deploys n8n workflows from Phase 3 canvas plans.
+- This workspace is **Axantilo** (Next.js AI automation coach for KMU), not the Innoweso project referenced in user rules.
+- Axantilo guides users through four phases: Diagnose → Analyse → Plan → Umsetzung; Phase 4 deploys n8n workflows from Phase 3 canvas plans.
 - Stack: Next.js App Router, Supabase (auth/data, schema in `supabase/migrations/` at `./supabase`), Mistral for chat/canvas-worker via `lib/ai-provider.ts`/`lib/ai-tools.ts` (Gemini fallback); n8n on Hostinger (REST + instance-level MCP via `N8N_MCP_URL`/`N8N_MCP_TOKEN` in `lib/n8n-mcp-bridge.ts` — not `N8N_API_KEY`); deploy sets `availableInMCP: true` automatically; central Twilio/Resend/WhatsApp (one shared account, credentials in n8n+Vercel env — not `user_credentials`; WhatsApp via Twilio).
 - System prompts and phase logic live in `lib/claude.ts`; chat API in `app/api/chat/route.ts`; phase kickoff in `lib/phase-welcome.ts` and `lib/session-kickoff.ts`.
 - Chat `sessionPhase` follows the active session; `project_canvas` holds cross-phase blobs — do not conflate session phase with canvas progress phase.

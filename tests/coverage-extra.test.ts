@@ -40,7 +40,7 @@ describe('toDisplayText edge cases', () => {
   });
 });
 
-describe('normalizeCanvasData — use cases, documents, pain points, implementer', () => {
+describe('normalizeCanvasData — use cases, documents, pain points', () => {
   it('normalizes use cases and filters tools against user chat', () => {
     const raw = {
       use_cases: [
@@ -77,21 +77,5 @@ describe('normalizeCanvasData — use cases, documents, pain points, implementer
     expect(c.pain_points).toHaveLength(1);
     expect(c.pain_points[0].priority).toBe('mittel');
     expect(c.pain_points[0].rank).toBe(1);
-  });
-
-  it('captures the implementer profile only in analyse phase', () => {
-    const raw = { implementer: { who: 'Chef', skill_level: 'fortgeschritten', automation_experience: 'etwas' } };
-    const inAnalyse = normalizeCanvasData(raw, null, 'analyse');
-    expect(inAnalyse.implementer?.who).toBe('Chef');
-    expect(inAnalyse.implementer?.skill_level).toBe('fortgeschritten');
-
-    const inPlan = normalizeCanvasData(raw, null, 'plan');
-    expect(inPlan.implementer).toBeUndefined();
-  });
-
-  it('defaults an unknown skill level to grundkenntnisse', () => {
-    const raw = { implementer: { who: 'X', skill_level: 'nonsense' } };
-    const c = normalizeCanvasData(raw, null, 'analyse');
-    expect(c.implementer?.skill_level).toBe('grundkenntnisse');
   });
 });

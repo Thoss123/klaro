@@ -59,12 +59,12 @@ export default function PhaseFeedbackModal({
     : `Phase „${phaseLabel}" abgeschlossen`;
 
   const satisfactionQuestion = isFinal
-    ? 'Wie war deine Gesamterfahrung mit Klaro?'
+    ? 'Wie war deine Gesamterfahrung mit Axantilo?'
     : `Wie hat dir die Phase „${phaseLabel}" gefallen?`;
 
   const helpfulnessQuestion = isFinal
-    ? 'Hat dich Klaro insgesamt weitergebracht?'
-    : 'Hat dich Klaro in dieser Phase weitergebracht?';
+    ? 'Hat dich Axantilo insgesamt weitergebracht?'
+    : 'Hat dich Axantilo in dieser Phase weitergebracht?';
 
   useEffect(() => {
     if (step !== 'thanks') return;
@@ -117,7 +117,7 @@ export default function PhaseFeedbackModal({
                 Danke für dein Feedback!
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Das hilft uns, Klaro besser zu machen.
+                Das hilft uns, Axantilo besser zu machen.
               </p>
             </div>
           ) : (

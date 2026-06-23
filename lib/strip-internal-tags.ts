@@ -38,6 +38,8 @@ export function stripInternalTags(content: string): string {
     'show_workflows',
     'canvas_update',
     'canvas_built',
+    'workflow_plan',
+    'stream_reset',
     'options',
     'user_attachments',
   ];
@@ -57,6 +59,10 @@ export function stripInternalTags(content: string): string {
   text = text.replace(/anvas_update>/g, '');
   text = text.replace(/<tool_call[\s\S]*$/gi, '');
   text = text.replace(/<canvas_built[\s\S]*$/gi, '');
+  text = text.replace(/<workflow_plan[\s\S]*$/gi, '');
+  // Dangling/partial <stream_reset …> at end of a still-streaming buffer
+  text = text.replace(/<\/?\s*stream_reset[^>]*>/gi, '');
+  text = text.replace(/<stream_reset[\s\S]*$/gi, '');
   text = text.replace(/<\/?\s*tool_call[^>]*>/gi, '');
   text = text.replace(/<\/?\s*canvas_built[^>]*>/gi, '');
   text = text.replace(/\{"type":"(?:build_workflow|edit_workflow|deploy_workflow|test_workflow|create_workflow_plan|research_solutions|prepare_phase|request_credential)"[\s\S]*?\}/gi, '');
@@ -79,3 +85,23 @@ export function stripInternalTags(content: string): string {
 
   return text.trim();
 }
+
+/**
+ * Cleanup Mistral/KI formatting: fügt fehlende Leerzeichen nach Kommas
+ * und vor Zahlen ein (z.B. "Monat,90" → "Monat, 90").
+ */
+export function cleanupBotFormatting(text: string): string {
+  if (!text) return text;
+
+  let cleaned = text;
+
+  // Leerzeichen nach Komma wenn Ziffer folgt: "Monat,90" → "Monat, 90"
+  cleaned = cleaned.replace(/,(\d)/g, ', $1');
+
+  // Leerzeichen vor Ziffer nach schließender Bold/Italic: ":**12" → ": **12"
+  cleaned = cleaned.replace(/:\*\*(\d)/g, ': **$1');
+  cleaned = cleaned.replace(/:\*(\d)/g, ': *$1');
+
+  return cleaned;
+}
+

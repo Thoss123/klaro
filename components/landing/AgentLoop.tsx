@@ -15,7 +15,7 @@ const LOOP = [
   {
     icon: MessageSquare,
     title: 'Verstehen',
-    body: 'Klaro fragt nach deinem Alltag — was nervt, was dauert zu lange, welche Tools ihr schon nutzt. Eine Frage nach der anderen.',
+    body: 'Axantilo fragt nach deinem Alltag — was nervt, was dauert zu lange, welche Tools ihr schon nutzt. Eine Frage nach der anderen.',
     accent: 'bg-sky-50 text-sky-700 border-sky-100',
   },
   {
@@ -27,7 +27,7 @@ const LOOP = [
   {
     icon: Blocks,
     title: 'Bauen',
-    body: 'Klaro baut den Ablauf: von der Auslösung über KI und Freigabe bis zum Versand. Du ergänzt nur Zugänge und Freigaben.',
+    body: 'Axantilo baut den Ablauf: von der Auslösung über KI und Freigabe bis zum Versand. Du ergänzt nur Zugänge und Freigaben.',
     accent: 'bg-indigo-50 text-indigo-700 border-indigo-100',
   },
   {
@@ -73,16 +73,16 @@ export default function AgentLoop() {
 
     const onScrollSection = (e: Event) => {
       const detail = (e as CustomEvent<{ id?: string }>).detail;
-      if (detail?.id !== 'so-arbeitet-klaro') return;
+      if (detail?.id !== 'so-arbeitet-axantilo') return;
       setReplay((k) => k + 1);
       setHighlight(true);
       if (highlightTimer) clearTimeout(highlightTimer);
       highlightTimer = setTimeout(() => setHighlight(false), 1400);
     };
 
-    window.addEventListener('klaro-scroll-section', onScrollSection);
+    window.addEventListener('axantilo-scroll-section', onScrollSection);
     return () => {
-      window.removeEventListener('klaro-scroll-section', onScrollSection);
+      window.removeEventListener('axantilo-scroll-section', onScrollSection);
       if (highlightTimer) clearTimeout(highlightTimer);
     };
   }, []);
@@ -94,7 +94,7 @@ export default function AgentLoop() {
       className={`${section} ${sectionY} bg-slate-50 border-y border-gray-200/80 scroll-mt-24 transition-shadow duration-700 ${
         highlight ? 'ring-2 ring-inset ring-indigo-200/80' : ''
       }`}
-      id="so-arbeitet-klaro"
+      id="so-arbeitet-axantilo"
     >
       <motion.h2
         className={h2}
@@ -103,7 +103,7 @@ export default function AgentLoop() {
         viewport={{ once: true, amount: 0.5 }}
         variants={header}
       >
-        So arbeitet Klaro
+        So arbeitet Axantilo
       </motion.h2>
       <motion.p
         className={lead}

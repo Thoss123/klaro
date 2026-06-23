@@ -39,7 +39,7 @@ export async function GET() {
 /**
  * POST /api/n8n/mcp
  * Body: { action: 'test' | 'details' | 'search', workflow_id?: string, query?: string }
- * workflow_id = Klaro DB id (workflows table), resolved to n8n_workflow_id.
+ * workflow_id = Axantilo DB id (workflows table), resolved to n8n_workflow_id.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();

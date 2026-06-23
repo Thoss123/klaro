@@ -104,7 +104,6 @@ Behalte bestehende Einträge, ergänze oder aktualisiere — nichts erfinden.`;
   **tools** = leeres Array [] wenn für diesen Pain Point noch kein konkretes Produkt genannt wurde.
   Keine Ziel-Lösungen als Tool (kein "KI-gestützte Textgenerierung").
   KEIN automation_level pro Use Case.
-- **implementer**: NUR wenn Nutzer explizit Computer-Skills, Admin-Zugänge, Zeit pro Woche oder „wer setzt um“ genannt hat (Felder: who, skill_level, automation_experience).
 - **documents** (optional): Tool-/Prozess-Notizen mit phase:'analyse' (z.B. "Aktuelle Marketing-Tools").
 **workflows:** NICHT setzen (weglassen oder []) — das ist Phase 3.
 Behalte bestehende Einträge, aktualisiere tools nur mit verifizierten Namen — nichts erfinden.`;
@@ -127,7 +126,6 @@ Behalte bestehende Einträge, aktualisiere tools nur mit verifizierten Namen —
 **Phase-Grenzen (strikt):**
 - Extrahiere NUR Felder aus der Anweisung oben für die aktuelle Phase.
 - **workflows** nur in Phase "plan" oder "umsetzung" — sonst Feld weglassen.
-- **implementer** nur in Phase "analyse" und nur aus expliziten Nutzer-Aussagen.
 `;
 
     const systemPrompt = `Du bist ein unsichtbarer Daten-Extraktor-Agent für ein KI-Beratungstool.

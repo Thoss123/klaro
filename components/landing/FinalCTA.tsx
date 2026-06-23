@@ -28,7 +28,7 @@ export default function FinalCTA() {
           </h2>
 
           <p className="mt-5 text-gray-600 text-lg max-w-xl mx-auto leading-relaxed">
-            Vom Gespräch zur Roadmap — Klaro führt dich Schritt für Schritt bis
+            Vom Gespräch zur Roadmap — Axantilo führt dich Schritt für Schritt bis
             dein erster Ablauf bei dir läuft.
           </p>
 

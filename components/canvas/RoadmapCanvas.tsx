@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CanvasData, CanvasDocument, PainPoint, UseCase, Workflow } from '@/lib/types';
+import { CanvasData, CanvasDocument, DocumentTemplate, PainPoint, UseCase, Workflow } from '@/lib/types';
 import { inferDocumentPhase, isValidWorkflow, normalizeCompanyProfile, parseToolList, toDisplayText } from '@/lib/canvas-normalize';
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
-import { Check, Lock, FileText, Target, AlertTriangle, ArrowRight, Cpu, Zap, GitBranch, Send, Wrench, User, Download, X, Clock, Euro, Building2, Rocket } from 'lucide-react';
+import { Check, Lock, FileText, Target, AlertTriangle, GitBranch, Download, X, Clock, Building2 } from 'lucide-react';
 import type { StepConfig, WorkflowStepConfigs } from '@/lib/types';
 import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 import WorkflowDeployCard from './WorkflowDeployCard';
-import WorkflowNodeGraph from './WorkflowNodeGraph';
+import WorkflowPlanFlow from './WorkflowPlanFlow';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 
@@ -45,35 +45,9 @@ function railTop(phase: keyof typeof NODES): string {
 
 const numMap: Record<string, string> = { diagnose: '1', analyse: '2', plan: '3', umsetzung: '4' };
 
-const STEP_ICONS: Record<string, React.ReactNode> = {
-  trigger:  <Zap size={13} />,
-  action:   <ArrowRight size={13} />,
-  ai:       <Cpu size={13} />,
-  decision: <GitBranch size={13} />,
-  output:   <Send size={13} />,
-};
-
 // Strip raw IDs like "(pp_1)" from display titles
 const cleanTitle = (s: unknown) =>
   toDisplayText(s).replace(/\s*\([a-z]+_\d+\)/gi, '').trim();
-
-const changeAppetiteLabel = (level: string) => {
-  const m: Record<string, string> = {
-    minimal: 'A — möglichst wenig ändern',
-    balanced: 'B — offen für sinnvolle Zusatz-Tools',
-    bold: 'C — Prozesse neu denken',
-  };
-  return m[level] || level;
-};
-
-// Staggered card entrance animation
-const cardVariants = {
-  hidden: { opacity: 0, y: 12, scale: 0.97 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0, scale: 1,
-    transition: { delay: i * 0.07, duration: 0.25, ease: 'easeOut' }
-  }),
-};
 
 export default function RoadmapCanvas({
   data,
@@ -90,9 +64,12 @@ export default function RoadmapCanvas({
   onDeployModalOpened,
   onWorkflowPersist,
   editorCoachContext,
+  isUpdating = false,
 }: {
   data: CanvasData
   currentPhase: string
+  /** Live-Hinweis: das Canvas wird gerade (im Hintergrund) neu aufgebaut. */
+  isUpdating?: boolean
   /** Highest phase ever reached in this project (keeps later phases unlocked) */
   maxReachedPhase?: string
   onPhaseClick: (phase: string) => void
@@ -111,11 +88,11 @@ export default function RoadmapCanvas({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [openDoc, setOpenDoc] = useState<CanvasDocument | null>(null);
+  const [openTemplate, setOpenTemplate] = useState<DocumentTemplate | null>(null);
   const [openWorkflow, setOpenWorkflow] = useState<Workflow | null>(null);
   const [openUseCase, setOpenUseCase] = useState<UseCase | null>(null);
   const [openPainPoint, setOpenPainPoint] = useState<PainPoint | null>(null);
   const [showCompany, setShowCompany] = useState(false);
-  const [showImplementer, setShowImplementer] = useState(false);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -170,6 +147,12 @@ export default function RoadmapCanvas({
   const planDocs = docsByPhase('plan');
   const umsetzungDocs = docsByPhase('umsetzung');
 
+  // Dokument-Vorlagen (Angebote, Mails, …). In Phase 3 in der Plan-Rail, in Phase 4
+  // in der Umsetzung-Rail — über currentPhase getrennt, damit nichts doppelt erscheint.
+  const templates = data.document_templates || [];
+  const planTemplates = currentPhase === 'plan' ? templates : [];
+  const umsetzungTemplates = currentPhase === 'umsetzung' ? templates : [];
+
   const showCompanyCard =
     hasCompany && !phaseDocsCover(diagDocs, [/unternehmen/, /profil/, /zusammenfassung/]);
   const showPainCards =
@@ -178,14 +161,30 @@ export default function RoadmapCanvas({
   const showUseCases =
     useCases.length > 0 &&
     !phaseDocsCover(analyseDocs, [/tool/, /prozess/, /ist-/, /setup/, /marketing/, /automatisierung/]);
-  const showImplementerCard =
-    !!data.implementer &&
-    !phaseDocsCover(analyseDocs, [/umsetzer/, /implementier/, /skill/]);
 
   const twoColGrid = 'grid grid-cols-1 min-[300px]:grid-cols-2 gap-3 min-w-0';
 
   return (
     <div className="w-full h-full overflow-y-auto overflow-x-hidden relative bg-transparent @container" ref={containerRef} style={{ scrollBehavior: 'smooth' }}>
+      {/* Live-Update-Badge: zeigt, dass das Canvas gerade neu aufgebaut wird, damit
+          es bei der kurzen Hintergrund-Verzögerung nicht „stuck" wirkt. */}
+      <AnimatePresence>
+        {isUpdating && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="sticky top-3 z-40 mx-auto flex w-fit items-center gap-2 rounded-full border border-indigo-200 bg-white/90 px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-md backdrop-blur"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500" />
+            </span>
+            Canvas wird aktualisiert…
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Desktop / tablet: curved roadmap with absolute-positioned nodes + side rails */}
       <div className="hidden @[640px]:block w-full relative min-h-[420vh]">
 
@@ -199,8 +198,8 @@ export default function RoadmapCanvas({
           <ActivePath d={`M ${NODES.plan.svgX} ${NODES.plan.svgY} C 35 30, 50 28, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`} active={maxReachedIdx >= 3} />
         </svg>
 
-        <PhaseNode phase="diagnose" title="Problem Identifikation" desc="Pain Points & Unternehmensprofil." nodeConfig={NODES.diagnose} isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
-        <PhaseNode phase="analyse" title="Tools & Setup" desc="Ist-Tools & Umsetzer." nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
+        <PhaseNode phase="diagnose" title="Problem Identifikation" desc="Potenzielle Verbesserungen & Unternehmensprofil." nodeConfig={NODES.diagnose} isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
+        <PhaseNode phase="analyse" title="Tools & Setup" desc="Ist-Tools." nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
         <PhaseNode phase="plan" title="Workflows" desc="Automatisierungs-Blaupausen." nodeConfig={NODES.plan} isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
         <PhaseNode phase="umsetzung" title="Umsetzung" desc="Deployment & Go-Live." nodeConfig={NODES.umsetzung} isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
 
@@ -215,7 +214,7 @@ export default function RoadmapCanvas({
             )}
             {showPainCards && (
               <>
-                <SectionLabel className={diagDocs.length > 0 ? 'mt-5' : ''}>Pain Points</SectionLabel>
+                <SectionLabel className={diagDocs.length > 0 ? 'mt-5' : ''}>Potenzielle Verbesserungen</SectionLabel>
                 <div className={twoColGrid}>
                   {sortedPainPoints.map(p => (
                     <PainPointInlineCard key={p.id} painPoint={p} onExpand={() => setOpenPainPoint(p)} />
@@ -233,7 +232,7 @@ export default function RoadmapCanvas({
         )}
 
         {/* Phase 2 — rechts */}
-        {(analyseDocs.length > 0 || showImplementerCard || showUseCases) && (
+        {(analyseDocs.length > 0 || showUseCases) && (
           <ContentRail side="right" top={railTop('analyse')}>
             {analyseDocs.length > 0 && (
               <>
@@ -241,19 +240,9 @@ export default function RoadmapCanvas({
                 <DocStack docs={analyseDocs} onOpen={setOpenDoc} />
               </>
             )}
-            {showImplementerCard && (
-              <>
-                <SectionLabel className={analyseDocs.length > 0 ? 'mt-5' : ''}>Umsetzer</SectionLabel>
-                <ImplementerInlineCard
-                  implementer={data.implementer}
-                  changeAppetite={company?.change_appetite}
-                  onExpand={() => setShowImplementer(true)}
-                />
-              </>
-            )}
             {showUseCases && (
               <>
-                <SectionLabel className={(analyseDocs.length > 0 || showImplementerCard) ? 'mt-5' : ''}>Ist-Tools & Automatisierung</SectionLabel>
+                <SectionLabel className={analyseDocs.length > 0 ? 'mt-5' : ''}>Ist-Tools & Automatisierung</SectionLabel>
                 <div className={twoColGrid}>
                   {useCases.map(uc => (
                     <UseCaseInlineCard key={uc.id} useCase={uc} onExpand={() => setOpenUseCase(uc)} />
@@ -265,7 +254,7 @@ export default function RoadmapCanvas({
         )}
 
         {/* Phase 3 — links */}
-        {((planWorkflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0) && (
+        {((planWorkflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0 || planTemplates.length > 0) && (
           <ContentRail side="left" top={railTop('plan')}>
             {planWorkflows.length > 0 && maxReachedIdx >= 2 && (
               <>
@@ -291,11 +280,17 @@ export default function RoadmapCanvas({
                 <DocStack docs={planDocs} onOpen={setOpenDoc} />
               </>
             )}
+            {planTemplates.length > 0 && (
+              <>
+                <SectionLabel className={planWorkflows.length > 0 || planDocs.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
+                <TemplateStack templates={planTemplates} onOpen={setOpenTemplate} />
+              </>
+            )}
           </ContentRail>
         )}
 
         {/* Phase 4 — Umsetzung: alle Deploy-Karten in der Phase-4-Rail */}
-        {(umsetzungDocs.length > 0 || (builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId)) && (
+        {(umsetzungDocs.length > 0 || umsetzungTemplates.length > 0 || (builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId)) && (
           <ContentRail side="right" top={railTop('umsetzung')} className="!w-[min(52%,400px)]">
             {builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId && (
               <>
@@ -330,6 +325,12 @@ export default function RoadmapCanvas({
                 <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
               </>
             )}
+            {umsetzungTemplates.length > 0 && (
+              <>
+                <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId) || umsetzungDocs.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
+                <TemplateStack templates={umsetzungTemplates} onOpen={setOpenTemplate} />
+              </>
+            )}
           </ContentRail>
         )}
 
@@ -348,7 +349,7 @@ export default function RoadmapCanvas({
           )}
           {showPainCards && (
             <>
-              <SectionLabel className={diagDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Pain Points</SectionLabel>
+              <SectionLabel className={diagDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Potenzielle Verbesserungen</SectionLabel>
               <div className="grid grid-cols-1 gap-3">
                 {sortedPainPoints.map(p => (
                   <PainPointInlineCard key={p.id} painPoint={p} onExpand={() => setOpenPainPoint(p)} />
@@ -373,15 +374,9 @@ export default function RoadmapCanvas({
               <DocStack docs={analyseDocs} onOpen={setOpenDoc} />
             </>
           )}
-          {showImplementerCard && (
-            <>
-              <SectionLabel className={analyseDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Umsetzer</SectionLabel>
-              <ImplementerInlineCard implementer={data.implementer} changeAppetite={company?.change_appetite} onExpand={() => setShowImplementer(true)} />
-            </>
-          )}
           {showUseCases && (
             <>
-              <SectionLabel className={(analyseDocs.length > 0 || showImplementerCard) ? 'mt-4 mb-2' : 'mb-2'}>Ist-Tools & Automatisierung</SectionLabel>
+              <SectionLabel className={analyseDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Ist-Tools & Automatisierung</SectionLabel>
               <div className="grid grid-cols-1 gap-3">
                 {useCases.map(uc => (
                   <UseCaseInlineCard key={uc.id} useCase={uc} onExpand={() => setOpenUseCase(uc)} />
@@ -411,6 +406,12 @@ export default function RoadmapCanvas({
             <>
               <SectionLabel className={planWorkflows.length > 0 && maxReachedIdx >= 2 ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
               <DocStack docs={planDocs} onOpen={setOpenDoc} />
+            </>
+          )}
+          {planTemplates.length > 0 && (
+            <>
+              <SectionLabel className={planWorkflows.length > 0 || planDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Vorlagen</SectionLabel>
+              <TemplateStack templates={planTemplates} onOpen={setOpenTemplate} />
             </>
           )}
         </section>
@@ -450,15 +451,21 @@ export default function RoadmapCanvas({
               <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
             </>
           )}
+          {umsetzungTemplates.length > 0 && (
+            <>
+              <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId) || umsetzungDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Vorlagen</SectionLabel>
+              <TemplateStack templates={umsetzungTemplates} onOpen={setOpenTemplate} />
+            </>
+          )}
         </section>
       </div>
 
       <DocumentModal doc={openDoc} onClose={() => setOpenDoc(null)} />
+      <TemplateModal template={openTemplate} onClose={() => setOpenTemplate(null)} />
       <WorkflowModal workflow={openWorkflow} painPoints={painPoints} onClose={() => setOpenWorkflow(null)} />
       <UseCaseModal useCase={openUseCase} onClose={() => setOpenUseCase(null)} />
       <PainPointModal painPoint={openPainPoint} onClose={() => setOpenPainPoint(null)} />
       <CompanyModal company={company} open={showCompany} onClose={() => setShowCompany(false)} />
-      <ImplementerModal implementer={data.implementer} changeAppetite={company?.change_appetite} open={showImplementer} onClose={() => setShowImplementer(false)} />
     </div>
   );
 }
@@ -681,51 +688,6 @@ function UseCaseInlineCard({ useCase: uc, onExpand }: { useCase: UseCase; onExpa
   );
 }
 
-function ImplementerInlineCard({
-  implementer,
-  changeAppetite,
-  onExpand,
-}: {
-  implementer?: CanvasData['implementer'];
-  changeAppetite?: string;
-  onExpand: () => void;
-}) {
-  if (!implementer) {
-    return (
-      <StructuredCard title="Umsetzer-Profil" icon={<User size={15} className="text-violet-500" />} tone="violet">
-        <p className="italic text-gray-400">Wird am Ende von Phase 2 im Chat geklärt.</p>
-      </StructuredCard>
-    );
-  }
-  const lines = [
-    `Wer: ${toDisplayText(implementer.who)}`,
-    `Skill: ${toDisplayText(implementer.skill_level)}`,
-    implementer.automation_experience ? `Erfahrung: ${toDisplayText(implementer.automation_experience)}` : '',
-  ].filter(Boolean);
-  const expandable = lines.some(l => l.length > 70) || !!changeAppetite;
-
-  return (
-    <StructuredCard
-      title="Umsetzer-Profil"
-      icon={<User size={15} className="text-violet-500" />}
-      tone="violet"
-      onExpand={expandable ? onExpand : undefined}
-      expandable={expandable}
-    >
-      <ul className="space-y-1">
-        {lines.map((l, i) => (
-          <li key={i} className={expandable ? 'line-clamp-2' : ''}>{l}</li>
-        ))}
-      </ul>
-      {changeAppetite && (
-        <p className="mt-2 pt-2 border-t border-gray-100 text-gray-500">
-          {changeAppetiteLabel(changeAppetite)}
-        </p>
-      )}
-    </StructuredCard>
-  );
-}
-
 function WorkflowInlineCard({
   workflow: wf,
   linkedTitle,
@@ -748,7 +710,7 @@ function WorkflowInlineCard({
           {linkedTitle && <p className="text-[11px] text-gray-400 mt-0.5">↳ {linkedTitle}</p>}
         </div>
       </div>
-      <WorkflowNodeGraph steps={wf.steps ?? []} compact showTrailingPlus={false} />
+      <WorkflowPlanFlow steps={wf.steps ?? []} />
       <span className="text-xs font-medium text-indigo-600 mt-2 inline-block">Workflow öffnen</span>
     </button>
   );
@@ -803,6 +765,143 @@ function DocInlineCard({ doc, onOpen }: { doc: CanvasDocument; onOpen: () => voi
   );
 }
 
+/** Markiert {{platzhalter}} im Vorlagentext (für lesbare Vorschau/Detailansicht). */
+function HighlightedTemplate({ content }: { content: string }) {
+  const parts = content.split(/(\{\{[^}]+\}\})/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        /^\{\{[^}]+\}\}$/.test(p) ? (
+          <span
+            key={i}
+            className="rounded bg-indigo-100 px-1 py-0.5 font-medium text-indigo-700"
+          >
+            {p}
+          </span>
+        ) : (
+          <React.Fragment key={i}>{p}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+const TEMPLATE_SOURCE_LABEL: Record<DocumentTemplate['source'], string> = {
+  user_upload: 'aus Upload',
+  axantilo_generated: 'von Axantilo erstellt',
+};
+
+function TemplateStack({
+  templates,
+  onOpen,
+}: {
+  templates: DocumentTemplate[];
+  onOpen: (t: DocumentTemplate) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {templates.map(t => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onOpen(t)}
+          className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm text-sm text-left hover:border-indigo-300 hover:shadow-md transition-all w-full"
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <FileText size={14} className="text-indigo-500 shrink-0" />
+            <p className="font-semibold text-gray-900 flex-1 min-w-0 truncate">{cleanTitle(t.title)}</p>
+            <span className="text-[10px] text-gray-400 shrink-0">{TEMPLATE_SOURCE_LABEL[t.source]}</span>
+          </div>
+          <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">
+            <HighlightedTemplate content={t.content.slice(0, 120)} />
+            {t.content.length > 120 ? '…' : ''}
+          </p>
+          {t.placeholders.length > 0 && (
+            <span className="text-xs font-medium text-indigo-600 mt-2 inline-block">
+              {t.placeholders.length} Platzhalter · Details
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TemplateModal({ template, onClose }: { template: DocumentTemplate | null; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      {template && (
+        <motion.div
+          key="template-modal-overlay"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText size={16} className="text-indigo-600 shrink-0" />
+                  <h2 className="font-bold text-gray-900 text-lg truncate">{cleanTitle(template.title)}</h2>
+                </div>
+                <p className="text-sm text-gray-500 pl-6">
+                  {template.role === 'output' ? 'Wird erzeugt' : 'Wird verarbeitet'} ·{' '}
+                  {template.delivery === 'document' ? 'echtes Dokument' : 'Text je Lauf'} ·{' '}
+                  {TEMPLATE_SOURCE_LABEL[template.source]}
+                </p>
+              </div>
+              <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors ml-4 flex-shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-5 space-y-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Vorlage</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  <HighlightedTemplate content={template.content} />
+                </div>
+              </div>
+              {template.placeholders.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                    Platzhalter (füllt die KI automatisch)
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {template.placeholders.map(p => (
+                      <div key={p.key} className="flex items-baseline gap-2 text-sm">
+                        <span className="rounded bg-indigo-100 px-1.5 py-0.5 font-mono text-xs text-indigo-700 shrink-0">{`{{${p.key}}}`}</span>
+                        <span className="text-gray-700">{p.label}{p.example ? ` — z.B. ${p.example}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {template.example_filled && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                    Beispiel (anonymisiert — als Stil-Vorlage für die KI)
+                  </p>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    {template.example_filled}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function Chip({ children, icon }: { children: React.ReactNode, icon?: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1 bg-white/70 border border-gray-200 text-[11px] px-2 py-0.5 rounded text-gray-600">
@@ -839,7 +938,7 @@ function WorkflowModal({ workflow, painPoints, onClose }: { workflow: Workflow |
                   <h2 className="font-bold text-gray-900 text-lg">{cleanTitle(workflow.title)}</h2>
                 </div>
                 {linkedPP && (
-                  <p className="text-sm text-gray-500 pl-6">Löst Pain Point: {cleanTitle(linkedPP.title)}</p>
+                  <p className="text-sm text-gray-500 pl-6">Verbessert: {cleanTitle(linkedPP.title)}</p>
                 )}
               </div>
               <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors ml-4 flex-shrink-0">
@@ -847,7 +946,9 @@ function WorkflowModal({ workflow, painPoints, onClose }: { workflow: Workflow |
               </button>
             </div>
 
-            <WorkflowNodeGraph steps={workflow.steps} showTrailingPlus />
+            <div className="p-4" style={{ height: '60vh' }}>
+              <WorkflowPlanFlow steps={workflow.steps} interactive />
+            </div>
           </motion.div>
         </motion.div>
       )}
@@ -898,32 +999,6 @@ function CompanyModal({ company, open, onClose }: { company?: CanvasData['compan
         <ol className="list-decimal list-inside mt-4 text-sm text-gray-600 space-y-1">
           {c.process_steps.map((s, i) => <li key={i}>{toDisplayText(s)}</li>)}
         </ol>
-      )}
-    </DetailShell>
-  );
-}
-
-function ImplementerModal({
-  implementer, changeAppetite, open, onClose,
-}: {
-  implementer?: CanvasData['implementer']; changeAppetite?: string; open: boolean; onClose: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <DetailShell title="Umsetzer-Profil" onClose={onClose}>
-      {implementer ? (
-        <dl className="space-y-3 text-sm">
-          <div><dt className="text-xs font-bold text-gray-500">Wer setzt um</dt><dd>{toDisplayText(implementer.who)}</dd></div>
-          <div><dt className="text-xs font-bold text-gray-500">Skill-Level</dt><dd className="capitalize">{toDisplayText(implementer.skill_level)}</dd></div>
-          {implementer.automation_experience && (
-            <div><dt className="text-xs font-bold text-gray-500">Erfahrung</dt><dd>{toDisplayText(implementer.automation_experience)}</dd></div>
-          )}
-        </dl>
-      ) : (
-        <p className="text-sm text-gray-400 italic">Noch nicht geklärt — Klaro fragt das am Ende von Phase 2.</p>
-      )}
-      {changeAppetite && (
-        <p className="text-xs text-gray-500 mt-4 pt-3 border-t"><span className="font-semibold">Veränderungsbereitschaft: </span>{changeAppetiteLabel(changeAppetite)}</p>
       )}
     </DetailShell>
   );

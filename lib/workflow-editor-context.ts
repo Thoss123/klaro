@@ -84,7 +84,7 @@ export function formatCoachContextBlock(ctx?: WorkflowEditorCoachContext): strin
   if (main.length) {
     parts.push(
       'Kürzlicher Haupt-Chat (Hintergrund — Antworten erscheinen NUR im Editor, nicht dort):\n'
-      + main.map(m => `${m.role === 'user' ? 'Nutzer' : 'Klaro'}: ${m.content}`).join('\n'),
+      + main.map(m => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`).join('\n'),
     );
   }
 
@@ -92,10 +92,10 @@ export function formatCoachContextBlock(ctx?: WorkflowEditorCoachContext): strin
   if (editor.length) {
     parts.push(
       'Bisheriger Editor-Chat in diesem Modal:\n'
-      + editor.map(m => `${m.role === 'user' ? 'Nutzer' : 'Klaro'}: ${m.content}`).join('\n'),
+      + editor.map(m => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`).join('\n'),
     );
   }
 
   if (!parts.length) return '';
-  return `\n\n--- KLARO-KONTEXT (wie Haupt-Coach) ---\n${parts.join('\n\n')}\n--- ENDE KONTEXT ---\n`;
+  return `\n\n--- AXANTILO-KONTEXT (wie Haupt-Coach) ---\n${parts.join('\n\n')}\n--- ENDE KONTEXT ---\n`;
 }

@@ -1,29 +1,29 @@
-# Klaro – Project Documentation (Stand: Juni 2026)
+# Axantilo – Project Documentation (Stand: Juni 2026)
 
-Dieses Dokument ist die **Single Source of Truth** für die gesamte Architektur, das Datenmodell und die Vision von Klaro. Es ersetzt alte Spezifikationen und spiegelt den realen Code-Stand wider.
+Dieses Dokument ist die **Single Source of Truth** für die gesamte Architektur, das Datenmodell und die Vision von Axantilo. Es ersetzt alte Spezifikationen und spiegelt den realen Code-Stand wider.
 
 ---
 
-## 1. Was ist Klaro? (Die Vision)
+## 1. Was ist Axantilo? (Die Vision)
 
-**Klaro ist ein KI-Berater und Automatisierungs-Architekt für kleine und mittelständische Unternehmen (KMU).**
+**Axantilo ist ein KI-Berater und Automatisierungs-Architekt für kleine und mittelständische Unternehmen (KMU).**
 Das Problem: KMUs verbringen extrem viel Zeit mit wiederkehrenden manuellen Aufgaben (z.B. E-Mails kategorisieren, Daten von Tool A nach Tool B kopieren, CRM-Pflege), haben aber weder das technische Wissen, um sich Automatisierungen (via n8n oder Zapier) selbst aufzubauen, noch das Budget für teure externe Agenturen.
 
 **Die Lösung:** 
-Der Nutzer führt einen völlig natürlichen Chat mit dem KI-Berater "Klaro". 
-Klaro führt den Nutzer durch 4 didaktische Phasen:
+Der Nutzer führt einen völlig natürlichen Chat mit dem KI-Berater "Axantilo". 
+Axantilo führt den Nutzer durch 4 didaktische Phasen:
 1. **Diagnose:** Wo geht am meisten Zeit verloren? (Pain Points identifizieren)
 2. **Analyse:** Welche Tools nutzt das Unternehmen bereits? (Use Cases & Tools)
 3. **Planung:** Entwurf eines tool-neutralen Automatisierungs-Workflows (Canvas UI)
-4. **Umsetzung (Deployment):** Klaro baut den Workflow vollautomatisch im Hintergrund in einer n8n-Instanz auf und aktiviert ihn.
+4. **Umsetzung (Deployment):** Axantilo baut den Workflow vollautomatisch im Hintergrund in einer n8n-Instanz auf und aktiviert ihn.
 
-**Der Clou:** Der Nutzer muss **niemals** den Code oder das komplexe Interface von n8n berühren. Klaro kümmert sich um das gesamte Deployment und Management der Workflows, basierend auf dem Gespräch.
+**Der Clou:** Der Nutzer muss **niemals** den Code oder das komplexe Interface von n8n berühren. Axantilo kümmert sich um das gesamte Deployment und Management der Workflows, basierend auf dem Gespräch.
 
 ---
 
 ## 2. Multi-Agenten Architektur (Mistral-First)
 
-Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** als monolithischer Bot, sondern als ein Team von spezialisierten KI-Agenten, die asynchron im Hintergrund arbeiten. Alle Agenten nutzen **Mistral** Modelle.
+Um Kosten zu senken und die Intelligenz zu maximieren, läuft Axantilo **nicht** als monolithischer Bot, sondern als ein Team von spezialisierten KI-Agenten, die asynchron im Hintergrund arbeiten. Alle Agenten nutzen **Mistral** Modelle.
 
 ### 2.1 Der Haupt-Coach (Mistral Large)
 - **Aufgabe:** Einfühlsame, zielgerichtete Gesprächsführung mit dem Nutzer.
@@ -47,7 +47,7 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 - **Ersetzt** den früher geplanten Industry-Playbook-Agent (kein n8n/NotebookLM-Pre-Research mehr).
 - **Aufgabe:** Der Haupt-Coach durchsucht bei Bedarf die zentrale RAG-Wissensdatenbank (§3.4) über das Tool `search_knowledge` — für UI-How-tos, Tool-Setup, abgedeckte Use-Cases und vor dem Workflow-Bauen.
 - **Selektiv:** Der Coach bewertet die Treffer selbst (Relevanz-Score + `branche`-Metadaten) und ignoriert Unpassendes. Kein automatisches Reinpressen von Kontext mehr.
-- **Code:** `lib/ai-tools.ts` (Tool-Definition), Handler in `app/api/chat/route.ts`, Regel 10 in `KLARO_SHARED_RULES` (`lib/claude.ts`).
+- **Code:** `lib/ai-tools.ts` (Tool-Definition), Handler in `app/api/chat/route.ts`, Regel 10 in `AXANTILO_SHARED_RULES` (`lib/claude.ts`).
 
 ### 2.5 Topic Research Agent (Mistral Small) *(Sprint 3)*
 - **Aufgabe:** Session-spezifische Recherche für Phase Plan (z. B. YouTube/Reels, Trends) — Output `ResearchBrief` für Canvas-Worker.
@@ -84,17 +84,17 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Klaro **nicht** al
 
 ### 3.1 Zentrale Infrastruktur (Shared Services)
 
-**Prinzip:** Nutzer richten **keine** eigenen Cloud-Setups ein. Klaro betreibt die Infrastruktur zentral; der Nutzer klickt im Zweifel nur „Erlauben".
+**Prinzip:** Nutzer richten **keine** eigenen Cloud-Setups ein. Axantilo betreibt die Infrastruktur zentral; der Nutzer klickt im Zweifel nur „Erlauben".
 
-- **Zentrale OAuth-Apps:** Eine Klaro-OAuth-App pro Anbieter für Google (Gmail, Calendar, Drive, Sheets) und Microsoft (Outlook, Teams, OneDrive). Der Nutzer autorisiert per Klick — **kein** Google-Cloud-Console-Setup, keine eigenen Client-IDs.
+- **Zentrale OAuth-Apps:** Eine Axantilo-OAuth-App pro Anbieter für Google (Gmail, Calendar, Drive, Sheets) und Microsoft (Outlook, Teams, OneDrive). Der Nutzer autorisiert per Klick — **kein** Google-Cloud-Console-Setup, keine eigenen Client-IDs.
 - **Twilio:** Eine zentrale Nummer für WhatsApp + SMS, von allen Nutzern geteilt.
-- **Resend:** Eine zentrale Domain für System-Mails (`notifications@klaro.ai`).
+- **Resend:** Eine zentrale Domain für System-Mails (`hello@axantilo.com`).
 - **Mistral (Free Tier):** Coach, Memory-Updates und Embeddings laufen zentral, solange die Rate Limits reichen.
 - **n8n CE (Hostinger VPS):** Kostenlos, eine geteilte Instanz; Mandantentrennung über n8n Projects + `company_id`.
 
 ### 3.2 Webhook-Routing (zentraler Router)
 
-Kein manuelles Webhook-Setup für Nutzer. Klaro betreibt einen zentralen Router:
+Kein manuelles Webhook-Setup für Nutzer. Axantilo betreibt einen zentralen Router:
 
 - Jede Company erhält eine Sub-URL: `/webhook/{company_id}/{event_type}`.
 - Ein zentraler n8n-Router leitet eingehende Events automatisch an den richtigen Nutzer-Workflow weiter.
@@ -149,14 +149,14 @@ Vier Pfade je nach Onboarding-Ziel (`{{ziel}}`-Variable):
 Klärt ab, wo die größten Engpässe und Zeitfresser im Unternehmen liegen. Speichert dies als "Pain Points".
 
 ### Phase 2: Analyse
-Fragt spezifisch für jeden gefundenen Pain Point ab, **welche Tools der User heute nutzt**. Klaro drängt dem Nutzer hier keine internen Tools wie n8n auf, sondern lernt nur die Tool-Landschaft des Kunden kennen.
+Fragt spezifisch für jeden gefundenen Pain Point ab, **welche Tools der User heute nutzt**. Axantilo drängt dem Nutzer hier keine internen Tools wie n8n auf, sondern lernt nur die Tool-Landschaft des Kunden kennen.
 
 ### Phase 3: Planung
 Entwirft einen didaktischen, **tool-neutralen** Workflow (Trigger → KI → Entscheidung → Output). Ziel: Der Nutzer muss den Wert und die Logik der Automatisierung verstehen, bevor sie gebaut wird. Sichtbar in der Workflow-UI als Step-Karten.
 
 ### Phase 4: Umsetzung (Deployment)
 Das Herzstück der Plattform.
-1. **Tool-Mapping:** Klaro mappt die neutralen Schritte auf echte n8n-Nodes.
+1. **Tool-Mapping:** Axantilo mappt die neutralen Schritte auf echte n8n-Nodes.
 2. **Credential Collection:** Fragt über Popups die nötigen Logins (z.B. Gmail, Slack) ab und speichert sie verschlüsselt.
 3. **Deployment:** Generiert das JSON für n8n und pushed es über `/api/n8n/*` Routen heimlich in die n8n Instanz.
 4. **Test & Live:** Führt Test-Trigger aus und schaltet den Workflow auf "Active".
@@ -165,14 +165,14 @@ Das Herzstück der Plattform.
 
 ## 6. Data Layer & Selbstverbesserung (Post-MVP)
 
-Während die Phasen laufen, baut Klaro **automatisch im Hintergrund** einen Data Layer auf — kein manueller Schritt für den Nutzer.
+Während die Phasen laufen, baut Axantilo **automatisch im Hintergrund** einen Data Layer auf — kein manueller Schritt für den Nutzer.
 
 - **`events`-Tabelle:** Jede Workflow-Execution wird geloggt (Basis für Auswertung).
 - **Vier Reifestufen:**
   1. **Einzelworkflows** — isolierte Automatisierungen laufen & werden geloggt.
   2. **Vernetzte Workflows** — Workflows greifen ineinander, gemeinsamer Daten-Kontext.
   3. **KI-Intelligenz** — Insights aus den Event-Daten (Muster, Engpässe, ROI-Auswertung).
-  4. **Selbstverbesserung** — Klaro schlägt auf Basis der Daten eigenständig Optimierungen vor.
+  4. **Selbstverbesserung** — Axantilo schlägt auf Basis der Daten eigenständig Optimierungen vor.
 
 ## 7. Dashboard Builder (Post-MVP)
 

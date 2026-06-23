@@ -3,7 +3,7 @@ import { ArrowUp, ImageIcon, Loader2, Mic, Paperclip, FileText, Square, X } from
 import type { ChatAttachment } from '@/lib/chat-attachments';
 import { useVoiceInput } from '@/lib/use-voice-input';
 
-const FILE_ACCEPT = '.txt,.md,.csv,.json,text/*,image/png,image/jpeg,image/webp,image/gif,image/*';
+const FILE_ACCEPT = '.txt,.md,.csv,.tsv,.json,.html,.htm,.xml,.yaml,.yml,.log,.rtf,.pdf,application/pdf,text/*,image/png,image/jpeg,image/webp,image/gif,image/*';
 
 function attachmentPreviewUrl(a: ChatAttachment): string | undefined {
   if (a.url) return a.url;

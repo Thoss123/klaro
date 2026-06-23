@@ -86,7 +86,7 @@ export default function AuthForm({
     setLoading(true);
     try {
       const supabase = getSupabase();
-      // Lokale Klaro-Session löschen, damit ein anderer Google-Account nicht an der alten Session hängen bleibt.
+      // Lokale Axantilo-Session löschen, damit ein anderer Google-Account nicht an der alten Session hängen bleibt.
       await supabase.auth.signOut({ scope: 'local' });
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

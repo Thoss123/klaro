@@ -6,7 +6,7 @@ export function isHiddenSystemMessage(content: string): boolean {
   if (!t) return false;
   if (/^Hallo,?\s*lass uns starten!?$/i.test(t)) return true;
   if (/^Starte Phase \d/i.test(t)) return true;
-  if (t.startsWith('[__klaro_system__]')) return true;
+  if (t.startsWith('[__axantilo_system__]')) return true;
   const phases = ['diagnose', 'analyse', 'plan', 'umsetzung'] as const;
   for (const ph of phases) {
     if (t === getHiddenInitMessage(ph)) return true;

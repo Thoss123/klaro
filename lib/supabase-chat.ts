@@ -120,6 +120,20 @@ export async function deleteProject(projectId: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * DEV-ONLY: wipe ALL of the current user's projects and sessions for a clean
+ * onboarding without re-signup. Sessions are deleted first (cascades messages +
+ * canvas, and covers orphaned project_id=NULL rows so ensureDefaultProject can't
+ * re-adopt old chats); then projects (cascades project_canvas + project_memory).
+ */
+export async function devResetUserData(userId: string): Promise<void> {
+  const supabase = createSupabaseBrowserClient()
+  const { error: sessErr } = await supabase.from('sessions').delete().eq('user_id', userId)
+  if (sessErr) throw sessErr
+  const { error: projErr } = await supabase.from('projects').delete().eq('user_id', userId)
+  if (projErr) throw projErr
+}
+
 export async function createProject(userId: string, name: string): Promise<string> {
   const supabase = createSupabaseBrowserClient()
   const { data, error } = await supabase
@@ -602,10 +616,6 @@ export async function loadCrossProjectContext(currentProjectId: string | null): 
           `- Unternehmen/Angebot: ${company.offer}` +
             (company.target_customers ? ` (Zielkunden: ${company.target_customers})` : ''),
         )
-      }
-      const impl = canvas?.implementer
-      if (impl?.who) {
-        lines.push(`- Umsetzer damals: ${impl.who}${impl.skill_level ? ` (Skill: ${impl.skill_level})` : ''}`)
       }
       const workflowTitles = (canvas?.workflows || []).map(w => w.title).filter(Boolean)
       if (workflowTitles.length) lines.push(`- Gebaute Workflows: ${workflowTitles.join(' · ')}`)

@@ -21,7 +21,8 @@ const LC = '@n8n/n8n-nodes-langchain.';
 /** Slot-Definitionen pro AI-Parent-Node (Chat Model*, Memory, Tool …). */
 const AI_PARENT_SLOTS: Record<string, AiSlot[]> = {
   [`${LC}agent`]: [
-    { slot: 'ai_languageModel', label: 'Chat Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
+    // Default-Chat-Model = Mistral Cloud (EU/DSGVO, Axantilos Standardmodell).
+    { slot: 'ai_languageModel', label: 'Chat Model', required: true, max: 1, defaultNode: `${LC}lmChatMistralCloud` },
     { slot: 'ai_memory', label: 'Memory', required: false, max: 1, defaultNode: `${LC}memoryBufferWindow` },
     { slot: 'ai_tool', label: 'Tool', required: false, max: 8, defaultNode: `${LC}toolHttpRequest` },
   ],
@@ -179,17 +180,48 @@ export function syncAiGraphMeta(
     let next = s;
     if (asSub) next = { ...next, subNodeOf: asSub };
     else if (next.subNodeOf) {
-      const { subNodeOf: _, ...rest } = next;
-      next = rest as WorkflowStep;
+      next = { ...next };
+      delete next.subNodeOf;
     }
     if (asParent && aiSlotsFor(s.n8nType).length > 0) {
       next = { ...next, aiSubNodes: asParent };
     } else if (aiSlotsFor(s.n8nType).length > 0 && next.aiSubNodes) {
-      const { aiSubNodes: _, ...rest } = next;
-      next = rest as WorkflowStep;
+      next = { ...next };
+      delete next.aiSubNodes;
     }
     return next;
   });
+}
+
+/**
+ * Stellt sicher, dass jeder AI-Parent (Agent/Chain) seine PFLICHT-Sub-Nodes hat (v.a. Chat Model).
+ * Hängt fehlende Pflicht-Slots mit dem Default-Node aus dem Katalog an. Idempotent.
+ */
+export function ensureRequiredSubNodes(
+  steps: WorkflowStep[],
+  edges: WorkflowEdge[],
+  index: N8nCatalogIndexEntry[],
+): { steps: WorkflowStep[]; edges: WorkflowEdge[] } {
+  let nextSteps = steps;
+  let nextEdges = edges;
+  // Über eine Kopie der Parent-IDs iterieren (attachSubNode verändert die Arrays).
+  const parentIds = steps.filter(s => !s.subNodeOf && isAiParent(s.n8nType)).map(s => s.id);
+  for (const parentId of parentIds) {
+    const parent = nextSteps.find(s => s.id === parentId);
+    if (!parent) continue;
+    for (const slot of aiSlotsFor(parent.n8nType)) {
+      if (!slot.required) continue;
+      if (subNodeCount(parent, slot.slot) > 0) continue;
+      const entry = defaultEntryForSlot(slot.slot, index);
+      if (!entry) continue;
+      const res = attachSubNode(nextSteps, nextEdges, parentId, slot.slot, entry);
+      if (res.subId) {
+        nextSteps = res.steps;
+        nextEdges = res.edges;
+      }
+    }
+  }
+  return { steps: nextSteps, edges: nextEdges };
 }
 
 /** Default-Katalog-Node für einen Slot (z. B. OpenAI Chat Model). */

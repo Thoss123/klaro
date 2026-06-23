@@ -30,7 +30,6 @@ export function stripPhaseFromCanvas(canvas: CanvasData, phase: Phase): CanvasDa
 
   if (clearAnalyse) {
     reset.use_cases = [];
-    reset.implementer = undefined;
     if (reset.company) {
       reset.company = { ...reset.company, change_appetite: undefined };
     }

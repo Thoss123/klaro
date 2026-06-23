@@ -24,7 +24,7 @@ export default function LandingNav({ variant = 'light' }: { variant?: Variant })
           K
         </span>
         <span className={`font-bold text-lg ${dark ? 'text-white' : 'text-gray-900'}`}>
-          Klaro
+          Axantilo
         </span>
       </Link>
       <div className="flex items-center gap-2 sm:gap-3">

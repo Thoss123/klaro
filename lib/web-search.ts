@@ -1,5 +1,5 @@
 /**
- * Live web search for the Klaro coach — backs the `web_search` tool.
+ * Live web search for the Axantilo coach — backs the `web_search` tool.
  *
  * Lets the coach look up tools/services it doesn't (reliably) know about
  * (e.g. a niche "onepage" website builder) and the *latest* features/pricing

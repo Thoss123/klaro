@@ -2,7 +2,7 @@
 
 Verwende ausschließlich die Tools aus der folgenden Liste. Empfehle keine Tools die nicht aufgeführt sind. Halte dich an die Entscheidungsregeln pro Kategorie.
 
-# Klaro — Kuratierte Tool-Liste für Phase 2
+# Axantilo — Kuratierte Tool-Liste für Phase 2
 
 ## Entscheidungsprinzipien
 
@@ -171,7 +171,7 @@ Verwende ausschließlich die Tools aus der folgenden Liste. Empfehle keine Tools
 
 ## Datenbank-Alternativen zu Supabase
 
-⚠️ **Supabase-Problem beachten:** Free Tier pausiert nach 7 Tagen Inaktivität automatisch. Für Produktiv-Einsatz ungeeignet ohne Pro-Plan ($25/Monat). Bei eigenen Projekten/Klaro selbst: entweder Supabase Pro oder Alternative wählen.
+⚠️ **Supabase-Problem beachten:** Free Tier pausiert nach 7 Tagen Inaktivität automatisch. Für Produktiv-Einsatz ungeeignet ohne Pro-Plan ($25/Monat). Bei eigenen Projekten/Axantilo selbst: entweder Supabase Pro oder Alternative wählen.
 
 ### Neon ⭐ Beste kostenlose Alternative
 - Postgres wie Supabase, pausiert NICHT bei Inaktivität

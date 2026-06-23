@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { applyResolverToSteps, runNodeResolver } from '@/lib/agents/node-resolver';
-import { getN8nCatalog, getNodeByName } from '@/lib/n8n-catalog';
-import { defaultLinearEdges, withTriggerFirst } from '@/lib/workflow-graph';
+import { getN8nCatalog, getNodeByName, getCatalogIndex } from '@/lib/n8n-catalog';
+import { ensureRequiredSubNodes } from '@/lib/ai-subnodes';
+import { defaultLinearEdges, layoutStepPositions, withTriggerFirst } from '@/lib/workflow-graph';
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
 import { shortLabel, shortWorkflowTitle } from '@/lib/short-label';
 import type { CanvasData, Workflow, WorkflowStep } from '@/lib/types';
@@ -122,14 +123,23 @@ export async function POST(req: NextRequest) {
   const linear = defaultLinearEdges(appliedSteps);
   const { steps: connectedSteps, edges: connectedEdges } = withTriggerFirst(appliedSteps, linear);
 
+  // 3. Echte Agent-Struktur: jedem AI-Agent/Chain seinen Pflicht-Chat-Model-Sub-Node anhängen
+  // (Mistral-Default). Ohne Chat Model ist ein Agent-Node nicht ausführbar.
+  const index = await getCatalogIndex();
+  const { steps: withSubs, edges: withSubEdges } = ensureRequiredSubNodes(
+    connectedSteps,
+    connectedEdges,
+    index,
+  );
+
+  // 4. Layout: Hauptkette horizontal, Sub-Nodes unter ihrem Parent.
+  const positioned = layoutStepPositions(withSubs, withSubEdges, { force: true });
+
   const built: Workflow = {
     ...plan,
     title: shortWorkflowTitle(plan.title),
-    steps: connectedSteps.map((s, i) => ({
-      ...s,
-      position: s.position ?? { x: 80 + i * 240, y: 160 },
-    })),
-    edges: connectedEdges,
+    steps: positioned,
+    edges: withSubEdges,
   };
 
   // Vorhandenen Build mit gleicher id ersetzen (Heilung), sonst anhängen.

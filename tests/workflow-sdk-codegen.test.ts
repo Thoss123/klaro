@@ -4,13 +4,13 @@ import { workflowJsonToSdkCode } from '@/lib/workflow-sdk-codegen';
 describe('workflowJsonToSdkCode', () => {
   it('erzeugt trigger + node Kette', () => {
     const code = workflowJsonToSdkCode({
-      name: 'KLARO: Test',
+      name: 'AXANTILO: Test',
       nodes: [
         {
           name: 'Webhook',
           type: 'n8n-nodes-base.webhook',
           typeVersion: 2,
-          parameters: { httpMethod: 'POST', path: 'klaro-x' },
+          parameters: { httpMethod: 'POST', path: 'axantilo-x' },
         },
         {
           name: 'Set',

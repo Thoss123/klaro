@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildN8nWorkflow,
   getRequiredCredentials,
-  withKlaroPrefix,
-  KLARO_WORKFLOW_PREFIX,
+  withAxantiloPrefix,
+  AXANTILO_WORKFLOW_PREFIX,
   NODE_TYPE,
   type StepMapping,
 } from '@/lib/workflow-generator';
@@ -21,16 +21,16 @@ const wf: Workflow = {
   ],
 };
 
-describe('withKlaroPrefix', () => {
+describe('withAxantiloPrefix', () => {
   it('adds the prefix once', () => {
-    expect(withKlaroPrefix('Foo')).toBe('KLARO: Foo');
+    expect(withAxantiloPrefix('Foo')).toBe('AXANTILO: Foo');
   });
   it('does not double-prefix and normalizes spacing', () => {
-    expect(withKlaroPrefix('KLARO: Foo')).toBe('KLARO: Foo');
-    expect(withKlaroPrefix('klaro:Foo')).toBe('KLARO: Foo');
+    expect(withAxantiloPrefix('AXANTILO: Foo')).toBe('AXANTILO: Foo');
+    expect(withAxantiloPrefix('axantilo:Foo')).toBe('AXANTILO: Foo');
   });
   it('falls back to a default name when empty', () => {
-    expect(withKlaroPrefix('')).toBe('KLARO: Workflow');
+    expect(withAxantiloPrefix('')).toBe('AXANTILO: Workflow');
   });
 });
 
@@ -42,9 +42,9 @@ describe('buildN8nWorkflow', () => {
     { step_id: 's4', tool: 'gmail', credential_id: 'cred_gmail' },
   ];
 
-  it('prefixes the n8n workflow name with KLARO:', () => {
+  it('prefixes the n8n workflow name with AXANTILO:', () => {
     const json = buildN8nWorkflow(wf, mappings, 'Reels Pipeline') as any;
-    expect(json.name.startsWith(KLARO_WORKFLOW_PREFIX)).toBe(true);
+    expect(json.name.startsWith(AXANTILO_WORKFLOW_PREFIX)).toBe(true);
   });
 
   it('creates one node per step with mapped node types', () => {

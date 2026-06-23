@@ -17,6 +17,7 @@ import {
   iconUrlFromRef,
 } from '@/lib/n8n-parameter-utils';
 import N8nCredentialSelect from './N8nCredentialSelect';
+import { resolveOAuthProvider, OAUTH_PROVIDERS } from '@/lib/oauth-config';
 
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400';
 const selectCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400';
@@ -53,9 +54,12 @@ function usePropertyOptions(
   }, [needsFetch, nodeType, prop.name, parameters, credentialId, staticOpts]);
 
   useEffect(() => {
-    if (prop.options?.length) { setDynamic([]); return; }
-    if (needsFetch) fetchOptions();
-    else setDynamic(staticOpts);
+    async function load() {
+      if (prop.options?.length) { setDynamic([]); return; }
+      if (needsFetch) await fetchOptions();
+      else setDynamic(staticOpts);
+    }
+    load();
   }, [prop.options, needsFetch, fetchOptions, staticOpts]);
 
   if (prop.options?.length) return dedupePropertyOptions(prop.options);
@@ -104,7 +108,7 @@ function ResourceLocatorField({ nodeType, prop, value, parameters, credentialId,
   // Aktuelle Parameter für den Fetch-Body bereithalten, ohne dass jede
   // Texteingabe in Geschwister-Feldern einen Re-Fetch auslöst.
   const paramsRef = useRef(parameters);
-  paramsRef.current = parameters;
+  useEffect(() => { paramsRef.current = parameters; });
 
   // Re-Fetch nur, wenn sich ein anderer resourceLocator-Wert ändert
   // (z. B. Airtable: Tabellen-Liste hängt von der gewählten Base ab).
@@ -115,24 +119,28 @@ function ResourceLocatorField({ nodeType, prop, value, parameters, credentialId,
   );
 
   useEffect(() => {
-    if (!isListMode || !credentialId) { setOptions([]); return; }
     let cancelled = false;
-    setLoading(true);
-    setLoadError(false);
-    fetch('/api/n8n/load-options', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nodeType, propertyName: prop.name, parameters: paramsRef.current, credentialId }),
-    })
-      .then(async res => {
+    async function load() {
+      if (!isListMode || !credentialId) { setOptions([]); return; }
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const res = await fetch('/api/n8n/load-options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodeType, propertyName: prop.name, parameters: paramsRef.current, credentialId }),
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json() as { options?: N8nPropertyOption[] };
         if (!cancelled) setOptions(data.options ?? []);
-      })
-      .catch(() => { if (!cancelled) { setOptions([]); setLoadError(true); } })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } catch {
+        if (!cancelled) { setOptions([]); setLoadError(true); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isListMode, nodeType, prop.name, credentialId, siblingLocatorKey]);
 
   const setMode = (m: string) => onChange({ __rl: true, mode: m, value: rl.value ?? '' });
@@ -418,7 +426,14 @@ export default function N8nParameterForm({
     });
   };
 
-  const credentialType = node.credentials?.[0]?.name;
+  // Prefer: loaded credential description → existing config → node catalog (first entry).
+  // This ensures OAuth types (gmailOAuth2, microsoftOutlookOAuth2Api) win over
+  // service-account types (googleApi) even when the catalog puts SA first.
+  const credentialType = credential?.name ?? existing?.credentialType ?? node.credentials?.[0]?.name;
+  const oauthProvider = resolveOAuthProvider(credentialType, node.name);
+  const credentialSectionLabel = oauthProvider
+    ? `${OAUTH_PROVIDERS[oauthProvider].label}-Konto`
+    : (credential?.displayName || credentialType);
   const visible = useMemo(
     () => {
       // Nach Sichtbarkeit filtern UND nach name deduplizieren — manche Katalog-Nodes
@@ -458,12 +473,13 @@ export default function N8nParameterForm({
         <div className="mb-4 rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-1.5">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
-            {credential?.displayName || credentialType} *
+            {credentialSectionLabel} *
           </label>
           <N8nCredentialSelect
             projectId={projectId}
             toolName={node.name.split('.').pop() || ''}
-            credentialType={credential || { name: credentialType, displayName: credentialType } as any}
+            n8nType={node.name}
+            credentialType={credential || { name: credentialType, displayName: credentialType } as N8nCredentialTypeDescription}
             value={credentialValue}
             onChange={setCredentialValue}
           />

@@ -1,4 +1,4 @@
-const SYSTEM_PREFIX = '[__klaro_system__]';
+const SYSTEM_PREFIX = '[__axantilo_system__]';
 
 /** Hidden user message that kicks off the coach per phase (not shown in UI, not saved). */
 export function getHiddenInitMessage(phase: string): string {
@@ -9,9 +9,10 @@ export function getHiddenInitMessage(phase: string): string {
         'Starte Phase 2 (Analyse). Keine Phase-1-Begrüßung, kein „Lass uns gleich starten“, ' +
         'keine Onboarding-Fragen zum Angebot. Sag ZUERST in einem Satz, was Phase 2 tut: nur den ' +
         'Ist-Stand ermitteln (womit sie heute arbeiten), noch keine neuen Tools entscheiden. ' +
-        'Dann kurz Pain Points recap, danach DIREKT die erste Tool-Frage zum wichtigsten Pain Point — ' +
+        'Dann kurz die potenziellen Verbesserungen recap, danach DIREKT die erste Tool-Frage zum wichtigsten Punkt — ' +
+        'im Chat „potenzielle Verbesserung"/„Bereich" sagen, nicht „Pain Point". ' +
         'KEINE A/B/C-Veränderungsfrage (entfällt; Tool-Wechsel besprechen wir später konkret in Phase 3). ' +
-        'Wenn alle Tools erfasst sind: die Pain Points gemeinsam mit dem Nutzer nach Aufwand/Hebel ordnen. ' +
+        'Wenn alle Tools erfasst sind: die Punkte gemeinsam mit dem Nutzer bewerten und nach Aufwand/Hebel ordnen. ' +
         'Nutze für klare Auswahlen Klick-Buttons.'
       );
     case 'plan':

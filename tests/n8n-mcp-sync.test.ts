@@ -18,14 +18,14 @@ describe('buildMcpParameterOperations', () => {
       s1: {
         configType: 'n8n',
         n8nType: 'n8n-nodes-base.webhook',
-        parameters: { httpMethod: 'POST', path: 'klaro-test' },
+        parameters: { httpMethod: 'POST', path: 'axantilo-test' },
       },
     });
     expect(ops).toHaveLength(1);
     expect(ops[0]).toMatchObject({
       operation: 'updateNodeParameters',
       nodeName: 'Webhook',
-      parameters: { httpMethod: 'POST', path: 'klaro-test' },
+      parameters: { httpMethod: 'POST', path: 'axantilo-test' },
     });
   });
 

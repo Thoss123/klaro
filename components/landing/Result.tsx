@@ -99,7 +99,7 @@ export default function Result() {
                   <Check size={14} />
                   Bereit zur Umsetzung
                 </span>
-                <span className="text-[11px] text-gray-400 font-mono">KLARO: Angebots-Flow</span>
+                <span className="text-[11px] text-gray-400 font-mono">AXANTILO: Angebots-Flow</span>
               </div>
             </div>
             <ol className="mt-5 space-y-2.5">

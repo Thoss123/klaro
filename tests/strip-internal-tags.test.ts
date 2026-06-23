@@ -42,6 +42,11 @@ describe('stripInternalTags', () => {
     expect(stripInternalTags(t)).toBe('prilisiert wurde. Ich starte.\nFertig.');
   });
 
+  it('removes stream_reset markers (full and dangling)', () => {
+    expect(stripInternalTags('Text <stream_reset></stream_reset> mehr')).toBe('Text  mehr');
+    expect(stripInternalTags('Finale Antwort <stream_reset')).toBe('Finale Antwort');
+  });
+
   it('removes mistral-leaked edit_workflow json blobs', () => {
     const t =
       'edit_workflowব্যক{"workflow_id": "wf_2", "instruction": "Ersetze OpenAI durch Mistral."}\nIch habe alle KI-Schritte umgestellt.';

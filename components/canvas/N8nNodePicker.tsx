@@ -23,8 +23,8 @@ import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import {
   pickerCategoriesForMode,
   stepTypeFromCatalogEntry,
-  type KlaroN8nCategory,
-  type KlaroN8nCategoryMeta,
+  type AxantiloN8nCategory,
+  type AxantiloN8nCategoryMeta,
 } from '@/lib/n8n-categories';
 import { slotCandidates } from '@/lib/ai-subnodes';
 import type { WorkflowStep } from '@/lib/types';
@@ -32,7 +32,7 @@ import FlowNodeShortcuts from './FlowNodeShortcuts';
 import N8nNodeIcon from './N8nNodeIcon';
 import { getToolVisual } from './tool-icons';
 
-const CATEGORY_ICONS: Record<KlaroN8nCategory, LucideIcon> = {
+const CATEGORY_ICONS: Record<AxantiloN8nCategory, LucideIcon> = {
   ai: Bot,
   action: Globe,
   data: Pencil,
@@ -89,8 +89,8 @@ function CategoryRow({
   cat,
   onSelect,
 }: {
-  cat: KlaroN8nCategoryMeta;
-  onSelect: (id: KlaroN8nCategory) => void;
+  cat: AxantiloN8nCategoryMeta;
+  onSelect: (id: AxantiloN8nCategory) => void;
 }) {
   const Icon = CATEGORY_ICONS[cat.id];
   return (
@@ -125,13 +125,13 @@ export default function N8nNodePicker({
   expanded?: boolean;
   /** trigger-only = Schritt 1; no-trigger = Mitte/Ende */
   filterMode?: 'all' | 'trigger-only' | 'no-trigger';
-  defaultCategory?: KlaroN8nCategory | null;
+  defaultCategory?: AxantiloN8nCategory | null;
   /** AI-Sub-Node-Slot (ai_languageModel / ai_memory / ai_tool) */
   slotFilter?: string;
   onQuickInsert?: (step: WorkflowStep) => void;
 }) {
   const categories = useMemo(() => pickerCategoriesForMode(filterMode), [filterMode]);
-  const [browseCategory, setBrowseCategory] = useState<KlaroN8nCategory | null>(
+  const [browseCategory, setBrowseCategory] = useState<AxantiloN8nCategory | null>(
     filterMode === 'trigger-only' ? 'trigger' : defaultCategory,
   );
   const [query, setQuery] = useState('');
@@ -145,7 +145,7 @@ export default function N8nNodePicker({
   const showDrillDown = expanded && !isSearching && browseCategory !== null;
   const activeCategoryMeta = categories.find(c => c.id === browseCategory);
 
-  const loadEntries = useCallback(async (cat: KlaroN8nCategory | null, q: string) => {
+  const loadEntries = useCallback(async (cat: AxantiloN8nCategory | null, q: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ index: '1' });
@@ -160,9 +160,9 @@ export default function N8nNodePicker({
       let list: N8nCatalogIndexEntry[] = data.index || [];
       setSearchSource(q.trim() ? (data.searchSource ?? 'local') : null);
       if (filterMode === 'trigger-only') {
-        list = list.filter(e => e.klaroCategory === 'trigger');
+        list = list.filter(e => e.axantiloCategory === 'trigger');
       } else if (filterMode === 'no-trigger') {
-        list = list.filter(e => e.klaroCategory !== 'trigger');
+        list = list.filter(e => e.axantiloCategory !== 'trigger');
       }
       if (slotFilter) {
         const allowed = new Set(slotCandidates(slotFilter, list).map(e => e.name));

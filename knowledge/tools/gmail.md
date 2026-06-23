@@ -22,14 +22,14 @@ Googles E-Mail-Dienst — in n8n als Node zum Lesen, Senden, Labeln und Durchsuc
 - Massenversand / Newsletter (> 500/Tag) → dediziertes Tool wie Brevo oder Mailjet.
 - Transaktionale System-Mails aus einer App → SMTP-Dienst (Postmark, Resend).
 
-## Credential einrichten — 3 Klicks über Klaros zentrale Google-OAuth-App
+## Credential einrichten — 3 Klicks über Axantilos zentrale Google-OAuth-App
 Kein eigener OAuth-Client nötig — keine Google Cloud Console, keine Client-ID/Secret, keine Token.
 
 1. Settings → Credentials → "+ Tool verbinden" → Gmail → **„Mit Google verbinden"** klicken.
 2. Im Google-Popup das **Konto auswählen**.
 3. Zugriff **bestätigen** — fertig.
 
-Hinweis: In Google-Workspace-Organisationen kann der Admin externe Apps blockieren — dann muss er Klaros App in der Admin Console freigeben. Bei „Zugriff verweigert": Verbindung trennen und die 3 Klicks wiederholen.
+Hinweis: In Google-Workspace-Organisationen kann der Admin externe Apps blockieren — dann muss er Axantilos App in der Admin Console freigeben. Bei „Zugriff verweigert": Verbindung trennen und die 3 Klicks wiederholen.
 
 ## n8n Node-Konfiguration
 ```json

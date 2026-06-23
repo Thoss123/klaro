@@ -1,10 +1,10 @@
 /**
- * Parst MCP search_nodes-Ergebnisse in Klaro-Katalog-Einträge.
+ * Parst MCP search_nodes-Ergebnisse in Axantilo-Katalog-Einträge.
  */
 
 import type { N8nCatalogIndexEntry } from './n8n-catalog-types';
 
-function inferKlaroCategory(nodeType: string, displayName: string): string {
+function inferAxantiloCategory(nodeType: string, displayName: string): string {
   if (isTriggerNodeType(nodeType)) return 'trigger';
   if (nodeType.includes('langchain') || /agent|openai|mistral|llm|embedding/i.test(displayName)) {
     return 'ai';
@@ -51,7 +51,7 @@ export function parseMcpSearchNodesResults(text: string): N8nCatalogIndexEntry[]
       hasCredentials: false,
       credentialTypes: [],
       iconPath: null,
-      klaroCategory: inferKlaroCategory(name, displayName),
+      axantiloCategory: inferAxantiloCategory(name, displayName),
     });
   }
 

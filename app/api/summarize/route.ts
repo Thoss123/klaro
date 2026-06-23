@@ -11,12 +11,12 @@ export async function POST(req: NextRequest) {
 
     // Build conversation transcript for summarization
     const transcript = messages
-      .map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Klaro'}: ${m.content}`)
+      .map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`)
       .join('\n\n');
 
     const canvasSummary = canvas ? `\n\nAktuelle Canvas-Daten:\n${JSON.stringify(canvas, null, 2)}` : '';
 
-    const prompt = `Du bist ein Zusammenfassungs-Assistent für Klaro, einen KI-Coach.
+    const prompt = `Du bist ein Zusammenfassungs-Assistent für Axantilo, einen KI-Coach.
 
 Fasse das folgende Gespräch aus Phase "${phase || 'diagnose'}" präzise zusammen. 
 

@@ -1,6 +1,6 @@
-# Klaro — Project Goal & Structure
+# Axantilo — Project Goal & Structure
 
-## Was ist Klaro?
+## Was ist Axantilo?
 Ein KI-Coach der Unternehmen durch mäeutische Fragen zu einem fertigen AI-Implementation-Canvas führt. Input: ein Unternehmen das KI einsetzen will. Output: ein konkreter, priorisierter Implementierungsplan.
 
 ---
@@ -18,7 +18,7 @@ Ein KI-Coach der Unternehmen durch mäeutische Fragen zu einem fertigen AI-Imple
 ## Seiten & Pfade
 
 ### `/` — Landing Page
-- Kurze Erklärung was Klaro ist
+- Kurze Erklärung was Axantilo ist
 - CTA: "Kostenlos starten" → führt zu `/onboarding`
 - Warteliste-Formular (Email + optionaler Survey)
 - Noch nicht gebaut in Phase 1, Placeholder reicht
@@ -45,7 +45,7 @@ Screens in Reihenfolge:
    - Externer Dienstleister
    - Noch unklar
 
-4. **Erklärungs-Screen** — "So arbeitet Klaro"
+4. **Erklärungs-Screen** — "So arbeitet Axantilo"
    - Zeigt kurz wie das Gespräch funktioniert
    - "Got it" Button → weiter
 
@@ -72,7 +72,7 @@ Screens in Reihenfolge:
    - Innerhalb eines Monats
    - Wir planen langfristig
 
-9. **Lade-Screen** — "Klaro bereitet deinen Coach vor..."
+9. **Lade-Screen** — "Axantilo bereitet deinen Coach vor..."
    - Animierter Ladebalken, 3-4 Sekunden
    - Zeigt: "Analysiere deine Situation → Konfiguriere deinen Coach → Bereit"
    - Dann automatischer Redirect zu `/chat`

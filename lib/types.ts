@@ -118,15 +118,6 @@ export type Workflow = {
   edges?: WorkflowEdge[]
 }
 
-// Implementer profile (Phase 2/3)
-export type ImplementerProfile = {
-  id: string
-  is_chatter: boolean // is the person chatting the one who implements?
-  who: string // role/person
-  skill_level: 'keine' | 'grundkenntnisse' | 'fortgeschritten' | 'experte'
-  automation_experience: string // has worked with automation tools?
-}
-
 export type CanvasDocument = {
   id: string
   title: string
@@ -134,6 +125,49 @@ export type CanvasDocument = {
   format?: 'markdown' | 'text'
   /** Canvas zone where this doc is shown (inferred from title if missing) */
   phase?: Phase
+}
+
+/** Ein dynamischer Platzhalter in einer Dokument-Vorlage (z.B. {{kunde_name}}). */
+export type TemplatePlaceholder = {
+  /** Schlüssel ohne Klammern, snake_case — z.B. kunde_name */
+  key: string
+  /** Anzeige-Label für den Nutzer — z.B. "Kundenname" */
+  label: string
+  /** Optionale Erklärung, woher der Wert kommt / was reinkommt */
+  description?: string
+  /** Beispielwert zur Veranschaulichung */
+  example?: string
+}
+
+/**
+ * Eine Dokument-/Nachrichten-Vorlage, die ein Workflow verbraucht oder erzeugt
+ * (Angebot, Vertrag, E-Mail, WhatsApp, Report, KI-Prompt). Konkrete Werte sind
+ * durch {{platzhalter}} ersetzt, die zur Laufzeit von KI/Daten gefüllt werden.
+ */
+export type DocumentTemplate = {
+  id: string                          // tmpl_1
+  title: string                       // "Angebot — Vorlage"
+  /** id des Workflows (workflow_plans/workflows), zu dem die Vorlage gehört */
+  linked_workflow?: string
+  /** verbraucht der Workflow das Dokument (input) oder erzeugt er es (output)? */
+  role: 'input' | 'output'
+  /** echtes Datei-Template + Platzhalter-Ersatz vs. KI erzeugt Text je Lauf */
+  delivery: 'document' | 'text'
+  target_format?: 'google_docs' | 'google_sheets' | 'text' | 'email' | 'whatsapp'
+  /** Vorlage aus Nutzer-Upload templatisiert oder von Axantilo neu entworfen */
+  source: 'user_upload' | 'axantilo_generated'
+  /** Original-Upload (chat-uploads Bucket) */
+  source_file_url?: string
+  source_format?: 'pdf' | 'text'
+  /** Vorlagentext mit {{platzhaltern}} (markdown/text) */
+  content: string
+  placeholders: TemplatePlaceholder[]
+  /**
+   * Vollständig ausgefülltes Beispiel (aus dem Muster-Dokument abgeleitet), bei dem
+   * personenbezogene/private Daten durch realistische Fake-Werte ersetzt sind. Dient
+   * der Laufzeit-KI als Few-Shot-Beispiel für Stil & Format — landet in deren System-Prompt.
+   */
+  example_filled?: string
 }
 
 /** Unternehmensprofil aus Phase 1 (Angebot, Akquise, Ablauf) */
@@ -147,6 +181,14 @@ export type CompanyProfile = {
   notes?: string
 }
 
+/** Datenquelle aus Phase 2 — eigene Lösung oder Axantilo-Auto-Provisioning */
+export type DataLayer = {
+  source_type: 'supabase' | 'custom' | 'none' | string
+  source_name?: string   // z.B. "HubSpot CRM", "Google Sheets"
+  auto_provisioned?: boolean
+  notes?: string
+}
+
 export type CanvasData = {
   pain_points: PainPoint[]
   use_cases: UseCase[]
@@ -155,10 +197,13 @@ export type CanvasData = {
   workflow_plans?: Workflow[]
   documents: CanvasDocument[]
   company?: CompanyProfile
-  implementer?: ImplementerProfile
   phase: Phase
   /** Neu: User configuration for workflow steps before deployment */
   workflow_step_configs?: WorkflowStepConfigs
+  /** Phase-2: Datenquelle des Nutzers (eigene DB/CRM oder Axantilo auto-provisioned) */
+  data_layer?: DataLayer
+  /** Phase-3/4: Dokument-/Nachrichten-Vorlagen je Workflow (Angebote, Mails, …) */
+  document_templates?: DocumentTemplate[]
 }
 
 // Session
@@ -233,7 +278,7 @@ export type WorkflowStepConfigs = Record<string, Record<string, StepConfig>>
 // Agent-style action feedback
 export interface AgentAction {
   id: string
-  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow' | 'research_solutions' | 'create_workflow_plan' | 'build_workflow' | 'edit_workflow'
+  type: 'canvas_update' | 'phase_summary' | 'phase_prepare' | 'memory_save' | 'memory_update' | 'request_credential' | 'deploy_workflow' | 'test_workflow' | 'research_solutions' | 'create_workflow_plan' | 'build_workflow' | 'edit_workflow' | 'create_document_template'
   status: 'running' | 'done' | 'error'
   label: string
   detail?: string

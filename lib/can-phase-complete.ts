@@ -7,15 +7,6 @@ export function canAdvanceFromPhase(
   canvas: CanvasData,
   opts?: { coachSignaledComplete?: boolean },
 ): { ok: boolean; reason?: string } {
-  if (phase === 'analyse') {
-    const imp = canvas.implementer;
-    const who = imp?.who?.trim();
-    const skill = imp?.skill_level;
-    if (!who || !skill) {
-      return { ok: false, reason: 'implementer_missing' };
-    }
-  }
-
   if (phase === 'plan') {
     const workflows = (canvas.workflows || []).filter(isValidWorkflow);
     if (workflows.length === 0) {

@@ -7,6 +7,7 @@ import {
   inferDocumentPhase,
   isValidWorkflow,
   normalizeCanvasData,
+  normalizeDocumentTemplate,
 } from '@/lib/canvas-normalize';
 import { stripPhaseFromCanvas } from '@/lib/phase-reset';
 import type { CanvasData, Workflow } from '@/lib/types';
@@ -88,7 +89,6 @@ describe('stripPhaseFromCanvas', () => {
       { id: 'd2', title: 'Plan', content: 'workflow blaupause text here enough', phase: 'plan' },
     ],
     company: { offer: 'Beratung', change_appetite: 'balanced' },
-    implementer: { id: 'i1', is_chatter: true, who: 'Chef', skill_level: 'grundkenntnisse', automation_experience: 'nein' },
   };
 
   it('clears diagnose blobs but keeps later phases', () => {
@@ -102,7 +102,6 @@ describe('stripPhaseFromCanvas', () => {
   it('clears analyse blobs but keeps pain points', () => {
     const c = stripPhaseFromCanvas(base, 'analyse');
     expect(c.use_cases).toHaveLength(0);
-    expect(c.implementer).toBeUndefined();
     expect(c.pain_points).toHaveLength(1);
     expect(c.company?.offer).toBe('Beratung');
     expect(c.company?.change_appetite).toBeUndefined();
@@ -154,5 +153,46 @@ describe('normalizeCanvasData', () => {
     const raw = { workflows: [{ id: 'wf_2', title: 'New', linked_pain_point: 'pp_1', steps: [{ id: 's2', label: 'Go2' }] }] };
     const c = normalizeCanvasData(raw, current, 'plan');
     expect(c.workflows).toHaveLength(1); // merged, not duplicated
+  });
+
+  it('preserves existing document_templates through a canvas sync', () => {
+    const current = {
+      document_templates: [{
+        id: 'tmpl_1', title: 'Angebot', role: 'output' as const, delivery: 'document' as const,
+        source: 'user_upload' as const, content: 'Hallo {{kunde_name}}', linked_workflow: 'wf_1',
+        placeholders: [{ key: 'kunde_name', label: 'Kundenname' }],
+      }],
+    };
+    const c = normalizeCanvasData({}, current, 'plan');
+    expect(c.document_templates).toHaveLength(1);
+    expect(c.document_templates?.[0].placeholders[0].key).toBe('kunde_name');
+  });
+});
+
+describe('normalizeDocumentTemplate', () => {
+  it('coerces invalid enums to safe defaults and strips braces from keys', () => {
+    const t = normalizeDocumentTemplate({
+      title: 'Angebot',
+      content: 'Sehr geehrte {{kunde_name}}, Summe: {{summe}}',
+      role: 'weird',
+      delivery: 'nonsense',
+      source: 'user_upload',
+      target_format: 'google_docs',
+      placeholders: [
+        { key: '{{kunde_name}}', label: 'Kundenname', example: 'Mustermann GmbH' },
+        { key: '', label: 'leer' },
+      ],
+    }, 0);
+    expect(t).not.toBeNull();
+    expect(t!.role).toBe('output');       // invalid → output
+    expect(t!.delivery).toBe('document'); // invalid → document
+    expect(t!.target_format).toBe('google_docs');
+    expect(t!.placeholders).toHaveLength(1);     // empty key dropped
+    expect(t!.placeholders[0].key).toBe('kunde_name'); // braces stripped
+  });
+
+  it('rejects templates without title or content', () => {
+    expect(normalizeDocumentTemplate({ title: 'X' }, 0)).toBeNull();
+    expect(normalizeDocumentTemplate({ content: 'Y' }, 0)).toBeNull();
   });
 });

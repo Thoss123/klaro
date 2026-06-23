@@ -1,4 +1,4 @@
-# Klaro – Master Project Roadmap (v1.3 Chronologisch)
+﻿# Axantilo – Master Project Roadmap (v1.3 Chronologisch)
 
 Dieses Dokument ist die **Single Source of Truth** für alle anstehenden Entwicklungs-, Test- und Business-Schritte bis zum offiziellen Launch der v1.0.
 
@@ -61,14 +61,14 @@ Coach: <trigger_canvas_update>
 
 ## Zentrale Infrastruktur & Shared Services (Juni 2026)
 
-**Entscheidung:** Nutzer richten **keine** eigenen Cloud-Setups ein — Klaro betreibt alles zentral. Details in `project.md` §3.1–3.3.
+**Entscheidung:** Nutzer richten **keine** eigenen Cloud-Setups ein — Axantilo betreibt alles zentral. Details in `project.md` §3.1–3.3.
 
-- `[ ]` **Zentrale OAuth-Apps:** Klaro-App pro Anbieter für Google (Gmail, Calendar, Drive, Sheets) + Microsoft (Outlook, Teams, OneDrive). Nutzer klickt nur „Erlauben" — kein Google-Cloud-Setup. _Ersetzt das per-User-Credential-Setup aus Sprint 6._
-- `[ ]` **Twilio:** eine zentrale Nummer für WhatsApp + SMS, von allen geteilt.
-- `[ ]` **Resend:** zentrale Domain für System-Mails (`notifications@klaro.ai`).
+- `[x]` **Zentrale OAuth-Apps:** Google OAuth-App (Gmail, Calendar, Drive, Sheets, YouTube) eingerichtet; Callback-URL in n8n konfiguriert; Nutzer klickt nur „Verbinden → Konto wählen → Bestätigen". Docs in `knowledge/node-map/google-oauth-3klick.md`.
+- `[x]` **Twilio:** zentraler Account eingerichtet; Nummer für SMS + WhatsApp-Sandbox geteilt; n8n-Credential-ID via `N8N_CREDENTIAL_TWILIO`; kein User-Setup. Docs in `knowledge/node-map/twilio-sms-whatsapp.md`.
+- `[x]` **Resend:** Domain `axantilo.com` verifiziert, zentrale SMTP-Credential in n8n via `N8N_CREDENTIAL_SMTP`; alle System-Mails von `hello@axantilo.com` ohne User-Setup. Docs in `knowledge/node-map/resend-email.md`.
 - `[x]` **Mistral (Free Tier):** Coach, Memory, Embeddings laufen zentral solange Rate Limits reichen.
 - `[x]` **n8n CE (Hostinger):** geteilte Instanz, Isolation per Projects + `company_id`.
-- `[ ]` **Webhook-Router:** zentraler n8n-Router, jede Company bekommt `/webhook/{company_id}/{event_type}`; URLs werden beim Deployment automatisch generiert, Nutzer sieht nichts davon.
+- `[ ]` **Webhook-Router:** zentraler n8n-Router, jede Company bekommt `/webhook/{company_id}/{event_type}`; URLs werden beim Deployment automatisch generiert, Nutzer sieht nichts davon. _Architektur: ein einziger Router-Workflow in n8n, der per Switch-Node auf company_id + event_type routet. Ausstehend._
 
 ---
 
@@ -115,9 +115,9 @@ create table if not exists user_credentials (
 
 > **Entscheidung (Juni 2026):** n8n läuft als **eine geteilte CE-Instanz** für alle Nutzer (nicht pro Nutzer), Mandantentrennung über **n8n Projects + `company_id`**. Host: **Hostinger VPS** (statt ursprünglich Hetzner). VPS, Docker und API-Key sind live; `MOCK_N8N=false`.
 
-- `[ ]` **VPS:** Ubuntu 22/24, Firewall: 22 (SSH), 80/443 (Caddy), **nicht** 5678 öffentlich (nur intern oder VPN).
-- `[ ]` **Docker Compose:** n8n CE + Postgres + Caddy (HTTPS, Domain z. B. `n8n.klaro.de`).
-- `[ ]` **n8n API-Key:** In n8n UI → Settings → API → Key erzeugen.
+- `[x]` **VPS:** Hostinger VPS live, Firewall konfiguriert, 5678 nicht öffentlich.
+- `[x]` **Docker Compose:** n8n CE + Postgres + Caddy (HTTPS, Domain z. B. `n8n.axantilo.com`).
+- `[x]` **n8n API-Key:** Erzeugt und in Vercel/lokal hinterlegt.
 - `[ ]` **Env auf Vercel / lokal:**
 
 ```env
@@ -160,7 +160,7 @@ MOCK_N8N=false
 |--------|-------------|----------|
 | **1** | `.env.local`: `MOCK_N8N=true`, Supabase + Auth wie beim Chat | `npm run dev` startet |
 | **2** | Supabase: Tabellen aus 2.0 (falls fehlend) | Kein 500 „relation workflows does not exist“ |
-| **3** | In Klaro eingeloggt, `project_id` aus Dashboard/DevContext notieren | UUID parat |
+| **3** | In Axantilo eingeloggt, `project_id` aus Dashboard/DevContext notieren | UUID parat |
 | **4** | Mock-Deploy: authentifizierter `POST /api/n8n/workflows` mit Minimal-Body (siehe unten) | 200 + Zeile in `workflows`, `n8n_workflow_id` beginnt mit `mock_` |
 | **5** | `PATCH` mit `action: activate` | `status` → `active` (n8n wird bei Mock übersprungen) |
 | **6** | Hetzner: VPS, Docker (n8n + Postgres), Caddy + Domain | `https://n8n.<domain>` lädt n8n UI |
@@ -223,7 +223,7 @@ MOCK_N8N=false
 > **Entscheidung (Juni 2026):** Der ursprünglich geplante Industry-Playbook-Agent **entfällt**. Stattdessen nutzt der Coach die zentrale **RAG-Wissensdatenbank** über das Tool **`search_knowledge`** (in allen Phasen verfügbar): Er fragt gezielt ab (UI-How-tos „wie macht man X", Tool-Setup, abgedeckte Use-Cases, **bevor** er einen Workflow/Schritt vorschlägt oder baut) und **bewertet die Treffer selbst** — passt die Branche/das Tool nicht oder ist die Relevanz niedrig, ignoriert er sie und nutzt eigenes Wissen. Die `industry_playbooks`/n8n/NotebookLM-Punkte unten sind damit **hinfällig**.
 >
 > - `[x]` **Tool `search_knowledge`** (`lib/ai-tools.ts`) + Handler in `app/api/chat/route.ts` (ruft `searchKnowledge`, liefert Treffer mit Relevanz + `branche`-Metadaten zurück). Phasenunabhängig.
-> - `[x]` **Coach-Prompt:** Regel 10 in `KLARO_SHARED_RULES` — wann abfragen, Treffer selbst bewerten, Branche prüfen, nichts erfinden, Tool/Datenbank nie im Chat erwähnen.
+> - `[x]` **Coach-Prompt:** Regel 10 in `AXANTILO_SHARED_RULES` — wann abfragen, Treffer selbst bewerten, Branche prüfen, nichts erfinden, Tool/Datenbank nie im Chat erwähnen.
 > - `[x]` **Auto-Injektion entfernt** — RAG ist jetzt coach-gesteuert statt immer in den Prompt gedrückt (keine unpassenden Infos mehr erzwungen).
 > - `[ ]` **QA:** 3 Branchen testen — Coach zieht passende Einträge, ignoriert fremde Branchen, leakt das Tool nicht.
 
@@ -279,6 +279,18 @@ MOCK_N8N=false
 - `[ ]` **UX Polish:** Onboarding Dark Mode / Motion.
 - `[ ]` **Token Counter:** DevContextModal inkl. Orchestration-Breakdown (aus Sprint 3).
 
+### 4.1 Mindset-Vermittlung an Nutzer (Coach-Prompt-Update)
+
+- `[x]` **`knowledge/mindset.md`:** 8 Kernhaltungen zu KI/Automatisierung/Kosten, die Nutzer verinnerlichen sollen _(angelegt)_. Besonders: Kosten sind Investition, nicht Ausgabe; Menschen für Strategie, KI für Volumen; kleine vernetzte Workflows schlagen große Einzelne.
+
+- `[ ]` **Mindsets in Chat-Context injizieren** (WICHTIG — Dokumentation allein reicht nicht):
+  - **`app/api/chat/route.ts`:** Vor jedem Coach-Call Phase-abhängige Mindsets aus `knowledge/mindset.md` laden und **in den System-Prompt injizieren** (ähnlich wie RAG-Knowledge).
+  - **Phase-Mapping:** Phase 1 = Mindsets 2+4; Phase 2 = Mindset 7; Phase 3 = Mindsets 1+3+4+6; Phase 4 = Mindsets 5+8.
+  - **Format:** Kurzer Block (~200 Tokens) im System-Prompt: „Deine Haltung zu diesem Thema:" + relevanter Mindset-Auszug.
+  - **Nicht explizit:** Klaro liest die Mindsets stille, verkauft sie nicht als Lehrpunkte.
+
+- `[ ]` **QA:** Testlauf Phase 1–4 — Nutzer nimmt diese Haltungen natürlich auf, ohne dass es predigt wirkt. Besonders Phase 3: Kosten-Mindset sollte in jeder Tool-Empfehlung subtil sichtbar sein.
+
 ---
 
 ## Sprint 5: Phase 4 & Workflow Deployment
@@ -290,7 +302,7 @@ MOCK_N8N=false
 
 **Ziel:** Canvas-Plan → echtes n8n-JSON → Deploy. Orchestration aus Sprint 3 gilt weiter; hier kommt **Ausführung**.
 
-- `[x]` **`lib/workflow-generator.ts`:** Mapping Canvas-Steps → n8n-Nodes inkl. `KLARO:`-Namespace-Präfix (`withKlaroPrefix`); Unit-getestet. Live verifiziert (`KLARO: Reels Pipeline`).
+- `[x]` **`lib/workflow-generator.ts`:** Mapping Canvas-Steps → n8n-Nodes inkl. `AXANTILO:`-Namespace-Präfix (`withAxantiloPrefix`); Unit-getestet. Live verifiziert (`AXANTILO: Reels Pipeline`).
 - `[x]` **Deploy-UI:** Phase 4 — Tool-Mapping, Credentials-Popup, `POST /api/n8n/workflows` (in `app/chat/page.tsx`); zusätzlich **`/workflows`-Tab** (Liste + Graph + Aktivieren/Test/Löschen). _Hinweis: ohne live n8n degradiert Deploy sauber zu `draft` (n8n-Fehler abgefangen)._
 - `[x]` **Execution Monitor:** Status-Pill + Ausführungen pro Workflow im `/workflows`-Tab aus `/api/n8n/executions`.
 - `[ ]` **Workflow teilen:** Nutzer können fertige Workflows per Link teilen, damit z.B. die IT oder externe Dienstleister die Credentials und Zugänge eintragen können (Credential-Delegation).
@@ -322,6 +334,22 @@ MOCK_N8N=false
 
 ---
 
+## Sprint 6.5: Data Layer — Datenablage pro Account
+
+**Ziel:** Jeder Account bekommt automatisch eine strukturierte Datenablage für Automationsdaten — ohne Setup-Aufwand für den Nutzer. Eigene Lösungen (CRM, DB, Sheets) werden als vollwertige Alternative erkannt und angebunden.
+
+- `[x]` **Supabase Migration** (`20260618000000_data_layer.sql`): `user_data_layer`, `user_data_tables`, `user_data_rows` mit RLS.
+- `[x]` **`lib/data-layer.ts`:** `ensureDataLayer()` — idempotentes Auto-Provisioning (supabase / custom). `formatDataLayerForPrompt()` für Coach-Kontext.
+- `[x]` **Phase-2-Frage:** Mundgerechte Datenquellen-Frage nach Tool-Stack-Erfassung; Canvas-Update mit `data_layer` (source_type, source_name).
+- `[x]` **Phase-3: Axantilo Steuerungsagent vorschlagen** — Coach schlägt nach allen Pain-Point-Workflows proaktiv einen WhatsApp-basierten Steuerungsagenten vor, der alle Automationen per Nachricht steuert und Ergebnisse zurückschickt.
+- `[x]` **Canvas-Feld `data_layer`** in `lib/types.ts` + `lib/canvas-normalize.ts`.
+- `[x]` **`{{data_layer}}`-Variable** in Phase-3- und Phase-4-Prompts (`lib/claude.ts`).
+- `[x]` **Trigger:** Erster Workflow-Deploy → `ensureDataLayer()` idempotent (fire-and-forget).
+- `[ ]` **Visualisierung (kurzfristig):** Airtable via n8n-Airtable-Node — Coach schlägt in Phase 3/4 Airtable-Schreibschritt vor, wenn Nutzer Daten visuell sehen will. Kein Axantilo-Feature nötig.
+- `[ ]` **In-App-Viewer (Backlog):** Einfacher Tabellen-Viewer im `/dashboard`-Tab für `user_data_rows` — mittelfristig, kein MVP-Feature.
+
+---
+
 ## Sprint 7: Alpha User Testing (Extern)
 
 - `[ ]` **Alpha-Invite:** 5–10 Testkunden.
@@ -339,9 +367,9 @@ MOCK_N8N=false
 
 ---
 
-## Post-MVP: Data Layer & Dashboard Builder (gemerkt)
+## Post-MVP: Events & KI-Intelligenz
 
-**Nicht Teil von v1.0.** Wird automatisch im Hintergrund aufgebaut während die Phasen laufen.
+**Nicht Teil von v1.0.** Baut auf dem Data Layer (Sprint 6.5) auf.
 
 - `[ ]` **`events`-Tabelle:** jede Workflow-Execution wird geloggt → Basis für KI-Insights & Selbstverbesserung.
 - `[ ]` **Vier Stufen:** Einzelworkflows → vernetzte Workflows → KI-Intelligenz → Selbstverbesserung.
@@ -374,10 +402,37 @@ MOCK_N8N=false
 
 ---
 
+## Vorlagen & Dokumente (Templates)
+
+Viele Workflows verarbeiten wiederkehrende Dokumente/Texte (Angebote, Verträge, Reports, Standard-Mails, WhatsApp, KI-Prompts). Axantilo templatisiert sie: konkrete Werte → dynamische Platzhalter `{{…}}`, die die KI zur Laufzeit füllt.
+
+**Jetzt umgesetzt (v1):**
+
+- `[x]` **Text-Extraktion für ALLE textbasierten Dateien** (`/api/attachments`): PDF via `pdf-parse` + **OCR-Fallback** (Mistral `mistral-ocr-latest`, `lib/image-ocr.ts → extractTextFromPdf`) für gescannte PDFs; alle anderen Textformate (.txt/.md/.csv/.tsv/.json/.html/.xml/.yaml/.log/.rtf …) per MIME/Endung **oder** Inhalts-Erkennung (`looksLikeText`) — keine feste Whitelist. Datei landet im `chat-uploads`-Bucket; Extrakt geht via `formatAttachmentsForCoach` in den Coach-Kontext.
+- `[x]` **Datenmodell `DocumentTemplate`** (`lib/types.ts`, `canvas.document_templates`) — role (input/output), delivery (document/text), target_format, source, Platzhalter-Liste **+ `example_filled`** (anonymisiertes Voll-Beispiel); Normalisierung + Erhalt über Canvas-Sync in `lib/canvas-normalize.ts`.
+- `[x]` **Templatisierung durch den Coach** — Tool `create_document_template` (`lib/ai-tools.ts`, Phase 3+4): der Coach erkennt selbst variable vs. feste Stellen (bestätigt mit dem Nutzer, fragt nur bei Unklarheit), liefert `content` (mit Platzhaltern), `placeholders` und `example_filled`. `/api/canvas-worker/create-template` speichert nur (kein eigener LLM-Call) — der Coach hat den vollen Kontext.
+- `[x]` **Beispiel → KI-System-Prompt:** `lib/document-template.ts → buildTemplateAiInstruction` baut aus Vorlage + Platzhaltern + anonymisiertem Beispiel die Lauf­zeit-KI-Anweisung; bei gebautem Workflow wird sie automatisch auf den Füll-Schritt (`findTemplateFillStep`) als `StepConfig.systemPrompt` gelegt (sichtbar/editierbar im Schritt-Konfig).
+- `[x]` **Phase-3-Discovery** & **Phase-4-Einbau** (`lib/claude.ts`): klärt Quelle der Vorlage, baut sie via `edit_workflow` in den Workflow ein (echtes Dokument → KI-Füll-Schritt + Google Docs/Sheets; einfache Mail → Text je Lauf).
+- `[x]` **Canvas-Rendering** „Vorlagen" mit hervorgehobenen Platzhaltern + anonymisiertem Beispiel (`components/canvas/RoadmapCanvas.tsx`).
+
+**Später (mit Begründung + Google-Äquivalenten):**
+
+- `[ ]` **DOCX** (`mammoth`) parsen ↔ **Google Docs** als Cloud-Äquivalent (Live-Lesen/Schreiben via Google-API über zentrale OAuth). Word ist lokal/offline schlecht anbindbar — für Automationen Google Docs bevorzugen.
+- `[ ]` **XLSX** (`sheetjs`) parsen ↔ **Google Sheets** (Live-Lesen/Schreiben). CSV geht heute schon als Text-Upload.
+- `[ ]` **PPTX**-Parser ↔ **Google Slides**. Selteneres Format, niedrige Priorität.
+- `[ ]` **Google-Live-Anbindung**: Vorlagen direkt aus bestehenden Google Docs/Sheets ziehen statt Upload (braucht zentrale OAuth-Scopes).
+- `[x]` **`StepConfig.systemPrompt` → n8n-Node-Parameter verdrahtet:** `buildAiNodeParameters` (`lib/workflow-deploy.ts`) übersetzt den System-Prompt (Vorlage + anonymisiertes Beispiel) in echte n8n-Parameter — AI Agent → `options.systemMessage`, Basic LLM Chain → `messages.messageValues` (SystemMessagePromptTemplate). `buildParameters` nutzt das beim Deploy. **Live getestet** (n8n MCP, Mistral): Agent füllte eine Angebots-Vorlage korrekt aus Auftragsdaten, anonymisiertes Beispiel nur als Stil-Vorlage → Status `success`.
+- `[x]` **Echte Agent-Struktur im Build:** AI-Schritte werden als `@n8n/n8n-nodes-langchain.agent` aufgelöst (`preferAiNode`) und bekommen beim Build automatisch einen Pflicht-Chat-Model-Sub-Node (Mistral Cloud, EU/DSGVO) via `ensureRequiredSubNodes` (`lib/ai-subnodes.ts`, `app/api/n8n/build-workflow`). Memory/Tool-Slots optional erweiterbar.
+- `[ ]` **Datei-Lieferung (Google Docs/Sheets) zur Laufzeit verdrahten:** Der Agent erzeugt den fertigen Dokument-/Angebotstext (live bewiesen). Die Auslieferung als echte Datei (Google Docs „create"/„replace text", Google Sheets append) ist als Node im Build vorhanden, aber die Node-Parameter (Ziel-Doc, Platzhalter-Mapping) werden noch nicht automatisch gesetzt — Folge-Schritt. Hinweis: n8n-Instanz hat Google Sheets/Drive-Creds, aber **kein Google Docs** (googleDocsOAuth2Api fehlt) und **kein OpenAI** — Chat-Model-Default daher Mistral.
+- `[ ]` **Optionales Vektor-Embedding** hochgeladener Vorlagen — nur falls je nötig (heute passt der Vorlagentext in den Coach-Kontext, kein RAG nötig).
+
+---
+
 ## Changelog Roadmap
 
 | Version | Änderung |
 |---------|----------|
+| v1.4 | Vorlagen & Dokumente: PDF-Parsing + OCR-Fallback, `DocumentTemplate`-Modell, Templatisierung (`create_document_template`), Phase-3-Discovery + Phase-4-Einbau, Canvas-Rendering „Vorlagen"; DOCX/XLSX/PPTX + Google-Live in Roadmap |
 | v1.3 | Zentrale Infrastruktur (Shared OAuth/Twilio/Resend/n8n), Webhook-Router, Node-Map-Builder, RAG Knowledge Base (erledigt), Sprint Qualität (Pfad-Logik inkl. Pfad D), Post-MVP Data Layer + Dashboard Builder; n8n Host Hetzner→Hostinger (live) |
 | v1.2 | Backlog Coach Advisor; Sprint 2 Runbook + Supabase 2.0 |
 | v1.1 | Sprint 2 ausgebaut (How-to); Sprint 3 = komplette Agent-Orchestrierung; Critic/Supervisor/Research aus verstreuten Sprints gebündelt; Agent-Tabelle + Pipeline-Diagramm |

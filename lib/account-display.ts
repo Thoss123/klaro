@@ -37,7 +37,7 @@ export function getAccountDisplayInfo(
     (vorname && vorname !== 'Nutzer' ? vorname : '') ||
     (email ? email.split('@')[0] : 'Account')
 
-  const subtitle = firmenname || 'Klaro Account'
+  const subtitle = firmenname || 'Axantilo Account'
 
   return {
     displayName,

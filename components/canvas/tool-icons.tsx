@@ -3,7 +3,7 @@
 /**
  * Tool / node icon registry for the n8n-style workflow visualization.
  *
- * Maps a Klaro tool name (or a generic workflow step type) to a real brand icon
+ * Maps an Axantilo tool name (or a generic workflow step type) to a real brand icon
  * (react-icons/si) or a clean generic node icon (lucide-react), plus the brand
  * accent colour and a short label — exactly like n8n renders its node tiles.
  */

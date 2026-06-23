@@ -27,6 +27,12 @@ function mergeMistralToolCallDelta(
 
 export type VisionAttachment = { mimeType: string; base64: string };
 
+// Control marker: tells the client to discard the coach text streamed so far in
+// this turn. Emitted when a round streamed (premature) text live and then ended
+// in tool calls — the model re-answers after the results, so the live text must
+// be wiped before the final answer streams. Already-fired tag side effects stay.
+const STREAM_RESET = '\n<stream_reset></stream_reset>\n';
+
 function buildMistralUserContent(message: string, attachments?: VisionAttachment[]) {
   const images = (attachments || []).filter(a => a.mimeType?.startsWith('image/') && a.base64);
   if (!images.length) return message || ' ';
@@ -114,22 +120,27 @@ export class GeminiProvider implements AIProvider {
 
     let chat = model.startChat({ history: normalizedHistory });
     
-    // We need a helper function to process the stream since we might need to do it multiple times for tool calls.
-    // Text is buffered per stream and only flushed when the stream contained NO tool calls:
-    // in tool rounds the model often emits a premature answer and answers again after the
-    // results — flushing every round would concatenate duplicate answers (see MistralProvider).
+    // We need a helper function to process the stream since we might need to do it
+    // multiple times for tool calls. Text is streamed live; if a round emits text
+    // and then makes tool calls, we send STREAM_RESET so the client discards that
+    // premature text — the model re-answers after the results and only the final
+    // answer should remain (mirrors MistralProvider).
     const processStream = async (res: any, currentChat: any) => {
-      let roundText = '';
-      let hadCalls = false;
+      let roundStreamedText = false;
       for await (const chunk of res.stream) {
          const chunkText = chunk.text();
          if (chunkText) {
-             roundText += chunkText;
+             onChunk(chunkText);
+             roundStreamedText = true;
          }
 
          const calls = chunk.functionCalls();
          if (calls && calls.length > 0 && onToolCall) {
-            hadCalls = true;
+            // Premature text from this round is superseded by the post-tool answer.
+            if (roundStreamedText) {
+               onChunk(STREAM_RESET);
+               roundStreamedText = false;
+            }
             for (const call of calls) {
                // Execute the tool call
                let toolResult;
@@ -151,7 +162,6 @@ export class GeminiProvider implements AIProvider {
             }
          }
       }
-      if (!hadCalls && roundText) onChunk(roundText);
     };
     
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -211,6 +221,13 @@ export class MistralProvider implements AIProvider {
     }
 
     const tools = getToolsForPhase(phase || 'diagnose');
+    // Phase 1 (Diagnose) läuft auf Mistral Large — bewusst per Nutzerwunsch (bessere
+    // Gesprächsführung/Instruction-Following im langen Diagnose-Prompt). Andere Phasen
+    // bleiben auf MISTRAL_CHAT_MODEL. Per Env feinjustierbar ohne Code-Änderung.
+    const chatModel =
+      (phase || 'diagnose') === 'diagnose'
+        ? (process.env.MISTRAL_DIAGNOSE_MODEL || 'mistral-large-latest')
+        : MISTRAL_CHAT_MODEL;
     const messages: any[] = [
        { role: 'system', content: systemPrompt },
        ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content || ' ' })),
@@ -224,24 +241,28 @@ export class MistralProvider implements AIProvider {
 
       const pending = new Map<number, MistralPendingToolCall>();
       const result = await this.client.chat.stream({
-        model: MISTRAL_CHAT_MODEL,
+        model: chatModel,
         messages,
         tools: toMistralTools(tools),
       });
 
-      // Buffer this round's text instead of streaming it live: in multi-round tool
-      // loops the model often emits a (premature) answer in the same round as a tool
-      // call, then answers AGAIN after seeing the results — live-streaming every round
-      // concatenates all of them into one garbled message. Text from a round that ends
-      // in tool calls is discarded; only a tool-free (final) round is flushed.
-      let roundText = '';
+      // Stream this round's text live (token by token). In multi-round tool loops
+      // the model sometimes emits a premature answer in the same round as a tool
+      // call, then answers AGAIN after seeing the results. We still stream it live,
+      // but if the round ends in tool calls we send STREAM_RESET so the client
+      // discards that premature text — only the final (tool-free) round's answer
+      // stays. This keeps the message live even during tool calls without garbling.
+      let roundStreamedText = false;
 
       for await (const chunk of result) {
         const choice = chunk.data.choices[0];
         const content = choice?.delta?.content;
         if (content) {
           const cleaned = stripLeakedToolFragments(content as string);
-          if (cleaned.trim()) roundText += cleaned;
+          if (cleaned) {
+            onChunk(cleaned);
+            roundStreamedText = true;
+          }
         }
 
         const toolCalls = choice?.delta?.toolCalls;
@@ -253,8 +274,7 @@ export class MistralProvider implements AIProvider {
       }
 
       if (!pending.size || !onToolCall) {
-        if (roundText) onChunk(roundText);
-        return;
+        return; // final round — text already streamed live
       }
 
       const sorted = [...pending.entries()].sort((a, b) => a[0] - b[0]);
@@ -301,9 +321,13 @@ export class MistralProvider implements AIProvider {
       }
 
       if (!assistantToolCalls.length) {
-        if (roundText) onChunk(roundText);
-        return;
+        return; // no valid tool calls — text already streamed live
       }
+
+      // This round streamed (premature) text live and is now going into another
+      // round; the model will re-answer after the tool results. Tell the client to
+      // drop the live text so only the final answer remains.
+      if (roundStreamedText) onChunk(STREAM_RESET);
 
       // Mistral requires: assistant (with toolCalls) → tool results. Last role must be "tool".
       messages.push({ role: 'assistant', content: '', toolCalls: assistantToolCalls });

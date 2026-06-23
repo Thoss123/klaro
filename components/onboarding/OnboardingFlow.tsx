@@ -130,8 +130,8 @@ export default function OnboardingFlow() {
         const data = await res.json();
         
         if (data.id) {
-           localStorage.setItem('klaro_session', JSON.stringify(newAnswers));
-           localStorage.setItem('klaro_session_id', data.id);
+           localStorage.setItem('axantilo_session', JSON.stringify(newAnswers));
+           localStorage.setItem('axantilo_session_id', data.id);
            router.push('/chat');
         } else {
            console.error("Fehler beim Speichern der Session:", data.error);
@@ -161,7 +161,7 @@ export default function OnboardingFlow() {
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-600 text-white font-bold text-lg tracking-tight shadow-md">
             K
           </span>
-          <span className="text-lg font-bold tracking-tight text-slate-800">Klaro Coach</span>
+          <span className="text-lg font-bold tracking-tight text-slate-800">Axantilo Coach</span>
         </div>
 
         <div className="hidden sm:block flex-1 max-w-md mx-auto">
