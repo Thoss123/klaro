@@ -57,7 +57,7 @@ interface ProviderConfig {
   buildCredentialData: (tokens: OAuthTokenResponse) => N8nOAuthCredentialData;
 }
 
-const APP_URL = () => (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { envAppOrigin } from '@/lib/app-origin';
 
 /** n8n-Katalog liefert teils prefixed Namen (z. B. n8n-nodes-base.gmailOAuth2). */
 export function normalizeCredentialTypeName(credentialType?: string | null): string {
@@ -67,8 +67,9 @@ export function normalizeCredentialTypeName(credentialType?: string | null): str
 }
 
 /** Die in Google/Microsoft-Console zu registrierende Callback-URL. */
-export function oauthRedirectUri(provider: OAuthProvider): string {
-  return `${APP_URL()}/api/oauth/callback/${provider}`;
+export function oauthRedirectUri(provider: OAuthProvider, origin?: string): string {
+  const base = (origin ?? envAppOrigin()).replace(/\/$/, '');
+  return `${base}/api/oauth/callback/${provider}`;
 }
 
 function withExpiry(tokens: OAuthTokenResponse) {

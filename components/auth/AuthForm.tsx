@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { authCallbackUrl, getBrowserOrigin } from '@/lib/app-origin';
 import { isExistingAccountOnSignup } from '@/lib/auth-signup';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import Lottie from 'lottie-react';
@@ -39,12 +40,14 @@ export default function AuthForm({
 
     try {
       const supabase = getSupabase();
+      const origin = getBrowserOrigin();
+      const callbackUrl = authCallbackUrl(origin, window.location.pathname + window.location.search);
       if (mode === 'signup') {
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+            emailRedirectTo: callbackUrl,
           },
         });
         if (isExistingAccountOnSignup(signUpData, signUpError)) {
@@ -88,10 +91,12 @@ export default function AuthForm({
       const supabase = getSupabase();
       // Lokale Axantilo-Session löschen, damit ein anderer Google-Account nicht an der alten Session hängen bleibt.
       await supabase.auth.signOut({ scope: 'local' });
+      const origin = getBrowserOrigin();
+      const callbackUrl = authCallbackUrl(origin, window.location.pathname + window.location.search);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback`,
+          redirectTo: callbackUrl,
           // Google-Kontowähler erzwingen (sonst Silent-SSO mit dem im Browser aktiven Google-Konto).
           queryParams: {
             prompt: 'select_account',

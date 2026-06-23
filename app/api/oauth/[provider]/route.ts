@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { getRequestOrigin } from '@/lib/app-origin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { OAUTH_PROVIDERS, oauthRedirectUri, type OAuthProvider } from '@/lib/oauth-config';
 
@@ -46,10 +47,11 @@ export async function GET(
   }
 
   const state = randomUUID();
+  const origin = getRequestOrigin(req);
 
   const authUrl = new URL(cfg.authUrl());
   authUrl.searchParams.set('client_id', clientId);
-  authUrl.searchParams.set('redirect_uri', oauthRedirectUri(provider));
+  authUrl.searchParams.set('redirect_uri', oauthRedirectUri(provider, origin));
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', cfg.scopes.join(' '));
   authUrl.searchParams.set('state', state);

@@ -2,9 +2,11 @@ import Link from 'next/link';
 import Hero from '@/components/landing/Hero';
 import Problems from '@/components/landing/Problems';
 import AgentLoop from '@/components/landing/AgentLoop';
-import Phases from '@/components/landing/Phases';
 import Result from '@/components/landing/Result';
+import WhyAxantilo from '@/components/landing/WhyAxantilo';
+import MidCTA from '@/components/landing/MidCTA';
 import ForWho from '@/components/landing/ForWho';
+import Integrations from '@/components/landing/Integrations';
 import Trust from '@/components/landing/Trust';
 import FinalCTA from '@/components/landing/FinalCTA';
 
@@ -14,9 +16,11 @@ export default function Home() {
       <Hero />
       <Problems />
       <AgentLoop />
-      <Phases />
       <Result />
+      <WhyAxantilo />
+      <MidCTA />
       <ForWho />
+      <Integrations />
       <Trust />
       <FinalCTA />
 

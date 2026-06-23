@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getRequestOrigin } from '@/lib/app-origin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { encrypt } from '@/lib/encryption';
 import { createN8nCredential } from '@/lib/n8n';
@@ -33,13 +34,14 @@ function popupResultPage(payload: Record<string, unknown>, fallbackUrl: string):
 async function exchangeCode(
   provider: OAuthProvider,
   code: string,
+  origin: string,
 ): Promise<OAuthTokenResponse> {
   const cfg = OAUTH_PROVIDERS[provider];
   const body = new URLSearchParams({
     code,
     client_id: cfg.clientId() ?? '',
     client_secret: cfg.clientSecret() ?? '',
-    redirect_uri: oauthRedirectUri(provider),
+    redirect_uri: oauthRedirectUri(provider, origin),
     grant_type: 'authorization_code',
   });
   const res = await fetch(cfg.tokenUrl(), {
@@ -96,9 +98,10 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || user.id !== cookie.userId) return fail('Session abgelaufen. Bitte neu einloggen und erneut verbinden.');
 
+  const origin = getRequestOrigin(req);
   let tokens: OAuthTokenResponse;
   try {
-    tokens = await exchangeCode(provider, code);
+    tokens = await exchangeCode(provider, code, origin);
   } catch (e) {
     return fail(e instanceof Error ? e.message : 'Token-Exchange fehlgeschlagen.');
   }

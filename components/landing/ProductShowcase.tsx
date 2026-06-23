@@ -3,29 +3,41 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  Bot,
-  Zap,
-  Cpu,
-  User,
-  ChevronRight,
-  Check,
-  Rocket,
-  Loader2,
-  ArrowUp,
-} from 'lucide-react';
-import { SiGmail, SiGooglesheets } from 'react-icons/si';
+import { ArrowUp } from 'lucide-react';
+import LandingWorkflowEditor from './LandingWorkflowEditor';
+import LandingPlanFlowPreview from './LandingPlanFlowPreview';
+import ShowcasePhase1Chat from './ShowcasePhase1Chat';
 
 const STEPS = [
   { id: 'chat', label: 'Verstehen' },
-  { id: 'canvas', label: 'Planen' },
-  { id: 'build', label: 'Bauen' },
+  { id: 'canvas', label: 'Einordnen' },
+  { id: 'build', label: 'Planen' },
   { id: 'deploy', label: 'Live' },
 ] as const;
 
 type StepId = (typeof STEPS)[number]['id'];
 
-const CYCLE_MS = 4200;
+const STEP_MS: Record<StepId, number> = {
+  chat: 9800,
+  canvas: 4800,
+  build: 7800,
+  deploy: 5800,
+};
+
+const ANALYSE_ITEMS = [
+  {
+    title: 'Angebote manuell',
+    tools: ['Excel', 'Gmail'],
+    rank: 1,
+    note: 'Ist-Tools erfasst · schnellster Hebel',
+  },
+  {
+    title: 'E-Mail-Flut',
+    tools: ['Outlook'],
+    rank: 2,
+    note: 'Priorität bestätigt',
+  },
+];
 
 export default function ProductShowcase() {
   const router = useRouter();
@@ -39,14 +51,20 @@ export default function ProductShowcase() {
   };
 
   useEffect(() => {
-    let i = 0;
     const ids = STEPS.map((s) => s.id);
-    const tick = () => {
-      i = (i + 1) % ids.length;
-      setActive(ids[i]);
+    let idx = 0;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const schedule = () => {
+      timeout = setTimeout(() => {
+        idx = (idx + 1) % ids.length;
+        setActive(ids[idx]);
+        schedule();
+      }, STEP_MS[ids[idx]]);
     };
-    const t = setInterval(tick, CYCLE_MS);
-    return () => clearInterval(t);
+
+    schedule();
+    return () => clearTimeout(timeout);
   }, []);
 
   return (
@@ -68,9 +86,7 @@ export default function ProductShowcase() {
             <span
               key={s.id}
               className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${
-                active === s.id
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-gray-400'
+                active === s.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-400'
               }`}
             >
               {s.label}
@@ -88,25 +104,8 @@ export default function ProductShowcase() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.3 }}
-              className="space-y-4"
             >
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                  <Bot size={18} className="text-blue-600" />
-                </div>
-                <div className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-gray-800 text-sm leading-relaxed">
-                  Welche Aufgabe frisst bei euch jede Woche am meisten Zeit?
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <p className="text-sm text-gray-800 rounded-2xl rounded-tr-sm bg-indigo-50 border border-indigo-100 px-4 py-3 max-w-[90%]">
-                  Angebote — jedes Mal von Null, 3–4 Stunden pro Woche.
-                </p>
-              </div>
-              <p className="flex items-center gap-2 text-xs text-indigo-600 font-medium">
-                <Loader2 size={12} className="animate-spin" />
-                Dein Plan wird aktualisiert…
-              </p>
+              <ShowcasePhase1Chat />
             </motion.div>
           )}
 
@@ -119,30 +118,33 @@ export default function ProductShowcase() {
               transition={{ duration: 0.3 }}
             >
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
-                Roadmap · Plan
+                Phase 2 · Ist-Stand & Priorität
               </p>
-              <div className="rounded-xl border border-gray-200 bg-slate-50 p-4">
-                <div className="flex justify-between items-start gap-2 mb-2">
-                  <span className="text-sm font-semibold text-gray-900">
-                    Angebote automatisieren
-                  </span>
-                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                    Hoch
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  CRM → KI-Entwurf → Freigabe → Versand
-                </p>
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {['Gmail', 'Sheets', 'Slack'].map((t) => (
-                    <span
-                      key={t}
-                      className="text-[10px] text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded-md"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
+              <div className="space-y-3">
+                {ANALYSE_ITEMS.map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-xl border border-gray-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <span className="text-sm font-semibold text-gray-900">{item.title}</span>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        #{item.rank}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">{item.note}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.tools.map((t) => (
+                        <span
+                          key={t}
+                          className="text-[10px] text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded-md"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}
@@ -156,27 +158,12 @@ export default function ProductShowcase() {
               transition={{ duration: 0.3 }}
             >
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
-                Ablauf
+                Phase 3 · Ablauf entsteht Schritt für Schritt
               </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <WorkflowNode icon={<Zap size={12} />} label="Trigger" color="#f59e0b" />
-                <Arrow />
-                <WorkflowNode
-                  icon={<SiGooglesheets className="text-[#34A853]" size={14} />}
-                  label="Sheets"
-                  color="#34A853"
-                />
-                <Arrow />
-                <WorkflowNode icon={<Cpu size={12} />} label="KI" color="#6366f1" />
-                <Arrow />
-                <WorkflowNode icon={<User size={12} />} label="Freigabe" color="#8b5cf6" />
-                <Arrow />
-                <WorkflowNode
-                  icon={<SiGmail className="text-[#EA4335]" size={14} />}
-                  label="Versand"
-                  color="#EA4335"
-                />
-              </div>
+              <LandingPlanFlowPreview />
+              <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                KI übernimmt den Entwurf — du behältst die Freigabe vor dem Versand.
+              </p>
             </motion.div>
           )}
 
@@ -187,17 +174,11 @@ export default function ProductShowcase() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.3 }}
-              className="flex flex-col items-center justify-center py-8 text-center"
             >
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 mb-3">
-                <Check size={24} strokeWidth={2.5} />
-              </span>
-              <p className="text-base font-bold text-gray-900">Automatisierung bereit</p>
-              <p className="text-sm text-gray-500 mt-1">Livegang & Testlauf im Chat</p>
-              <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-white bg-emerald-600 px-4 py-2 rounded-xl pointer-events-none">
-                <Rocket size={16} />
-                Jetzt ausführen
-              </span>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                Phase 4 · Bauen, testen, live schalten
+              </p>
+              <LandingWorkflowEditor />
             </motion.div>
           )}
         </AnimatePresence>
@@ -242,28 +223,4 @@ export default function ProductShowcase() {
       </p>
     </div>
   );
-}
-
-function WorkflowNode({
-  icon,
-  label,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  color: string;
-}) {
-  return (
-    <div
-      className="rounded-lg border border-gray-200 bg-white px-2 py-2 flex flex-col items-center gap-1 min-w-[3.5rem] shadow-sm"
-      style={{ borderLeftWidth: 3, borderLeftColor: color }}
-    >
-      {icon}
-      <span className="text-[10px] font-semibold text-gray-700">{label}</span>
-    </div>
-  );
-}
-
-function Arrow() {
-  return <ChevronRight size={14} className="text-gray-300 shrink-0 hidden sm:block" />;
 }

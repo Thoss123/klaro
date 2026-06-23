@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, Sparkles, Clock, CreditCard } from 'lucide-react';
 import { section } from './landing-styles';
 
-const STEPS = ['Verstehen', 'Planen', 'Bauen', 'Live-Schalten'] as const;
+const STEPS = ['Diagnose', 'Analyse', 'Plan', 'Umsetzung'] as const;
 
 export default function FinalCTA() {
   return (
@@ -28,8 +28,8 @@ export default function FinalCTA() {
           </h2>
 
           <p className="mt-5 text-gray-600 text-lg max-w-xl mx-auto leading-relaxed">
-            Vom Gespräch zur Roadmap — Axantilo führt dich Schritt für Schritt bis
-            dein erster Ablauf bei dir läuft.
+            Axantilo führt dich Schritt für Schritt — vom Gespräch bis dein erster
+            Ablauf bei dir läuft.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3">

@@ -1,114 +1,109 @@
-import { Zap, Cpu, User, Check } from 'lucide-react';
-import { SiGmail as GmailIcon, SiGooglesheets } from 'react-icons/si';
+import { Sparkles, Bot, Zap } from 'lucide-react';
 import { section, sectionY, h2, lead } from './landing-styles';
+import LandingWorkflowEditor from './LandingWorkflowEditor';
 
-const PAIN_POINTS = [
+const STRATEGY = [
   {
-    title: 'Angebote manuell',
-    description: 'Jedes Angebot von Hand — fehleranfällig, 3–4h/Woche.',
-    priority: 'Hoch',
+    rank: 1,
+    title: 'Angebote mit KI vorbereiten',
+    description:
+      'KI zieht Kundendaten, schreibt den Entwurf — du prüfst kurz und gibst frei. Kein Neuschreiben von Null.',
+    aiRole: 'Entwurf & Struktur',
+    badge: 'Erstes Ziel',
+    badgeClass: 'text-indigo-700 bg-indigo-50 border-indigo-100',
+    icon: Sparkles,
   },
   {
-    title: 'E-Mail-Flut',
-    description: 'Wichtiges geht in Routine-Anfragen unter.',
-    priority: 'Hoch',
+    rank: 2,
+    title: 'E-Mails sortieren & vorfiltrieren',
+    description:
+      'KI erkennt Wichtiges und Routine — du siehst nur, was wirklich deine Entscheidung braucht.',
+    aiRole: 'Priorisierung',
+    badge: 'Hoher Hebel',
+    badgeClass: 'text-violet-700 bg-violet-50 border-violet-100',
+    icon: Bot,
   },
   {
-    title: 'Wissen auf Köpfen',
-    description: 'Bei Ausfall fehlt Zugriff auf Know-how.',
-    priority: 'Mittel',
+    rank: 3,
+    title: 'Gesprächsnotizen festhalten',
+    description:
+      'KI strukturiert Notizen aus Meetings — Wissen landet automatisch, nicht nur im Kopf.',
+    aiRole: 'Wissen sichern',
+    badge: 'Als Nächstes',
+    badgeClass: 'text-sky-700 bg-sky-50 border-sky-100',
+    icon: Zap,
   },
 ];
 
-const WORKFLOW_STEPS = [
-  { type: 'trigger', label: 'Formular', icon: Zap, color: '#f59e0b' },
-  { type: 'data', label: 'Sheets', icon: SiGooglesheets, color: '#34A853', brand: true },
-  { type: 'ai', label: 'KI-Entwurf', icon: Cpu, color: '#6366f1' },
-  { type: 'human', label: 'Freigabe', icon: User, color: '#8b5cf6' },
-  { type: 'send', label: 'Gmail', icon: GmailIcon, color: '#EA4335', brand: true },
+const LIVE_STEPS = [
+  'Axantilo baut den Ablauf — du prüfst die Schritte im Editor',
+  'Du verbindest eure Tools und startest einen Testlauf',
+  'Danach läuft die Automatisierung bei euch — nicht nur auf dem Papier',
 ];
-
-const priorityStyle: Record<string, string> = {
-  Hoch: 'text-red-700 bg-red-50 border-red-100',
-  Mittel: 'text-amber-700 bg-amber-50 border-amber-100',
-};
 
 export default function Result() {
   return (
     <section className={`${section} ${sectionY} bg-white`}>
-      <h2 className={h2}>Das kommt raus — nicht nur Folien.</h2>
+      <h2 className={h2}>KI-Strategie und Automatisierungen — aus eurem Gespräch.</h2>
       <p className={lead}>
-        Roadmap mit Prioritäten, konkrete Abläufe und am Ende eine umsetzbare
-        Automatisierung — aus dem, was du wirklich gesagt hast.
+        Axantilo sortiert, wo KI bei euch den meisten Hebel hat, plant die Abläufe mit dir
+        — und setzt sie anschließend bei euch um.
       </p>
 
       <div className="mt-14 rounded-3xl border border-gray-200 bg-slate-50 p-6 sm:p-10 shadow-sm">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-              Roadmap · Erkannte Engpässe
+              KI-Strategie · Was zuerst
             </p>
             <div className="space-y-3">
-              {PAIN_POINTS.map((p) => (
-                <div
-                  key={p.title}
-                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
-                >
-                  <div className="flex justify-between gap-2 mb-1">
-                    <h3 className="text-sm font-semibold text-gray-900">{p.title}</h3>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${priorityStyle[p.priority]}`}
-                    >
-                      {p.priority}
-                    </span>
+              {STRATEGY.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.title}
+                    className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 shadow-sm"
+                  >
+                    <div className="flex gap-3 sm:gap-4">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        <Icon size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-mono text-gray-400 shrink-0">
+                              #{item.rank}
+                            </span>
+                            <h3 className="text-sm font-semibold text-gray-900 leading-snug">
+                              {item.title}
+                            </h3>
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${item.badgeClass}`}
+                          >
+                            {item.badge}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 leading-relaxed">{item.description}</p>
+                        <p className="mt-2 text-[10px] font-medium text-indigo-600">
+                          KI-Rolle: {item.aiRole}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500">{p.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-              Phase 4 · Fertige Automatisierung
+              Automatisierung · Bei dir live
             </p>
-            <div className="rounded-xl border border-gray-200 bg-slate-50 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                {WORKFLOW_STEPS.map((s, i) => {
-                  const Icon = s.icon;
-                  return (
-                    <div key={s.label} className="flex items-center gap-2">
-                      <div
-                        className="flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-2.5 py-2 shadow-sm"
-                        style={{ borderLeftWidth: 3, borderLeftColor: s.color }}
-                      >
-                        <Icon size={14} style={{ color: s.color }} />
-                        <span className="text-[11px] font-medium text-gray-800">
-                          {s.label}
-                        </span>
-                      </div>
-                      {i < WORKFLOW_STEPS.length - 1 && (
-                        <span className="text-gray-300 text-xs">→</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-200">
-                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                  <Check size={14} />
-                  Bereit zur Umsetzung
-                </span>
-                <span className="text-[11px] text-gray-400 font-mono">AXANTILO: Angebots-Flow</span>
-              </div>
-            </div>
+            <LandingWorkflowEditor />
             <ol className="mt-5 space-y-2.5">
-              {[
-                'Schritte im Chat konfigurieren (Zugang, Freigabe-Kanal)',
-                'Automatisierung starten — läuft bei dir',
-                'Testlauf mit einem Klick',
-              ].map((line, i) => (
-                <li key={i} className="flex items-start gap-3 text-sm text-gray-700">
+              {LIVE_STEPS.map((line, i) => (
+                <li key={line} className="flex items-start gap-3 text-sm text-gray-700">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-600 text-white text-xs font-bold">
                     {i + 1}
                   </span>

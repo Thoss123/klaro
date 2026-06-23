@@ -4,7 +4,7 @@ import { section, sectionY } from './landing-styles';
 const POINTS = [
   { icon: MapPin, text: 'Entwickelt in Österreich' },
   { icon: ShieldCheck, text: 'DSGVO · Daten in der EU' },
-  { icon: Plug, text: 'Deine Tools und Zugänge — nur was du verbindest' },
+  { icon: Plug, text: 'Deine Zugänge — nur was du freigibst' },
   { icon: UserCheck, text: 'Bei wichtigen Schritten fragt Axantilo dich — nichts ohne dein Okay' },
 ];
 

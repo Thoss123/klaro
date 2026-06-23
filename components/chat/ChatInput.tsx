@@ -203,6 +203,18 @@ export default function ChatInput({
                 e.target.style.height = 'auto';
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
               }}
+              onPaste={e => {
+                const items = e.clipboardData?.items;
+                if (!items || uploading || disabled) return;
+                for (const item of items) {
+                  if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) void uploadFile(file);
+                    return;
+                  }
+                }
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
