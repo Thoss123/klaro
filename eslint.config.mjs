@@ -9,6 +9,10 @@ export default defineConfig([
     "dist/",
     ".git/",
     "next-env.d.ts",
+    // Standalone CommonJS dev/debug scripts — not part of the Next.js app.
+    "mcp-tools.js",
+    "test-db.js",
+    "test-fa.js",
   ]),
   ...nextCoreWebVitals,
   ...nextTypescript,

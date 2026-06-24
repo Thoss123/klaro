@@ -319,7 +319,7 @@ export function removeStepFromGraph(
     if (s.subNodeOf?.parentId === stepId) removeIds.add(s.id);
   }
 
-  let nextSteps = steps
+  const nextSteps = steps
     .filter(s => !removeIds.has(s.id))
     .map(s => {
       if (!s.aiSubNodes) return s;
@@ -586,7 +586,7 @@ export function mergeEdgesFromEdit(
     }
   }
 
-  let result = Array.from(merged.values());
+  const result = Array.from(merged.values());
 
   // Fallback: keine Main-Verbindung mehr → lineare Hauptkette wiederherstellen
   const mainSteps = steps.filter(s => !s.subNodeOf);

@@ -1027,7 +1027,7 @@ function ChatPageContent() {
       streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       let assistantContent = '';
-      let streamCanvasData = withSessionPhase(canvasDataRef.current, chatPhase);
+      const streamCanvasData = withSessionPhase(canvasDataRef.current, chatPhase);
       const shownCanvasActions = new Set<string>();
       // Holder object (not a bare `let`) so TS keeps the Promise|null type:
       // the assignment happens inside the startCanvasWorker closure, which a

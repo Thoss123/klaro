@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import AuthForm from '@/components/auth/AuthForm';
@@ -152,6 +152,33 @@ export default function OnboardingWizard() {
     if (!isDev) return;
     createSupabaseBrowserClient().auth.getSession().then(({ data: { session } }) => {
       setIsLoggedIn(!!session);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Google OAuth returns to /onboarding as a fresh page load — all wizard state
+  // (step, answers) is lost, so without this the user lands back on step 1. If we
+  // arrive already authenticated with a saved onboarding payload, finish the
+  // onboarding (create project + first chat) instead of restarting the wizard.
+  const didResume = useRef(false);
+  useEffect(() => {
+    if (didResume.current) return;
+    const pending = typeof window !== 'undefined' ? localStorage.getItem('pending_onboarding') : null;
+    if (!pending) return;
+    didResume.current = true;
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      try {
+        const payload = JSON.parse(pending) as OnboardingData;
+        const projectId = await ensureDefaultProject(session.user.id);
+        const sessionId = await createSession(payload, session.user.id, 'diagnose', undefined, undefined, projectId);
+        localStorage.removeItem('pending_onboarding');
+        localStorage.removeItem('axantilo_intro_message');
+        router.push(`/chat?id=${sessionId}`);
+      } catch (e) {
+        console.error('Onboarding-Resume nach OAuth fehlgeschlagen:', e);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

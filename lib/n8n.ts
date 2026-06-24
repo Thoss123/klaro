@@ -15,7 +15,7 @@ const BASE = () => process.env.N8N_API_URL || 'http://localhost:5678/api/v1';
 const KEY  = () => process.env.N8N_API_KEY  || '';
 const MOCK = () => process.env.MOCK_N8N === 'true';
 
-async function n8nFetch(path: string, options: RequestInit = {}): Promise<any> {
+async function n8nFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE()}${path}`, {
     ...options,
     headers: {
@@ -28,7 +28,7 @@ async function n8nFetch(path: string, options: RequestInit = {}): Promise<any> {
     const body = await res.text().catch(() => '');
     throw new Error(`n8n ${options.method || 'GET'} ${path} → ${res.status}: ${body}`);
   }
-  return res.json().catch(() => null);
+  return res.json().catch(() => null) as Promise<T>;
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ export interface N8nExecution {
   status: 'success' | 'error' | 'running' | 'waiting';
   startedAt: string;
   stoppedAt?: string;
-  data?: any;
+  data?: unknown;
 }
 
 export async function getExecutions(n8nWorkflowId: string): Promise<N8nExecution[]> {
@@ -208,13 +208,28 @@ export async function getExecutionDetail(executionId: string): Promise<N8nExecut
   if (MOCK()) {
     return { id: executionId, status: 'success', finished: true, runData: [] };
   }
-  let res: any = null;
+  interface N8nRunEntry {
+    error?: { message?: string };
+    data?: { main?: Array<Array<{ json?: unknown }>> };
+  }
+  interface N8nExecutionResponse {
+    id?: string;
+    status?: string;
+    finished?: boolean;
+    data?: {
+      resultData?: {
+        runData?: Record<string, N8nRunEntry[]>;
+        error?: { message?: string };
+      };
+    };
+  }
+  let res: N8nExecutionResponse | null = null;
   try {
-    res = await n8nFetch(`/executions/${executionId}?includeData=true`);
+    res = await n8nFetch<N8nExecutionResponse>(`/executions/${executionId}?includeData=true`);
   } catch {
     return null;
   }
-  const runDataRaw = res?.data?.resultData?.runData as Record<string, any[]> | undefined;
+  const runDataRaw = res?.data?.resultData?.runData;
   const runData: N8nNodeRun[] = [];
   if (runDataRaw) {
     for (const [node, runs] of Object.entries(runDataRaw)) {

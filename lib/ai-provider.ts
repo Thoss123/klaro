@@ -118,7 +118,7 @@ export class GeminiProvider implements AIProvider {
       tools: [{ functionDeclarations: toGeminiTools(tools) }]
     });
 
-    let chat = model.startChat({ history: normalizedHistory });
+    const chat = model.startChat({ history: normalizedHistory });
     
     // We need a helper function to process the stream since we might need to do it
     // multiple times for tool calls. Text is streamed live; if a round emits text
@@ -176,7 +176,7 @@ export class GeminiProvider implements AIProvider {
         
         try {
             // Retry with primary model first
-            let retryChat = model.startChat({ history: normalizedHistory });
+            const retryChat = model.startChat({ history: normalizedHistory });
             const retryResult = await retryChat.sendMessageStream(this.userParts(message, attachments));
             await processStream(retryResult, retryChat);
         } catch (retryError: any) {
