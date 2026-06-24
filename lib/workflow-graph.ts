@@ -150,7 +150,7 @@ export const ADD_STEP_NODE_PREFIX = '__add__';
 /** Map edge branch → React Flow source handle id. */
 export function branchToSourceHandle(
   branch: WorkflowEdge['branch'],
-  sourceStep?: WorkflowStep,
+  _sourceStep?: WorkflowStep,
 ): string | undefined {
   if (!branch || branch === 'default') return undefined;
   if (branch === 'true') return 'true';
@@ -198,7 +198,7 @@ export function connectionToEdgeFields(
 /** n8n source output index (IF: 0=true, 1=false; Switch: rule index). */
 export function branchOutputIndex(
   branch: WorkflowEdge['branch'] | undefined,
-  sourceStep?: WorkflowStep,
+  _sourceStep?: WorkflowStep,
 ): number {
   if (!branch || branch === 'default') return 0;
   if (branch === 'true') return 0;
@@ -213,8 +213,6 @@ export function edgeTargetInput(edge: WorkflowEdge): number {
   return edge.targetInput ?? 0;
 }
 
-const NODE_W = 260;
-const NODE_H = 130;
 const LAYER_GAP = 300;
 /** Vertical gap between node rows (icon + label below). */
 const ROW_GAP = 190;

@@ -72,8 +72,8 @@ export async function POST(req: NextRequest) {
       ok: (result.status ?? detail?.status) === 'success',
       runData: detail?.runData ?? [],
     });
-  } catch (e: any) {
-    let errorMsg = typeof e?.message === 'string' ? e.message : 'Test-Ausführung fehlgeschlagen';
+  } catch (e: unknown) {
+    let errorMsg = e instanceof Error ? e.message : 'Test-Ausführung fehlgeschlagen';
     if (/workflow has issues and cannot be executed/i.test(errorMsg)) {
       errorMsg = 'Der Workflow hat ungelöste Probleme (z.B. fehlende Pflichtfelder oder Credentials) und konnte nicht getestet werden. Öffne die rot markierten Nodes und ergänze die fehlenden Angaben — oder beschreibe das Problem unten im Chat, dann behebe ich es für dich.';
     }

@@ -7,13 +7,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, Rocket, Play, AlertCircle, Power, PowerOff, Plus, ArrowLeft } from 'lucide-react';
+import { X, Check, Loader2, Play, AlertCircle, Power, PowerOff, Plus, ArrowLeft } from 'lucide-react';
+import { useMounted } from '@/lib/use-mounted';
 import { Workflow, WorkflowStep, StepConfig } from '@/lib/types';
 import WorkflowFlowCanvas from './WorkflowFlowCanvas';
 import StepConfigPanel from './StepConfigPanel';
 import WorkflowEditorChat, { type WorkflowEditorUpdate } from './WorkflowEditorChat';
 import N8nNodePickerModal from './N8nNodePickerModal';
-import { configProgress } from '@/lib/workflow-deploy';
 import { inputFieldsForStep, runForStep } from '@/lib/workflow-io';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import type { WorkflowEdge } from '@/lib/types';
@@ -35,7 +35,6 @@ export default function WorkflowDeployModal({
   onEdgesUpdate,
   onWorkflowUpdate,
   onStepsUpdate,
-  onQuickInsert,
   onDeleteStep,
   onToggleStepDisabled,
   onInsertOnEdge,
@@ -48,12 +47,10 @@ export default function WorkflowDeployModal({
   runData = [],
   deployError,
   runError,
-  allRequiredConfigured,
   resolving = false,
   workflowDbId,
   publishState = 'inactive',
   publishError = '',
-  onDeploy,
   onRun,
   onPublish,
   onClose,
@@ -96,7 +93,7 @@ export default function WorkflowDeployModal({
   /** 'modal' = Portal-Overlay (Standard), 'page' = füllt den Container ohne Overlay (eigene Route). */
   variant?: 'modal' | 'page';
 }) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [visible, setVisible] = useState(true);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [pendingInsertEdge, setPendingInsertEdge] = useState<WorkflowEdge | null>(null);
@@ -109,44 +106,49 @@ export default function WorkflowDeployModal({
   const requestClose = () => { if (isPage) onClose(); else setVisible(false); };
 
   useEffect(() => {
-    setMounted(true);
     if (isPage) return; // Page-Variante: kein body-scroll-lock — die Route bringt ihr eigenes Layout.
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [isPage]);
 
-  // Animierte Wiedergabe des Testlaufs (pro Node 600ms)
+  // Animierte Wiedergabe des Testlaufs (pro Node 600ms). Alle State-Updates laufen im
+  // Timer-Callback (asynchron) → kein synchrones setState im Effect-Body.
   useEffect(() => {
-    if (runState === 'running' || deployState === 'deploying') {
-      setAnimatedRunData([]);
-      setPlaybackNode(null);
-      return;
-    }
-    
-    if (runData && runData.length > 0) {
-      if (animatedRunData.length === runData.length && animatedRunData[0]?.node === runData[0]?.node) return;
-      
-      let i = 0;
-      setAnimatedRunData([]);
-      setPlaybackNode(runData[0].node);
-      
-      const timer = setInterval(() => {
-        setAnimatedRunData(prev => [...prev, runData[i]]);
-        i++;
-        if (i < runData.length) {
-          setPlaybackNode(runData[i].node);
-        } else {
-          setPlaybackNode(null);
-          clearInterval(timer);
-        }
-      }, 600);
-      
-      return () => clearInterval(timer);
-    } else {
-      setAnimatedRunData([]);
-      setPlaybackNode(null);
-    }
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const kickoff = setTimeout(() => {
+      if (runState === 'running' || deployState === 'deploying') {
+        setAnimatedRunData([]);
+        setPlaybackNode(null);
+        return;
+      }
+
+      if (runData && runData.length > 0) {
+        if (animatedRunData.length === runData.length && animatedRunData[0]?.node === runData[0]?.node) return;
+
+        let i = 0;
+        setAnimatedRunData([]);
+        setPlaybackNode(runData[0].node);
+
+        timer = setInterval(() => {
+          setAnimatedRunData(prev => [...prev, runData[i]]);
+          i++;
+          if (i < runData.length) {
+            setPlaybackNode(runData[i].node);
+          } else {
+            setPlaybackNode(null);
+            if (timer) clearInterval(timer);
+          }
+        }, 600);
+      } else {
+        setAnimatedRunData([]);
+        setPlaybackNode(null);
+      }
+    }, 0);
+    return () => {
+      clearTimeout(kickoff);
+      if (timer) clearInterval(timer);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runData, runState, deployState]);
 
@@ -169,20 +171,27 @@ export default function WorkflowDeployModal({
     return map;
   }, [workflow.steps, animatedRunData, playbackNode]);
 
-  // Toast bei Fehler/Erfolg im Testlauf (auto-dismiss).
-  useEffect(() => {
-    const failed = runData.filter(r => r.status === 'error');
-    if (runData.length === 0) return;
-    if (failed.length > 0) {
-      setToast({ kind: 'error', text: `Testlauf-Fehler in „${failed[0].node}": ${failed[0].error ?? 'siehe Node'}` });
-    } else {
-      setToast({ kind: 'success', text: 'Testlauf erfolgreich — alle Schritte durchgelaufen.' });
+  // Toast bei Fehler/Erfolg im Testlauf — beim Wechsel der runData direkt im Render
+  // berechnen (statt im Effect), um die setState-in-effect-Kaskade zu vermeiden.
+  const [syncedRunData, setSyncedRunData] = useState(runData);
+  if (runData !== syncedRunData) {
+    setSyncedRunData(runData);
+    if (runData.length > 0) {
+      const failed = runData.filter(r => r.status === 'error');
+      setToast(
+        failed.length > 0
+          ? { kind: 'error', text: `Testlauf-Fehler in „${failed[0].node}": ${failed[0].error ?? 'siehe Node'}` }
+          : { kind: 'success', text: 'Testlauf erfolgreich — alle Schritte durchgelaufen.' },
+      );
     }
+  }
+
+  // Auto-Dismiss des Toasts (setState nur im Timer-Callback → kein Sync-setState im Effect).
+  useEffect(() => {
+    if (!toast) return;
     const t = setTimeout(() => setToast(null), 7000);
     return () => clearTimeout(t);
-  }, [runData]);
-
-  const progress = configProgress(workflow.steps, stepConfigs);
+  }, [toast]);
 
   if (!mounted) return null;
 

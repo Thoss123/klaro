@@ -8,9 +8,8 @@ import {
   enrichStepsWithSetup,
   formatCoachMessage,
   isCoachingIntent,
-  nextOpenStepId,
 } from '@/lib/workflow-setup-coach';
-import { attachSubNode, defaultEntryForSlot, aiSlotsFor, isSubNodeOnlyType, STANDALONE_AI_NODE } from '@/lib/ai-subnodes';
+import { attachSubNode, defaultEntryForSlot, aiSlotsFor, isSubNodeOnlyType } from '@/lib/ai-subnodes';
 import { formatNodeMapForPrompt, swapTargets } from '@/lib/node-map';
 import { getCatalogIndex, getNodeByName, getN8nCatalog } from '@/lib/n8n-catalog';
 import { searchCatalogIndex } from '@/lib/n8n-categories';
@@ -167,9 +166,16 @@ async function applyHeuristicEdit(
           const attached = attachSubNode(steps, edges, s.id, 'ai_languageModel', {
             name: mistralType,
             displayName: mistralDef?.displayName ?? 'Mistral',
+            description: mistralDef?.description,
             version: mistralDef ? (Array.isArray(mistralDef.version) ? mistralDef.version.at(-1) : mistralDef.version) ?? 1 : 1,
+            groups: [],
+            categories: [],
+            aliases: [],
+            hasCredentials: !!mistralDef?.credentials?.[0]?.name,
             credentialTypes: [mistralDef?.credentials?.[0]?.name ?? ''],
-          } as any);
+            iconPath: null,
+            axantiloCategory: 'ai',
+          });
           steps = attached.steps;
           edges = attached.edges;
         } else {

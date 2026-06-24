@@ -27,7 +27,7 @@ export function getN8nIconCandidates(
   tool?: string | null,
   type?: string | null,
   n8nType?: string | null,
-  label?: string | null,
+  _label?: string | null,
 ): string[] {
   const candidates: string[] = [];
   const seen = new Set<string>();

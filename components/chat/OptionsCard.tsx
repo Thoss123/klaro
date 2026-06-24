@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import React, { FormEvent, useRef, useState } from 'react';
 import { ArrowUp, ChevronLeft, ChevronRight, X, Pencil } from 'lucide-react';
 
 export interface OptionChoice {
@@ -24,7 +24,7 @@ export function parseOptionsTag(content: string): ActiveOptions | null {
     const parsed = JSON.parse(match[1].trim());
     const choices = Array.isArray(parsed?.choices)
       ? parsed.choices
-          .map((c: any, i: number) => ({
+          .map((c: { id?: unknown; label?: unknown; detail?: unknown }, i: number) => ({
             id: String(c?.id ?? i + 1),
             label: typeof c?.label === 'string' ? c.label.trim() : '',
             detail: typeof c?.detail === 'string' ? c.detail.trim() : undefined,
@@ -62,14 +62,18 @@ export default function OptionsCard({
   const [custom, setCustom] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Reset to the first page when a new set of options arrives — adjust during render
+  // (not in an effect) to avoid the setState-in-effect render cascade.
+  const [syncedOptions, setSyncedOptions] = useState(options);
+  if (options !== syncedOptions) {
+    setSyncedOptions(options);
+    setPage(0);
+  }
+
   const total = options.choices.length;
   const pageCount = Math.ceil(total / PAGE_SIZE);
   const start = page * PAGE_SIZE;
   const visible = options.choices.slice(start, start + PAGE_SIZE);
-
-  useEffect(() => {
-    setPage(0);
-  }, [options]);
 
   const handleCustom = (e: FormEvent) => {
     e.preventDefault();

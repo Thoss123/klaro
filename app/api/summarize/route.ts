@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Build conversation transcript for summarization
-    const transcript = messages
-      .map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`)
+    const transcript = (messages as Array<{ role: string; content?: string }>)
+      .map((m) => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`)
       .join('\n\n');
 
     const canvasSummary = canvas ? `\n\nAktuelle Canvas-Daten:\n${JSON.stringify(canvas, null, 2)}` : '';
@@ -46,8 +46,8 @@ ${transcript}`;
       const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
       const result = await model.generateContent(prompt);
       resultText = result.response.text();
-    } catch (error: any) {
-      console.warn('Primary model failed in summarize API:', error?.message);
+    } catch (error: unknown) {
+      console.warn('Primary model failed in summarize API:', error instanceof Error ? error.message : String(error));
       console.log('Falling back to gemini-3.1-flash-lite...');
       const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
       const result = await fallbackModel.generateContent(prompt);
@@ -63,7 +63,7 @@ ${transcript}`;
       const parsed = JSON.parse(jsonStr);
       summary = parsed.summary || resultText;
       chatTitle = parsed.title || 'Zusammenfassung';
-    } catch (e) {
+    } catch {
       summary = resultText;
       chatTitle = `Phase: ${phase || 'diagnose'}`;
     }
@@ -71,8 +71,8 @@ ${transcript}`;
     return new Response(JSON.stringify({ summary, chatTitle }), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('API Summarize Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 500 });
   }
 }

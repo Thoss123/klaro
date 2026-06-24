@@ -6,7 +6,6 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Send } from 'lucide-react';
 import ChatPendingLoader from '@/components/chat/ChatPendingLoader';
 import { StepConfig, Workflow, WorkflowEdge, WorkflowStep } from '@/lib/types';
 import type { WorkflowEditorCoachContext, WorkflowEditorChatTurn } from '@/lib/workflow-editor-context';
@@ -50,9 +49,13 @@ export default function WorkflowEditorChat({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // Reset the editor thread when switching to another workflow — adjust during render
+  // instead of in an effect to avoid the setState-in-effect render cascade.
+  const [syncedWorkflowId, setSyncedWorkflowId] = useState(workflow.id);
+  if (workflow.id !== syncedWorkflowId) {
+    setSyncedWorkflowId(workflow.id);
     setEditorMessages([]);
-  }, [workflow.id]);
+  }
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });

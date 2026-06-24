@@ -612,14 +612,19 @@ function QuestionStep({
       isCustomOptionValue(value, options, otherOptionValue!));
   const [otherDraft, setOtherDraft] = useState('');
 
-  useEffect(() => {
-    if (!hasOtherOption) return;
-    if (isCustomOptionValue(value, options, otherOptionValue!)) {
-      setOtherDraft(value!.trim());
-    } else if (value !== otherOptionValue) {
-      setOtherDraft('');
+  // Den „Sonstiges“-Entwurf mit dem value-Prop synchronisieren — im Render abgleichen
+  // (statt im Effect), um die setState-in-effect-Kaskade zu vermeiden.
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    if (hasOtherOption) {
+      if (isCustomOptionValue(value, options, otherOptionValue!)) {
+        setOtherDraft(value!.trim());
+      } else if (value !== otherOptionValue) {
+        setOtherDraft('');
+      }
     }
-  }, [value, hasOtherOption, otherOptionValue, options]);
+  }
 
   const handleSelect = (opt: WizardOption) => {
     if (isMulti) {

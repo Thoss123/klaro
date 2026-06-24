@@ -78,8 +78,8 @@ export default function AuthForm({
         if (error) throw error;
         onSuccess();
       }
-    } catch (err: any) {
-      setError(err.message || 'Ein Fehler ist aufgetreten');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten');
     } finally {
       setLoading(false);
     }
@@ -104,8 +104,8 @@ export default function AuthForm({
         },
       });
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || 'Ein Fehler ist aufgetreten');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Ein Fehler ist aufgetreten');
       setLoading(false);
     }
   };

@@ -1,6 +1,5 @@
 import React from 'react';
 import { PainPoint } from '@/lib/types';
-import { clsx } from 'clsx';
 
 export default function PainPointCard({ point }: { point: PainPoint }) {
   return (

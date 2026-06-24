@@ -97,10 +97,11 @@ Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zu
       delta: newMemory.length - normalizedCurrent.length,
     });
     return NextResponse.json({ status: 'updated', reason: 'new_facts_merged', memory: newMemory });
-  } catch (error: any) {
-    logSync('memory', 'fail', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logSync('memory', 'fail', message);
     return NextResponse.json(
-      { status: 'error', reason: 'exception', error: error.message },
+      { status: 'error', reason: 'exception', error: message },
       { status: 500 }
     );
   }

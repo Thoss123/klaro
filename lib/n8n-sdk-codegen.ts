@@ -45,7 +45,7 @@ function mainChainOrder(
   const byName = new Map(nodes.map(n => [n.name, n]));
   const incoming = new Set<string>();
 
-  for (const [source, conn] of Object.entries(connections)) {
+  for (const [, conn] of Object.entries(connections)) {
     const main = (conn as { main?: Array<Array<{ node: string }>> })?.main;
     if (!main) continue;
     for (const branch of main) {

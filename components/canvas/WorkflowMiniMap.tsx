@@ -122,7 +122,11 @@ function WorkflowMiniMapComponent() {
   const vw = viewWidth + offset * 2;
   const vh = viewHeight + offset * 2;
 
-  viewScaleRef.current = viewScale;
+  // Keep the latest viewScale in a ref so the minimap's getViewScale callback reads the
+  // current value without re-subscribing. Written in an effect (not during render).
+  useEffect(() => {
+    viewScaleRef.current = viewScale;
+  }, [viewScale]);
 
   useEffect(() => {
     if (svgRef.current && panZoom) {

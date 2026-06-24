@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Build history (same stripping as chat route)
-  const history = (messages || []).map((m: any) => {
+  const history = ((messages || []) as Array<{ role: string; content?: string }>).map((m) => {
     let text = m.content || ' ';
     if (m.role === 'assistant') {
       text = text
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
 
   // Token estimates
   const systemTokens = estimateTokens(systemPrompt);
-  const historyTokens = history.reduce((sum: number, m: any) => sum + estimateTokens(m.content), 0);
+  const historyTokens = history.reduce((sum: number, m) => sum + estimateTokens(m.content), 0);
   const totalTokens = systemTokens + historyTokens;
   const pct = Math.round((totalTokens / MODEL_CONTEXT_LIMIT) * 100);
 

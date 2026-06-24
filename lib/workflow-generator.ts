@@ -6,7 +6,6 @@
 
 import { Workflow, WorkflowStep, StepConfigType } from './types';
 import { branchOutputIndex, edgeTargetInput, resolveWorkflowEdges } from './workflow-graph';
-import type { WorkflowEdge } from './types';
 
 // Maps tool name → n8n credential type key (null = no credential needed)
 export const CREDENTIAL_TYPE: Record<string, string | null> = {
@@ -117,9 +116,9 @@ export function ensureNodeParams(
   const p = { ...parameters };
 
   if (nodeType === 'n8n-nodes-base.if' || nodeType === 'n8n-nodes-base.filter') {
-    const c = p.conditions as any;
+    const c = p.conditions as { conditions?: Array<{ operator?: { type?: unknown; operation?: unknown } }> } | undefined;
     const valid = c && Array.isArray(c.conditions) && c.conditions.length > 0
-      && c.conditions.every((cond: any) => cond?.operator?.type && cond?.operator?.operation);
+      && c.conditions.every(cond => cond?.operator?.type && cond?.operator?.operation);
     if (!valid) {
       p.conditions = {
         options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
@@ -135,7 +134,7 @@ export function ensureNodeParams(
   }
 
   if (nodeType === 'n8n-nodes-base.switch') {
-    const rules = p.rules as any;
+    const rules = p.rules as { values?: unknown[] } | undefined;
     const hasValues = rules && Array.isArray(rules.values) && rules.values.length > 0;
     if (!hasValues) {
       p.mode = p.mode ?? 'rules';
@@ -165,8 +164,18 @@ export function buildN8nWorkflow(
   mappings: StepMapping[],
   workflowName: string,
 ): object {
-  const nodes: any[] = [];
-  const connections: Record<string, any> = {};
+  type N8nConnectionItem = { node: string; type: string; index: number };
+  type N8nNode = {
+    id: string;
+    name: string;
+    type: string;
+    typeVersion: number;
+    position: [number, number];
+    parameters: Record<string, unknown>;
+    credentials?: Record<string, unknown>;
+  };
+  const nodes: N8nNode[] = [];
+  const connections: Record<string, Record<string, N8nConnectionItem[][]>> = {};
   const edges = resolveWorkflowEdges(workflow.steps, workflow.edges);
 
   workflow.steps.forEach((step, i) => {
@@ -286,7 +295,7 @@ function sanitizeName(label: string, index: number): string {
   return n8nNodeNameForStep(label, index);
 }
 
-function getDefaultParameters(tool: string, step: WorkflowStep): Record<string, any> {
+function getDefaultParameters(tool: string, step: WorkflowStep): Record<string, unknown> {
   switch (tool) {
     case 'webhook':
       return { httpMethod: 'POST', path: `axantilo-${step.id}`, responseMode: 'onReceived' };

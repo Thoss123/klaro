@@ -105,8 +105,12 @@ export default function WorkflowDeployCard({
     setEdges(workflow.edges ?? defaultLinearEdges(workflow.steps));
   }, [workflow.id, workflow.steps, workflow.edges]);
 
+  // Öffnet das Modal, wenn der externe autoOpen-Trigger gesetzt ist, und meldet das dem
+  // Parent zurück (onAutoOpen). Da hier auch ein Parent-Callback läuft, ist das ein echter
+  // Side-Effect — keine Render-Zeit-Ableitung möglich.
   useEffect(() => {
     if (autoOpen && !modalOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setModalOpen(true);
       onAutoOpen?.();
     }
@@ -185,10 +189,6 @@ export default function WorkflowDeployCard({
   const handleStepsUpdate = useCallback((nextSteps: WorkflowStep[]) => {
     applyGraph(nextSteps, edges, { skipSync: true });
   }, [applyGraph, edges]);
-
-  const handleStepClick = useCallback((step: WorkflowStep) => {
-    setActiveStep(step);
-  }, []);
 
   const handleQuickInsert = useCallback((newStep: WorkflowStep) => {
     const afterId = steps[steps.length - 1]?.id;

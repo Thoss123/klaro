@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { encrypt, mask } from '@/lib/encryption';
+import { encrypt } from '@/lib/encryption';
 import { createN8nCredential, deleteN8nCredential, getN8nCredentialSchema } from '@/lib/n8n';
 import { getN8nCatalog, getCredentialByName } from '@/lib/n8n-catalog';
 import { CREDENTIAL_TYPE } from '@/lib/workflow-generator';

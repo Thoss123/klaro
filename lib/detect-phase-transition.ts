@@ -1,5 +1,3 @@
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'] as const;
-
 /**
  * Returns the completed phase name if the assistant message signals a phase handoff.
  */

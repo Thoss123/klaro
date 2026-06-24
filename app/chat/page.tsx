@@ -15,7 +15,6 @@ import {
   loadSessionOnboarding,
   saveMessage,
   saveCanvas,
-  updateSessionPhase,
   updateSessionTitle,
   SessionSummary,
   markWelcomeSent,
@@ -40,7 +39,7 @@ import { getAccountDisplayInfo } from '@/lib/account-display';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import type { User } from '@supabase/supabase-js';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Menu, MoreHorizontal, Maximize2, Minimize2, X, Plus, Settings, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, Workflow as WorkflowIcon, HelpCircle } from 'lucide-react';
+import { Menu, Maximize2, Minimize2, X, Plus, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, Workflow as WorkflowIcon, HelpCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { detectCompletedPhase } from '@/lib/detect-phase-transition';
@@ -205,16 +204,25 @@ const emptyCanvas: CanvasData = {
 };
 
 // ---- DEV: Context Inspector ----
+type DevContextData = {
+  model: string;
+  phase: string;
+  contextLimit: number;
+  systemPrompt: string;
+  tokens: { total: number; remaining: number; system: number; history: number; pct: number };
+  history: Array<{ role: string; content: string }>;
+};
+
 function DevContextModal({
   messages, onboarding, phase, canvas, onClose,
 }: {
-  messages: any[];
-  onboarding: any;
+  messages: Message[];
+  onboarding: Partial<OnboardingData> | null;
   phase: string;
-  canvas: any;
+  canvas: CanvasData;
   onClose: () => void;
 }) {
-  const [data, setData] = React.useState<any>(null);
+  const [data, setData] = React.useState<DevContextData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [tab, setTab] = React.useState<'tokens' | 'system' | 'history'>('tokens');
 
@@ -335,7 +343,7 @@ function DevContextModal({
               {data.history.length === 0 && (
                 <div className="text-white/30 text-sm text-center py-8">Keine Nachrichten</div>
               )}
-              {data.history.map((m: any, i: number) => (
+              {data.history.map((m, i: number) => (
                 <div key={i} className={`rounded-xl p-3 border ${m.role === 'user' ? 'bg-indigo-950/50 border-indigo-500/20' : 'bg-white/5 border-white/10'}`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${m.role === 'user' ? 'text-indigo-400' : 'text-white/50'}`}>
@@ -392,8 +400,8 @@ function CredentialPopup({
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Fehler beim Speichern');
       onSaved();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -497,7 +505,6 @@ function ChatPageContent() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
-  const [isSummarizing, setIsSummarizing] = useState(false);
   const [isPreparingNextPhase, setIsPreparingNextPhase] = useState(false);
   const [preparedNextSessionId, setPreparedNextSessionId] = useState<string | null>(null);
   // Phase-4-Abschluss: „Was kommt als Nächstes?" (weiterer Workflow / neuer Bereich) läuft.
@@ -510,7 +517,7 @@ function ChatPageContent() {
     return () => clearTimeout(t);
   }, [netToast]);
   const [agentActions, setAgentActions] = useState<AgentAction[]>([]);
-  const [pendingWelcome, setPendingWelcome] = useState<{ sessionId: string, onboarding?: OnboardingData } | null>(null);
+  const [, setPendingWelcome] = useState<{ sessionId: string, onboarding?: OnboardingData } | null>(null);
   // Synchronous in-memory lock: prevents concurrent isHiddenInit calls racing through
   // before React state (isStreaming) has had a chance to update.
   const welcomeInProgressRef = useRef<Set<string>>(new Set());
@@ -520,9 +527,7 @@ function ChatPageContent() {
   // Großer Bildschirm: standardmäßig vergrößert starten (Mobile ignoriert das Flag).
   const [isMaximized, setIsMaximized] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
-  const [isChatsMenuOpen, setIsChatsMenuOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isPhaseMenuOpen, setIsPhaseMenuOpen] = useState(false);
   // Mobile: only one of chat / canvas is shown at a time, toggled via a bottom-center switch.
   const isMobile = useIsMobile();
   const [mobileView, setMobileView] = useState<'chat' | 'canvas'>('chat');
@@ -562,10 +567,9 @@ function ChatPageContent() {
 
       return next;
     });
-  }, [currentProject?.id]);
+  }, [currentProject]);
 
   // ---- Dev state ----
-  const [isDevContextOpen, setIsDevContextOpen] = useState(false);
   // Maps canvas workflow_id → deployed DB workflow id
   const deployedWorkflowIdsRef = useRef<Record<string, string>>({});
   const prepareNextPhaseRef = useRef<((switchAfter?: boolean) => Promise<void>) | null>(null);
@@ -615,7 +619,7 @@ function ChatPageContent() {
       }
       return next;
     });
-  }, [currentProject?.id]);
+  }, [currentProject]);
 
   const maxReachedPhase = React.useMemo(() => {
     let maxIdx = PHASE_ORDER.indexOf(canvasData.phase || 'diagnose');
@@ -721,7 +725,6 @@ function ChatPageContent() {
         const canvasWorkflow = canvas.workflows.find(w => w.id === tag.workflow_id) || canvas.workflows[0];
         if (!canvasWorkflow) return;
 
-        const key = `deploy_${tag.workflow_id}`;
         if (deployedWorkflowIdsRef.current[tag.workflow_id]) return; // already deployed
 
         const aid = addAction('deploy_workflow', `Deploye "${tag.name || canvasWorkflow.title}"…`);
@@ -1311,7 +1314,7 @@ function ChatPageContent() {
                   setTimeout(() => completeAction(aid, `Workflow angepasst`), 1200);
                 }
               }
-            } catch (e) {}
+            } catch {}
           });
         }
 
@@ -1487,15 +1490,17 @@ function ChatPageContent() {
 
       void runPostTurnSync();
 
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      const errName = err instanceof Error ? err.name : '';
+      const errMessage = err instanceof Error ? err.message : '';
+      if (errName === 'AbortError') {
         console.log('Stream aborted');
       } else {
         console.error('Chat API Error:', err);
         // Netzwerk-/Offline-Fehler dem Nutzer als Toast zeigen (statt nur Konsole).
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
           setNetToast('Keine Internetverbindung — bitte erneut senden.');
-        } else if (err.name === 'TypeError' || /fetch|network|Failed to fetch/i.test(err?.message || '')) {
+        } else if (errName === 'TypeError' || /fetch|network|Failed to fetch/i.test(errMessage)) {
           setNetToast('Verbindung fehlgeschlagen — bitte erneut senden.');
         }
       }
@@ -1510,60 +1515,6 @@ function ChatPageContent() {
       if (isHiddenInit && sessionId) welcomeInProgressRef.current.delete(sessionId);
     }
   }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation]);
-
-  // ---- Auth & Onboarding effect ----
-  useEffect(() => {
-    const initAuth = async () => {
-      setIsLoadingSession(true);
-      const supabase = createSupabaseBrowserClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        router.push('/onboarding');
-        return;
-      }
-      
-      setUserId(session.user.id);
-      setAuthUser(session.user);
-
-      const pending = localStorage.getItem('pending_onboarding');
-      if (pending) {
-        try {
-          const obData = JSON.parse(pending);
-          setOnboarding(obData);
-          localStorage.removeItem('pending_onboarding');
-          
-          // Ensure a default project exists (idempotent) and migrate any orphaned sessions
-          const newProjectId = await ensureDefaultProject(session.user.id);
-
-          const newId = await createSession(obData, session.user.id, 'diagnose', undefined, undefined, newProjectId);
-          setCurrentSessionId(newId);
-          await refreshSessions();
-          await switchToSession(newId);
-          
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsLoadingSession(false);
-        }
-      } else {
-         const list = await refreshSessions();
-         const targetId = searchParams.get('id');
-         if (targetId && list.some(s => s.id === targetId)) {
-            await switchToSession(targetId);
-         } else if (targetId) {
-            console.warn('[chat] ?id= gehört nicht zum Account, Fallback:', targetId);
-            if (list.length > 0) await switchToSession(list[0].id);
-            else setIsLoadingSession(false);
-         } else if (list.length > 0) {
-            await switchToSession(list[0].id);
-         } else {
-            setIsLoadingSession(false);
-         }
-      }
-    };
-    initAuth();
-  }, [router]); // Only run on mount
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -1716,6 +1667,61 @@ function ChatPageContent() {
       setIsLoadingSession(false);
     }
   };
+
+  // ---- Auth & Onboarding effect ----
+  // Declared after switchToSession so the mount effect references it post-declaration.
+  useEffect(() => {
+    const initAuth = async () => {
+      setIsLoadingSession(true);
+      const supabase = createSupabaseBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push('/onboarding');
+        return;
+      }
+
+      setUserId(session.user.id);
+      setAuthUser(session.user);
+
+      const pending = localStorage.getItem('pending_onboarding');
+      if (pending) {
+        try {
+          const obData = JSON.parse(pending);
+          setOnboarding(obData);
+          localStorage.removeItem('pending_onboarding');
+
+          // Ensure a default project exists (idempotent) and migrate any orphaned sessions
+          const newProjectId = await ensureDefaultProject(session.user.id);
+
+          const newId = await createSession(obData, session.user.id, 'diagnose', undefined, undefined, newProjectId);
+          setCurrentSessionId(newId);
+          await refreshSessions();
+          await switchToSession(newId);
+
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsLoadingSession(false);
+        }
+      } else {
+         const list = await refreshSessions();
+         const targetId = searchParams.get('id');
+         if (targetId && list.some(s => s.id === targetId)) {
+            await switchToSession(targetId);
+         } else if (targetId) {
+            console.warn('[chat] ?id= gehört nicht zum Account, Fallback:', targetId);
+            if (list.length > 0) await switchToSession(list[0].id);
+            else setIsLoadingSession(false);
+         } else if (list.length > 0) {
+            await switchToSession(list[0].id);
+         } else {
+            setIsLoadingSession(false);
+         }
+      }
+    };
+    initAuth();
+  }, [router]); // Only run on mount
 
   const prepareNextPhase = useCallback(async (switchAfter = true) => {
     if (!currentSessionId || !userId || !currentProject || isPreparingNextPhase) return;
@@ -2023,8 +2029,8 @@ function ChatPageContent() {
 
     // Create a fresh session for the target phase carrying current canvas
     const ob = onboarding || { ziel: '', ki_erfahrung: '', wer_setzt_um: '', hindernis: '', branche: '', tempo: '', unternehmensgroesse: '' };
-    const targetCanvas = { ...canvasData, phase: targetPhase as any };
-    const newId = await createSession(ob as any, userId, targetPhase, '[dev skip]', targetCanvas, currentProject.id);
+    const targetCanvas = { ...canvasData, phase: targetPhase as CanvasData['phase'] };
+    const newId = await createSession(ob as OnboardingData, userId, targetPhase, '[dev skip]', targetCanvas, currentProject.id);
     await saveProjectCanvas(currentProject.id, targetCanvas);
     await refreshSessions();
     await switchToSession(newId);

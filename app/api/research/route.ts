@@ -123,8 +123,8 @@ export async function POST(req: NextRequest) {
     if (webhook) {
       try {
         searchResults = await searchViaN8n(webhook, input);
-      } catch (e: any) {
-        console.warn('[research] n8n webhook failed, using model knowledge only:', e?.message);
+      } catch (e: unknown) {
+        console.warn('[research] n8n webhook failed, using model knowledge only:', e instanceof Error ? e.message : String(e));
       }
     }
 
@@ -135,9 +135,10 @@ export async function POST(req: NextRequest) {
       source: searchResults.length ? 'n8n+llm' : 'llm',
       grounded: searchResults.length > 0,
     });
-  } catch (error: any) {
-    console.error('[research] error:', error?.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[research] error:', message);
     // Never block the coach — return empty options on hard failure.
-    return NextResponse.json({ options: [], source: 'error', error: error?.message });
+    return NextResponse.json({ options: [], source: 'error', error: message });
   }
 }

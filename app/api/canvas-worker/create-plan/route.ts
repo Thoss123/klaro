@@ -23,14 +23,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const canvas = canvasRow.data || {};
+    type PlanWorkflow = { id?: string; linked_pain_point?: string } & Record<string, unknown>;
+    type PlanStepInput = { label?: string; type?: string; tool?: string; description?: string };
+    const canvas = (canvasRow.data || {}) as { workflows?: PlanWorkflow[] } & Record<string, unknown>;
     // In Phase 3, workflows live in the `workflows` array.
-    const workflows = canvas.workflows || [];
+    const workflows: PlanWorkflow[] = canvas.workflows || [];
 
-    const existingIndex = workflows.findIndex((p: any) => p.linked_pain_point === pain_point_id);
+    const existingIndex = workflows.findIndex((p) => p.linked_pain_point === pain_point_id);
     const planId = existingIndex >= 0 && workflows[existingIndex].id ? workflows[existingIndex].id : `wf_${Date.now()}`;
 
-    const formattedSteps = steps.map((s: any, idx: number) => ({
+    const formattedSteps = (steps as PlanStepInput[]).map((s, idx: number) => ({
       id: `step_${idx + 1}`,
       label: s.label,
       type: s.type,
@@ -65,8 +67,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, plan_id: planId });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[create-plan] error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

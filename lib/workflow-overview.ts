@@ -3,7 +3,7 @@
  * damit LLM/Heuristik exakt wissen, welche Schritte existieren.
  */
 
-import type { Workflow, WorkflowEdge, WorkflowStep } from './types';
+import type { Workflow, WorkflowStep } from './types';
 import { resolveWorkflowEdges } from './workflow-graph';
 import { getNodeByName, getN8nCatalog } from './n8n-catalog';
 

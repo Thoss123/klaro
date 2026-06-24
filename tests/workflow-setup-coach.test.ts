@@ -6,7 +6,7 @@ import {
   formatCoachMessage,
   nextOpenStepId,
 } from '@/lib/workflow-setup-coach';
-import type { Workflow, WorkflowStep } from '@/lib/types';
+import type { Workflow } from '@/lib/types';
 
 const workflow: Workflow = {
   id: 'wf_test',

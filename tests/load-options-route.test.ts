@@ -25,11 +25,16 @@ function makeSupabase() {
     auth: { getUser: async () => ({ data: { user: { id: USER_ID } } }) },
     from: (_table: string) => {
       const filters: Array<[string, unknown]> = [];
-      const builder: any = {
+      type Builder = {
+        select: () => Builder;
+        eq: (col: string, val: unknown) => Builder;
+        limit: () => Promise<{ data: typeof credRows }>;
+      };
+      const builder: Builder = {
         select: () => builder,
         eq: (col: string, val: unknown) => { filters.push([col, val]); return builder; },
         limit: async () => ({
-          data: credRows.filter(r => filters.every(([c, v]) => (r as any)[c] === v)),
+          data: credRows.filter(r => filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v)),
         }),
       };
       return builder;

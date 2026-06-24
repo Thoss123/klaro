@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Check, Lock } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Check, Lock } from 'lucide-react';
 import { SessionSummary } from '@/lib/supabase-chat';
 
 const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
@@ -37,19 +37,20 @@ export default function ProjectMenu({
   sessions,
   onPhaseSelect,
   onRename,
-  onDelete,
-  onCreate,
   onNavigate,
   showPhases = true,
 }: ProjectMenuProps) {
   const [projectName, setProjectName] = useState(currentProject?.name ?? '');
   const [isSaving, setIsSaving] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // Sync the editable name when the project changes — adjust during render rather than
+  // in an effect to avoid the setState-in-effect render cascade.
+  const [syncedProjectId, setSyncedProjectId] = useState(currentProject?.id);
+  if (currentProject?.id !== syncedProjectId) {
+    setSyncedProjectId(currentProject?.id);
     setProjectName(currentProject?.name ?? '');
-  }, [currentProject?.id]);
+  }
 
   const handleNameChange = (val: string) => {
     setProjectName(val);

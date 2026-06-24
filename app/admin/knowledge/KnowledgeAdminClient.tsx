@@ -55,9 +55,19 @@ export default function KnowledgeAdminClient() {
     setLoading(false);
   }, []);
 
+  // Initial load on mount. State is only updated after the await (initial `loading`
+  // is already `true`), so this stays out of the setState-in-effect cascade rule.
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    (async () => {
+      const res = await fetch('/api/admin/knowledge');
+      const data = await res.json();
+      if (!active) return;
+      setEntries(data.entries ?? []);
+      setLoading(false);
+    })();
+    return () => { active = false; };
+  }, []);
 
   async function reindex(folder?: string) {
     setBusy(folder ?? 'all');

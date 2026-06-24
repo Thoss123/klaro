@@ -9,7 +9,8 @@ import { mistralCompleteJson, withRateLimitRetry } from '@/lib/agents/llm';
 
 export async function POST(req: NextRequest) {
   try {
-    const { history, currentCanvas, onboarding, phase, projectId } = await req.json();
+    const { history, currentCanvas, phase, projectId } = await req.json();
+    type ChatMsg = { role: string; content: string };
 
     if (!projectId) {
       logSync('canvas', 'skip', 'missing projectId');
@@ -67,16 +68,16 @@ export async function POST(req: NextRequest) {
     // In Phase `plan` extrahieren wir nur aus dem letzten Gesprächsblock (~7 Turns),
     // damit der Worker nicht alten Kontext aus früheren Pain Points aufgreift.
     const extractionHistory =
-      (phase || 'diagnose') === 'plan' ? (history as any[]).slice(-14) : history;
-    const chatContext = extractionHistory
-      .map((m: any) => `${m.role === 'user' ? 'Nutzer' : 'Coach'}: ${m.content}`)
+      (phase || 'diagnose') === 'plan' ? (history as ChatMsg[]).slice(-14) : history;
+    const chatContext = (extractionHistory as ChatMsg[])
+      .map((m) => `${m.role === 'user' ? 'Nutzer' : 'Coach'}: ${m.content}`)
       .join('\n\n');
 
     // Phase `plan`: der Coach hängt die pain_point_id an den trigger-Tag.
     // Wir extrahieren sie und fokussieren den Worker hart auf genau diesen Pain Point.
     let focusPainPointId: string | null = null;
     if ((phase || 'diagnose') === 'plan') {
-      const triggerMsgs = (history as any[]).filter(
+      const triggerMsgs = (history as ChatMsg[]).filter(
         m => m.role === 'assistant' && typeof m.content === 'string' && m.content.includes('<trigger_canvas_update'),
       );
       const lastTrigger = triggerMsgs[triggerMsgs.length - 1];
@@ -219,8 +220,8 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
         : undefined,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[canvas-worker] Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

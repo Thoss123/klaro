@@ -91,7 +91,12 @@ export async function createN8nWorkflow(workflowJson: object): Promise<{ id: str
 export async function ensureWorkflowMcpEnabled(n8nId: string): Promise<void> {
   if (MOCK() || !n8nId) return;
   try {
-    const wf = await n8nFetch(`/workflows/${n8nId}`);
+    const wf = await n8nFetch<{
+      name?: string;
+      nodes?: unknown;
+      connections?: unknown;
+      settings?: { availableInMCP?: boolean; executionOrder?: string };
+    }>(`/workflows/${n8nId}`);
     if (wf?.settings?.availableInMCP === true) return;
     // Nur schreibbare Felder zurückgeben (active/id/createdAt sind read-only → 400).
     await n8nFetch(`/workflows/${n8nId}`, {
@@ -174,7 +179,7 @@ export async function getExecutions(n8nWorkflowId: string): Promise<N8nExecution
       stoppedAt: new Date().toISOString(),
     }];
   }
-  const res = await n8nFetch(`/executions?workflowId=${n8nWorkflowId}&limit=10`);
+  const res = await n8nFetch<{ data?: N8nExecution[] }>(`/executions?workflowId=${n8nWorkflowId}&limit=10`);
   return res?.data || [];
 }
 
@@ -267,7 +272,7 @@ export async function triggerTestExecution(n8nWorkflowId: string): Promise<N8nTe
   }
 
   // Fallback wenn MCP nicht konfiguriert (veralteter REST-Endpunkt)
-  const rest = await n8nFetch(`/workflows/${n8nWorkflowId}/run`, {
+  const rest = await n8nFetch<{ executionId?: string; id?: string }>(`/workflows/${n8nWorkflowId}/run`, {
     method: 'POST',
     body: JSON.stringify({}),
   });

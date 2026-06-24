@@ -17,7 +17,7 @@ import {
   resolveCredentialKey,
   type StepMapping,
 } from './workflow-generator';
-import type { StepConfig, Workflow, WorkflowStep } from './types';
+import type { StepConfig, Workflow } from './types';
 
 export function buildMcpParameterOperations(
   workflow: Workflow,

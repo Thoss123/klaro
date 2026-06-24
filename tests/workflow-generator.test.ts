@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import {
   buildN8nWorkflow,
   getRequiredCredentials,
@@ -8,6 +8,19 @@ import {
   type StepMapping,
 } from '@/lib/workflow-generator';
 import type { Workflow } from '@/lib/types';
+
+/** Shape of the n8n JSON produced by buildN8nWorkflow - for typed test assertions. */
+type N8nJson = {
+  name: string;
+  active?: unknown;
+  nodes: Array<{
+    name: string;
+    type: string;
+    position: number[];
+    credentials?: Record<string, { id: string }>;
+  }>;
+  connections: Record<string, { main: Array<Array<{ node: string; type: string; index: number }>> }>;
+};
 
 const wf: Workflow = {
   id: 'wf_1',
@@ -43,39 +56,39 @@ describe('buildN8nWorkflow', () => {
   ];
 
   it('prefixes the n8n workflow name with AXANTILO:', () => {
-    const json = buildN8nWorkflow(wf, mappings, 'Reels Pipeline') as any;
+    const json = buildN8nWorkflow(wf, mappings, 'Reels Pipeline') as N8nJson;
     expect(json.name.startsWith(AXANTILO_WORKFLOW_PREFIX)).toBe(true);
   });
 
   it('creates one node per step with mapped node types', () => {
-    const json = buildN8nWorkflow(wf, mappings, 'X') as any;
+    const json = buildN8nWorkflow(wf, mappings, 'X') as N8nJson;
     expect(json.nodes).toHaveLength(4);
     expect(json.nodes[0].type).toBe(NODE_TYPE.webhook.type);
     expect(json.nodes[1].type).toBe(NODE_TYPE.openai.type);
   });
 
   it('wires sequential connections between nodes', () => {
-    const json = buildN8nWorkflow(wf, mappings, 'X') as any;
+    const json = buildN8nWorkflow(wf, mappings, 'X') as N8nJson;
     const firstName = json.nodes[0].name;
     expect(json.connections[firstName].main[0][0].node).toBe(json.nodes[1].name);
   });
 
   it('attaches credentials only where a credential_id + type exist', () => {
-    const json = buildN8nWorkflow(wf, mappings, 'X') as any;
+    const json = buildN8nWorkflow(wf, mappings, 'X') as N8nJson;
     expect(json.nodes[0].credentials).toBeUndefined(); // webhook → no credential
-    expect(json.nodes[1].credentials.openAiApi.id).toBe('cred_ai');
-    expect(json.nodes[3].credentials.gmailOAuth2Api.id).toBe('cred_gmail');
+    expect(json.nodes[1].credentials!.openAiApi.id).toBe('cred_ai');
+    expect(json.nodes[3].credentials!.gmailOAuth2Api.id).toBe('cred_gmail');
   });
 
   it('positions nodes horizontally and omits the read-only active field', () => {
-    const json = buildN8nWorkflow(wf, mappings, 'X') as any;
+    const json = buildN8nWorkflow(wf, mappings, 'X') as N8nJson;
     // n8n REST POST /workflows lehnt `active` als read-only ab → darf NICHT im JSON sein.
     expect(json.active).toBeUndefined();
     expect(json.nodes[1].position[0]).toBeGreaterThan(json.nodes[0].position[0]);
   });
 
   it('falls back to set/decision node when a step has no mapping', () => {
-    const json = buildN8nWorkflow(wf, [], 'X') as any;
+    const json = buildN8nWorkflow(wf, [], 'X') as N8nJson;
     expect(json.nodes[2].type).toBe(NODE_TYPE.decision.type); // decision step
     expect(json.nodes[1].type).toBe(NODE_TYPE.set.type); // unmapped → set
   });
@@ -95,7 +108,7 @@ describe('buildN8nWorkflow', () => {
         { id: 'e3', source: 's2', target: 's4', branch: 'false' },
       ],
     };
-    const json = buildN8nWorkflow(branchWf, [], 'Branch') as any;
+    const json = buildN8nWorkflow(branchWf, [], 'Branch') as N8nJson;
     const ifName = json.nodes[1].name;
     expect(json.connections[ifName].main[0][0].node).toBe(json.nodes[2].name);
     expect(json.connections[ifName].main[1][0].node).toBe(json.nodes[3].name);
@@ -114,7 +127,7 @@ describe('buildN8nWorkflow', () => {
         { id: 'e2', source: 's2', target: 's3', branch: 'default', targetInput: 1 },
       ],
     };
-    const json = buildN8nWorkflow(mergeWf, [], 'Merge') as any;
+    const json = buildN8nWorkflow(mergeWf, [], 'Merge') as N8nJson;
     const aName = json.nodes[0].name;
     const bName = json.nodes[1].name;
     const mergeName = json.nodes[2].name;
@@ -134,3 +147,4 @@ describe('getRequiredCredentials', () => {
     expect(creds.sort()).toEqual(['gmail', 'openai']);
   });
 });
+

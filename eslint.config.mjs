@@ -16,4 +16,17 @@ export default defineConfig([
   ]),
   ...nextCoreWebVitals,
   ...nextTypescript,
+  {
+    rules: {
+      // Allow intentionally-unused identifiers when prefixed with `_` (project convention).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ]);

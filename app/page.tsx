@@ -31,6 +31,12 @@ export default function Home() {
           </p>
           <div className="flex items-center gap-6">
             <Link
+              href="/agb"
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              AGB
+            </Link>
+            <Link
               href="/datenschutz"
               className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
             >

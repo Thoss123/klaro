@@ -5,7 +5,6 @@ import { mistralCompleteJson } from '@/lib/agents/llm';
 import { runWorkflowEditor, workflowStructureChanged } from '@/lib/agents/workflow-editor';
 import { isN8nMcpConfigured } from '@/lib/n8n-mcp-bridge';
 import {
-  buildMappingsFromWorkflow,
   resolveN8nWorkflowId,
   syncDeployedWorkflow,
 } from '@/lib/n8n-mcp-sync';

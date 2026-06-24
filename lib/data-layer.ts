@@ -60,8 +60,8 @@ export async function ensureDataLayer(
 
     console.log(`[data-layer] provisioned for project ${projectId}`);
     return created as DataLayerRecord;
-  } catch (e: any) {
-    console.error('[data-layer] ensureDataLayer error:', e?.message);
+  } catch (e: unknown) {
+    console.error('[data-layer] ensureDataLayer error:', e instanceof Error ? e.message : String(e));
     return null;
   }
 }

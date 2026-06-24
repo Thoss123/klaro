@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 
 const DOWN_OPTIONS = [

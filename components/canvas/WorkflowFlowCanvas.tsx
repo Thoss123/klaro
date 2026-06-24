@@ -40,7 +40,6 @@ import {
 } from '@/lib/workflow-graph';
 import WorkflowFlowNode, { type FlowNodeData } from './WorkflowFlowNode';
 import WorkflowAddStepNode, { ADD_STEP_BTN_SIZE, type AddStepNodeData } from './WorkflowAddStepNode';
-import WorkflowMiniMap from './WorkflowMiniMap';
 import type { N8nNodeState } from './N8nNode';
 
 type FlowEdgeData = {
@@ -101,7 +100,6 @@ const edgeTypes = { workflowEdge: WorkflowFlowEdge };
 /** Gleiche Logik wie der Fit-View-Button in den Controls. */
 const FIT_VIEW_OPTS = { padding: 0.12, duration: 250 };
 const ICON_SIZE = 76;
-const ICON_CENTER_Y = 38;
 
 function iconRightX(colW: number): number {
   return (colW - ICON_SIZE) / 2 + ICON_SIZE;

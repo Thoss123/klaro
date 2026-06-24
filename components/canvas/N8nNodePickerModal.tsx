@@ -4,7 +4,7 @@
  * Full-screen n8n node picker — for „Node wechseln“ and „Schritt hinzufügen“.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -12,6 +12,7 @@ import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import type { AxantiloN8nCategory } from '@/lib/n8n-categories';
 import N8nNodePicker from './N8nNodePicker';
 import type { WorkflowStep } from '@/lib/types';
+import { useMounted } from '@/lib/use-mounted';
 
 export default function N8nNodePickerModal({
   open,
@@ -37,11 +38,7 @@ export default function N8nNodePickerModal({
   /** IF / Switch / Merge — nur im „Schritt hinzufügen“-Dialog, nicht bei Trigger-Auswahl. */
   onQuickInsert?: (step: WorkflowStep) => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useMounted();
 
   useEffect(() => {
     if (!open) return;

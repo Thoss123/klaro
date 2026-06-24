@@ -38,14 +38,17 @@ export default function ProjectHeader({
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Keep name in sync when the project changes — adjust during render (React-idiomatic,
+  // avoids the setState-in-effect cascade) instead of inside an effect.
+  const [syncedProjectId, setSyncedProjectId] = useState(currentProject?.id);
+  if (currentProject?.id !== syncedProjectId) {
+    setSyncedProjectId(currentProject?.id);
+    setProjectName(currentProject?.name ?? '');
+  }
+
   const phaseRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Keep name in sync when project changes
-  useEffect(() => {
-    setProjectName(currentProject?.name ?? '');
-  }, [currentProject?.id]);
 
   // Close dropdowns on outside click
   useEffect(() => {

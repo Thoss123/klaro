@@ -1,7 +1,25 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  GoogleGenerativeAI,
+  type ChatSession,
+  type GenerateContentStreamResult,
+} from '@google/generative-ai';
 import { Mistral } from '@mistralai/mistralai';
-import { AITool, toGeminiTools, toMistralTools, getToolsForPhase } from './ai-tools';
+import { toGeminiTools, toMistralTools, getToolsForPhase } from './ai-tools';
 import { stripLeakedToolFragments } from './strip-internal-tags';
+
+/** Handler invoked when the model requests a tool call. */
+type ToolCallHandler = (
+  toolCall: { name: string; args: Record<string, unknown> },
+) => Promise<unknown>;
+
+/** Loose message shape we build for the Mistral chat API (cast at the call site). */
+type ChatMessage = {
+  role: string;
+  content?: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; imageUrl: string }>;
+  name?: string;
+  toolCallId?: string;
+  toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+};
 
 type MistralPendingToolCall = {
   id: string;
@@ -55,7 +73,7 @@ export interface AIProvider {
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>,
+    onToolCall?: ToolCallHandler,
     attachments?: VisionAttachment[],
     phase?: string
   ): Promise<void>;
@@ -84,7 +102,7 @@ export class GeminiProvider implements AIProvider {
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>,
+    onToolCall?: ToolCallHandler,
     attachments?: VisionAttachment[],
     phase?: string
   ) {
@@ -95,7 +113,7 @@ export class GeminiProvider implements AIProvider {
     }));
     
     // Ensure history starts with 'user' if it exists and alternates
-    const normalizedHistory: any[] = [];
+    const normalizedHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
     if (geminiHistory.length > 0 && geminiHistory[0].role === 'model') {
       normalizedHistory.push({ role: 'user', parts: [{ text: 'Hallo, lass uns starten!' }] });
     }
@@ -125,7 +143,7 @@ export class GeminiProvider implements AIProvider {
     // and then makes tool calls, we send STREAM_RESET so the client discards that
     // premature text — the model re-answers after the results and only the final
     // answer should remain (mirrors MistralProvider).
-    const processStream = async (res: any, currentChat: any) => {
+    const processStream = async (res: GenerateContentStreamResult, currentChat: ChatSession) => {
       let roundStreamedText = false;
       for await (const chunk of res.stream) {
          const chunkText = chunk.text();
@@ -145,16 +163,16 @@ export class GeminiProvider implements AIProvider {
                // Execute the tool call
                let toolResult;
                try {
-                  toolResult = await onToolCall({ name: call.name, args: call.args });
-               } catch (e: any) {
-                  toolResult = { error: e.message };
+                  toolResult = await onToolCall({ name: call.name, args: (call.args ?? {}) as Record<string, unknown> });
+               } catch (e: unknown) {
+                  toolResult = { error: e instanceof Error ? e.message : String(e) };
                }
 
                // Send the result back to Gemini and continue streaming
                const nextResult = await currentChat.sendMessageStream([{
                   functionResponse: {
                      name: call.name,
-                     response: toolResult
+                     response: (toolResult ?? {}) as object,
                   }
                }]);
 
@@ -169,8 +187,8 @@ export class GeminiProvider implements AIProvider {
     try {
         const result = await chat.sendMessageStream(this.userParts(message, attachments));
         await processStream(result, chat);
-    } catch (error: any) {
-        console.warn('Primary model failed in AIProvider:', error?.message);
+    } catch (error: unknown) {
+        console.warn('Primary model failed in AIProvider:', error instanceof Error ? error.message : String(error));
         console.log('Waiting 2 seconds before retrying due to potential rate limits...');
         await sleep(2000);
         
@@ -179,8 +197,8 @@ export class GeminiProvider implements AIProvider {
             const retryChat = model.startChat({ history: normalizedHistory });
             const retryResult = await retryChat.sendMessageStream(this.userParts(message, attachments));
             await processStream(retryResult, retryChat);
-        } catch (retryError: any) {
-            console.warn('Retry failed:', retryError?.message);
+        } catch (retryError: unknown) {
+            console.warn('Retry failed:', retryError instanceof Error ? retryError.message : String(retryError));
             console.log('Falling back to gemini-3.1-flash-lite...');
             const fallbackModel = this.genAI.getGenerativeModel({
                model: "gemini-3.1-flash-lite",
@@ -212,7 +230,7 @@ export class MistralProvider implements AIProvider {
     history: { role: string, content: string }[],
     message: string,
     onChunk: (chunk: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>,
+    onToolCall?: ToolCallHandler,
     attachments?: VisionAttachment[],
     phase?: string
   ) {
@@ -228,7 +246,7 @@ export class MistralProvider implements AIProvider {
       (phase || 'diagnose') === 'diagnose'
         ? (process.env.MISTRAL_DIAGNOSE_MODEL || 'mistral-large-latest')
         : MISTRAL_CHAT_MODEL;
-    const messages: any[] = [
+    const messages: ChatMessage[] = [
        { role: 'system', content: systemPrompt },
        ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content || ' ' })),
        { role: 'user', content: buildMistralUserContent(message, attachments) }
@@ -242,7 +260,7 @@ export class MistralProvider implements AIProvider {
       const pending = new Map<number, MistralPendingToolCall>();
       const result = await this.client.chat.stream({
         model: chatModel,
-        messages,
+        messages: messages as Parameters<typeof this.client.chat.stream>[0]['messages'],
         tools: toMistralTools(tools),
       });
 
@@ -337,22 +355,26 @@ export class MistralProvider implements AIProvider {
 
     try {
       await streamRound(0);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 429 rate limit or any Mistral failure → fall back to Gemini
-      const isRateLimit = error?.statusCode === 429 || error?.message?.includes('429') || error?.message?.includes('rate_limit');
-      console.warn(`Mistral failed (${isRateLimit ? '429 rate limit' : error?.message}) — falling back to Gemini`);
+      const statusCode = (error as { statusCode?: number } | null)?.statusCode;
+      const errMessage = error instanceof Error ? error.message : String(error);
+      const isRateLimit = statusCode === 429 || errMessage.includes('429') || errMessage.includes('rate_limit');
+      console.warn(`Mistral failed (${isRateLimit ? '429 rate limit' : errMessage}) — falling back to Gemini`);
       const gemini = new GeminiProvider();
       // Reconstruct history for Gemini (no system / tool roles; fold tool results into user turns)
       const geminiHistory: { role: string; content: string }[] = [];
+      const asText = (c: ChatMessage['content']): string =>
+        typeof c === 'string' ? c : Array.isArray(c) ? c.map(p => ('text' in p ? p.text : '')).join(' ') : '';
       for (const m of messages.filter(msg => msg.role !== 'system')) {
         if (m.role === 'user') {
-          geminiHistory.push({ role: 'user', content: m.content || ' ' });
+          geminiHistory.push({ role: 'user', content: asText(m.content) || ' ' });
         } else if (m.role === 'assistant') {
-          geminiHistory.push({ role: 'assistant', content: m.content || ' ' });
+          geminiHistory.push({ role: 'assistant', content: asText(m.content) || ' ' });
         } else if (m.role === 'tool') {
           geminiHistory.push({
             role: 'user',
-            content: `[Tool ${m.name} result]: ${m.content || '{}'}`,
+            content: `[Tool ${m.name} result]: ${asText(m.content) || '{}'}`,
           });
         }
       }

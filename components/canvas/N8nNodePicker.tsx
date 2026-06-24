@@ -176,25 +176,28 @@ export default function N8nNodePicker({
     }
   }, [filterMode, slotFilter]);
 
-  useEffect(() => {
-    if (slotFilter) {
-      setBrowseCategory('ai');
-    } else if (filterMode === 'trigger-only') {
-      setBrowseCategory('trigger');
-    } else {
-      setBrowseCategory(defaultCategory);
-    }
+  // Reset the active category + query whenever the picker's filter context changes —
+  // adjust during render instead of in an effect to avoid the setState-in-effect cascade.
+  const filterKey = `${defaultCategory}|${filterMode}|${slotFilter ?? ''}`;
+  const [syncedFilterKey, setSyncedFilterKey] = useState(filterKey);
+  if (filterKey !== syncedFilterKey) {
+    setSyncedFilterKey(filterKey);
+    setBrowseCategory(slotFilter ? 'ai' : filterMode === 'trigger-only' ? 'trigger' : defaultCategory);
     setQuery('');
-  }, [defaultCategory, filterMode, slotFilter]);
+  }
 
   useEffect(() => {
-    if (showCategoryHome) {
-      setEntries([]);
-      setLoading(false);
-      return;
-    }
+    // All state updates happen inside the timeout callback (async), keeping this effect
+    // out of the synchronous setState-in-effect cascade.
     const cat = isSearching ? null : (browseCategory ?? defaultCategory);
-    const t = setTimeout(() => loadEntries(cat, query), isSearching ? 200 : 0);
+    const t = setTimeout(() => {
+      if (showCategoryHome) {
+        setEntries([]);
+        setLoading(false);
+        return;
+      }
+      loadEntries(cat, query);
+    }, isSearching ? 200 : 0);
     return () => clearTimeout(t);
   }, [browseCategory, defaultCategory, query, loadEntries, showCategoryHome, isSearching]);
 
