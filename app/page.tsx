@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Bricolage_Grotesque, Instrument_Sans, IBM_Plex_Mono, Caveat } from 'next/font/google';
+import WaitlistWizard from '@/components/waitlist/WaitlistWizard';
 
 const displayFont = Bricolage_Grotesque({
   subsets: ['latin'],
@@ -265,6 +266,29 @@ const styles = `
 
 export default function Home() {
   const isDev = process.env.NODE_ENV === 'development';
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+
+  const openWaitlist = useCallback((e?: React.MouseEvent) => {
+    e?.preventDefault();
+    setWaitlistOpen(true);
+    document.body.style.overflow = 'hidden';
+    window.history.replaceState(null, '', '#warteliste');
+  }, []);
+
+  const closeWaitlist = useCallback(() => {
+    setWaitlistOpen(false);
+    document.body.style.overflow = '';
+    if (window.location.hash === '#warteliste') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash === '#warteliste') {
+      setWaitlistOpen(true);
+      document.body.style.overflow = 'hidden';
+    }
+  }, []);
 
   useEffect(() => {
     const io = new IntersectionObserver(
@@ -338,9 +362,9 @@ export default function Home() {
                   Login
                 </Link>
               )}
-              <Link href="/warteliste" className="btn btn-live">
+              <a href="/warteliste" className="btn btn-live" onClick={openWaitlist}>
                 Early Access
-              </Link>
+              </a>
             </div>
           </div>
         </nav>
@@ -360,9 +384,9 @@ export default function Home() {
               Gespräch, nicht in einem IT-Projekt.
             </p>
             <div className="hero-ctas rv rv-d3">
-              <Link href="/warteliste" className="btn btn-live">
+              <a href="/warteliste" className="btn btn-live" onClick={openWaitlist}>
                 Early Access sichern
-              </Link>
+              </a>
               <a href="#flows" className="btn btn-ghost">
                 Was alles läuft
               </a>
@@ -916,9 +940,9 @@ export default function Home() {
                     DSGVO-konform, EU-Hosting
                   </li>
                 </ul>
-                <Link href="/warteliste" className="btn btn-live">
+                <a href="/warteliste" className="btn btn-live" onClick={openWaitlist}>
                   Auf die Warteliste
-                </Link>
+                </a>
               </div>
               <div className="prcard rv rv-d1">
                 <h3>Credit-Paket</h3>
@@ -952,9 +976,9 @@ export default function Home() {
                     Keine Bindung — Credits statt Abo
                   </li>
                 </ul>
-                <Link href="/warteliste" className="btn btn-dark">
+                <a href="/warteliste" className="btn btn-dark" onClick={openWaitlist}>
                   Credits anfragen
-                </Link>
+                </a>
               </div>
             </div>
             <p className="pr-note rv rv-d2">
@@ -980,9 +1004,9 @@ export default function Home() {
               Sichere dir Early Access: Wir richten deinen Betrieb gemeinsam ein — und du startest vor allen anderen.
             </p>
             <div className="hero-ctas rv rv-d3">
-              <Link href="/warteliste" className="btn btn-live">
+              <a href="/warteliste" className="btn btn-live" onClick={openWaitlist}>
                 Auf die Warteliste
-              </Link>
+              </a>
             </div>
             <p className="hero-note rv rv-d4">
               hello@axantilo.com · Antwort innerhalb von 24 Stunden. Versprochen — und automatisiert.
@@ -1001,6 +1025,12 @@ export default function Home() {
           </div>
         </footer>
       </div>
+
+      {waitlistOpen && (
+        <div className="fixed inset-0 z-[200] bg-slate-50 overflow-y-auto">
+          <WaitlistWizard embedded onClose={closeWaitlist} />
+        </div>
+      )}
     </>
   );
 }

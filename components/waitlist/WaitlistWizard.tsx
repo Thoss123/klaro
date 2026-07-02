@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, X } from 'lucide-react';
 import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 import {
   clearWaitlistSessionToken,
@@ -58,7 +58,13 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-export default function WaitlistWizard() {
+export default function WaitlistWizard({
+  embedded = false,
+  onClose,
+}: {
+  embedded?: boolean;
+  onClose?: () => void;
+}) {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<WaitlistFormData>({});
   const [submitting, setSubmitting] = useState(false);
@@ -234,12 +240,22 @@ export default function WaitlistWizard() {
                 in der Regel innerhalb von 24 Stunden.
               </p>
             </div>
-            <Link
-              href="/"
-              className={`inline-flex items-center justify-center gap-2 ${ACCENT} ${ACCENT_HOVER} text-white font-semibold px-6 py-3.5 rounded-xl transition-colors`}
-            >
-              Zurück zur Startseite
-            </Link>
+            {embedded && onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className={`inline-flex items-center justify-center gap-2 ${ACCENT} ${ACCENT_HOVER} text-white font-semibold px-6 py-3.5 rounded-xl transition-colors`}
+              >
+                Zurück zur Startseite
+              </button>
+            ) : (
+              <Link
+                href="/"
+                className={`inline-flex items-center justify-center gap-2 ${ACCENT} ${ACCENT_HOVER} text-white font-semibold px-6 py-3.5 rounded-xl transition-colors`}
+              >
+                Zurück zur Startseite
+              </Link>
+            )}
           </div>
         );
       default:
@@ -250,14 +266,36 @@ export default function WaitlistWizard() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="w-full p-6 flex items-center justify-between max-w-xl mx-auto">
-        <Link href="/" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
-          ← Axantilo
-        </Link>
-        {!completed && (
-          <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-            Warteliste · Schritt {Math.min(step, 4)} / 4
-          </span>
+        {embedded && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            ← Axantilo
+          </button>
+        ) : (
+          <Link href="/" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
+            ← Axantilo
+          </Link>
         )}
+        <div className="flex items-center gap-3">
+          {!completed && (
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Warteliste · Schritt {Math.min(step, 4)} / 4
+            </span>
+          )}
+          {embedded && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Schließen"
+              className="w-9 h-9 rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-900 flex items-center justify-center"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
       </header>
 
       {!completed && step <= 4 && (
