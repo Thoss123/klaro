@@ -338,9 +338,9 @@ export default function Home() {
                   Login
                 </Link>
               )}
-              <a href="#cta" className="btn btn-live">
+              <Link href="/warteliste" className="btn btn-live">
                 Early Access
-              </a>
+              </Link>
             </div>
           </div>
         </nav>
@@ -360,9 +360,9 @@ export default function Home() {
               Gespräch, nicht in einem IT-Projekt.
             </p>
             <div className="hero-ctas rv rv-d3">
-              <a href="#cta" className="btn btn-live">
+              <Link href="/warteliste" className="btn btn-live">
                 Early Access sichern
-              </a>
+              </Link>
               <a href="#flows" className="btn btn-ghost">
                 Was alles läuft
               </a>
@@ -916,9 +916,9 @@ export default function Home() {
                     DSGVO-konform, EU-Hosting
                   </li>
                 </ul>
-                <a href="#cta" className="btn btn-live">
+                <Link href="/warteliste" className="btn btn-live">
                   Auf die Warteliste
-                </a>
+                </Link>
               </div>
               <div className="prcard rv rv-d1">
                 <h3>Credit-Paket</h3>
@@ -952,9 +952,9 @@ export default function Home() {
                     Keine Bindung — Credits statt Abo
                   </li>
                 </ul>
-                <a href="#cta" className="btn btn-dark">
+                <Link href="/warteliste" className="btn btn-dark">
                   Credits anfragen
-                </a>
+                </Link>
               </div>
             </div>
             <p className="pr-note rv rv-d2">
@@ -980,9 +980,9 @@ export default function Home() {
               Sichere dir Early Access: Wir richten deinen Betrieb gemeinsam ein — und du startest vor allen anderen.
             </p>
             <div className="hero-ctas rv rv-d3">
-              <a href="mailto:hello@axantilo.com?subject=Warteliste%20Testphase" className="btn btn-live">
+              <Link href="/warteliste" className="btn btn-live">
                 Auf die Warteliste
-              </a>
+              </Link>
             </div>
             <p className="hero-note rv rv-d4">
               hello@axantilo.com · Antwort innerhalb von 24 Stunden. Versprochen — und automatisiert.
