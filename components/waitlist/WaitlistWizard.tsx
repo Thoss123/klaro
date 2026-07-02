@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, CheckCircle2, X } from 'lucide-react';
-import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
+import { joinMultiValue, parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 import {
   clearWaitlistSessionToken,
   getOrCreateWaitlistSessionToken,
@@ -373,25 +373,50 @@ function QuestionStep({
 }) {
   const isMulti = mode === 'multi';
   const selectedValues = parseMultiValue(value);
+  const standardValues = options.map((o) => o.value);
   const hasOtherOption = Boolean(otherOptionValue);
-  const isOtherActive =
-    hasOtherOption &&
-    (value === otherOptionValue ||
-      (value &&
-        !options.map((o) => o.value).includes(value) &&
-        value !== otherOptionValue));
+  const isOtherSelected = hasOtherOption && selectedValues.includes(otherOptionValue!);
+  const customOtherValue = parseMultiValue(value).find(
+    (v) => v !== otherOptionValue && !standardValues.includes(v),
+  );
+  const isOtherActive = isMulti
+    ? isOtherSelected || Boolean(customOtherValue)
+    : hasOtherOption &&
+      (value === otherOptionValue || Boolean(customOtherValue));
   const [otherDraft, setOtherDraft] = useState('');
+
+  // Freitext mit gespeichertem Custom-Wert synchron halten.
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    if (isMulti && customOtherValue) {
+      setOtherDraft(customOtherValue);
+    } else if (isMulti && !isOtherSelected) {
+      setOtherDraft('');
+    } else if (!isMulti && customOtherValue) {
+      setOtherDraft(customOtherValue);
+    }
+  }
 
   const handleSelect = (opt: WizardOption) => {
     if (isMulti) {
-      onSelect(toggleMultiValue(value, opt.value));
+      const next = toggleMultiValue(value, opt.value);
+      onSelect(next);
+      if (otherOptionValue && opt.value === otherOptionValue && parseMultiValue(next).includes(otherOptionValue)) {
+        setOtherDraft('');
+      }
+      if (otherOptionValue && opt.value === otherOptionValue && !parseMultiValue(next).includes(otherOptionValue)) {
+        const withoutCustom = parseMultiValue(next).filter((v) => standardValues.includes(v));
+        onSelect(joinMultiValue(withoutCustom));
+        setOtherDraft('');
+      }
     } else if (hasOtherOption && opt.value === otherOptionValue) {
       onSelect(opt.value);
     } else {
       onSelect(opt.value);
       if (autoAdvance) {
         setTimeout(() => onNext(), 180);
-      } else if (!isMulti) {
+      } else {
         setTimeout(() => onNext(), 180);
       }
     }
@@ -400,11 +425,28 @@ function QuestionStep({
   const handleOtherContinue = () => {
     const trimmed = otherDraft.trim();
     if (!trimmed) return;
-    onSelect(trimmed);
+
+    if (isMulti && otherOptionValue) {
+      const kept = parseMultiValue(value).filter(
+        (v) => v !== otherOptionValue && standardValues.includes(v),
+      );
+      onSelect(joinMultiValue([...kept, trimmed]));
+    } else {
+      onSelect(trimmed);
+    }
+    onNext();
+  };
+
+  const handleMultiNext = () => {
+    if (isOtherActive) {
+      handleOtherContinue();
+      return;
+    }
     onNext();
   };
 
   const otherReady = otherDraft.trim().length > 0;
+  const canContinueMulti = selectedValues.length > 0 && (!isOtherActive || otherReady);
 
   return (
     <div className="flex flex-col gap-8">
@@ -426,7 +468,8 @@ function QuestionStep({
       <div className="flex flex-col gap-3">
         {options.map((opt) => {
           const isSelected = isMulti
-            ? selectedValues.includes(opt.value)
+            ? selectedValues.includes(opt.value) ||
+              (opt.value === otherOptionValue && Boolean(customOtherValue))
             : hasOtherOption && opt.value === otherOptionValue
               ? isOtherActive
               : value === opt.value;
@@ -481,8 +524,8 @@ function QuestionStep({
       {(isMulti || (hasOtherOption && isOtherActive)) && (
         <button
           type="button"
-          onClick={isOtherActive ? handleOtherContinue : onNext}
-          disabled={isOtherActive ? !otherReady : selectedValues.length === 0}
+          onClick={isMulti ? handleMultiNext : isOtherActive ? handleOtherContinue : onNext}
+          disabled={isMulti ? !canContinueMulti : isOtherActive ? !otherReady : selectedValues.length === 0}
           className={`w-full ${ACCENT} ${ACCENT_HOVER} text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           Weiter <ArrowRight size={20} />
