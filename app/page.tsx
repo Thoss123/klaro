@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Bricolage_Grotesque, Instrument_Sans, IBM_Plex_Mono, Caveat } from 'next/font/google';
+import { Bricolage_Grotesque, Instrument_Sans, Caveat } from 'next/font/google';
 import WaitlistWizard from '@/components/waitlist/WaitlistWizard';
 
 const displayFont = Bricolage_Grotesque({
@@ -14,11 +14,6 @@ const bodyFont = Instrument_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600'],
   variable: '--font-body',
-});
-const monoFont = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  variable: '--font-mono',
 });
 const accentFont = Caveat({
   subsets: ['latin'],
@@ -50,7 +45,7 @@ const styles = `
 .landing-v2 img,.landing-v2 svg{display:block;max-width:100%}
 .landing-v2 a{color:inherit}
 .landing-v2 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
-.landing-v2 .mono{font-family:var(--font-mono);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase}
+.landing-v2 .mono{font-family:var(--font-body);font-size:.85rem;font-weight:500;letter-spacing:0;text-transform:none}
 
 /* ---------- wavy accent labels (statt Versalien) ---------- */
 .landing-v2 .eyebrow,
@@ -107,7 +102,7 @@ const styles = `
 
 /* ---------- usp bar ---------- */
 .landing-v2 .uspbar{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.4rem}
-.landing-v2 .usp{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--font-mono);font-size:.74rem;letter-spacing:.04em;text-transform:uppercase;color:var(--text-on-dark);border:1px solid var(--line-dark);border-radius:999px;padding:.5rem 1rem;background:rgba(233,238,247,.04)}
+.landing-v2 .usp{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--font-body);font-size:.82rem;font-weight:500;letter-spacing:0;text-transform:none;color:var(--text-on-dark);border:1px solid var(--line-dark);border-radius:999px;padding:.5rem 1rem;background:rgba(233,238,247,.04)}
 .landing-v2 .usp b{color:var(--live);font-weight:500}
 
 /* ---------- graph ---------- */
@@ -117,7 +112,7 @@ const styles = `
 .landing-v2 .graph-shell--mobile{display:none}
 .landing-v2 .gnode{fill:var(--ink-soft);stroke:var(--line-dark);stroke-width:1}
 .landing-v2 .gnode-core{fill:#0F1B33;stroke:rgba(47,107,255,.5);stroke-width:1.5}
-.landing-v2 .glabel{font-family:var(--font-mono);font-size:11.5px;fill:var(--text-on-dark);letter-spacing:.04em}
+.landing-v2 .glabel{font-family:var(--font-body);font-size:11.5px;font-weight:600;fill:var(--text-on-dark);letter-spacing:0}
 .landing-v2 .glabel-sub{font-family:var(--font-body);font-size:10px;fill:var(--text-on-dark-mute)}
 .landing-v2 .gpath{stroke:rgba(233,238,247,.14);stroke-width:1.5;fill:none}
 .landing-v2 .gpulse{fill:var(--live);filter:drop-shadow(0 0 5px rgba(47,107,255,.9))}
@@ -187,7 +182,7 @@ const styles = `
 .landing-v2 .fcard:hover{border-color:rgba(47,107,255,.5);transform:translateY(-3px)}
 .landing-v2 .fcard h3{font-family:var(--font-display);font-weight:600;font-size:1.12rem;margin-bottom:.45rem}
 .landing-v2 .fcard p{color:var(--text-on-dark-mute);font-size:.92rem}
-.landing-v2 .fflow{margin-top:1rem;font-family:var(--font-mono);font-size:.7rem;color:var(--teal);letter-spacing:.03em;line-height:1.9}
+.landing-v2 .fflow{margin-top:1rem;font-family:var(--font-body);font-size:.78rem;color:var(--teal);letter-spacing:0;line-height:1.9}
 .landing-v2 .fflow b{color:var(--live);font-weight:500}
 @media(max-width:900px){.landing-v2 .fgrid{grid-template-columns:1fr}}
 
@@ -220,18 +215,18 @@ const styles = `
 .landing-v2 .steps{display:flex;flex-direction:column}
 .landing-v2 .step{display:flex;gap:1.4rem;padding:1.6rem 0;border-bottom:1px solid var(--line)}
 .landing-v2 .step:last-child{border-bottom:none}
-.landing-v2 .step-num{font-family:var(--font-mono);font-size:.8rem;color:var(--live);background:var(--ink);border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:500}
+.landing-v2 .step-num{font-family:var(--font-body);font-size:.82rem;color:var(--live);background:var(--ink);border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600}
 .landing-v2 .step h3{font-family:var(--font-display);font-weight:600;font-size:1.2rem;margin-bottom:.35rem}
 .landing-v2 .step p{color:var(--text-mute);font-size:.95rem}
 .landing-v2 .chat{background:var(--ink);border-radius:20px;padding:1.6rem;box-shadow:0 30px 70px rgba(11,18,32,.25)}
 .landing-v2 .chat-head{display:flex;align-items:center;gap:.7rem;padding-bottom:1.1rem;border-bottom:1px solid var(--line-dark);margin-bottom:1.1rem}
-.landing-v2 .chat-head span{font-family:var(--font-mono);font-size:.75rem;color:var(--text-on-dark-mute);letter-spacing:.05em}
+.landing-v2 .chat-head span{font-family:var(--font-body);font-size:.78rem;font-weight:500;color:var(--text-on-dark-mute);letter-spacing:0}
 .landing-v2 .chat-body{display:flex;flex-direction:column;gap:.75rem;min-height:360px}
 .landing-v2 .chat-line{max-width:85%;padding:.75rem 1rem;border-radius:14px;font-size:.9rem;line-height:1.5;opacity:0;transform:translateY(10px);animation:chat-in .5s ease forwards;animation-play-state:paused}
 .landing-v2 .chat.play .chat-line{animation-play-state:running}
 .landing-v2 .chat-line.ai{background:#182545;color:var(--text-on-dark);border-bottom-left-radius:4px;align-self:flex-start}
 .landing-v2 .chat-line.user{background:var(--live);color:#fff;border-bottom-right-radius:4px;align-self:flex-end;font-weight:500}
-.landing-v2 .chat-line.sys{background:transparent;border:1px dashed rgba(47,107,255,.4);color:var(--live);font-family:var(--font-mono);font-size:.75rem;align-self:center;max-width:100%;text-align:center}
+.landing-v2 .chat-line.sys{background:transparent;border:1px dashed rgba(47,107,255,.4);color:var(--live);font-family:var(--font-body);font-size:.78rem;font-weight:500;align-self:center;max-width:100%;text-align:center}
 .landing-v2 .chat-line:nth-child(1){animation-delay:.2s}
 .landing-v2 .chat-line:nth-child(2){animation-delay:1.1s}
 .landing-v2 .chat-line:nth-child(3){animation-delay:2s}
@@ -244,7 +239,7 @@ const styles = `
 /* ---------- integrations ---------- */
 .landing-v2 .integr{background:var(--paper);padding:70px 0;border-bottom:1px solid var(--line)}
 .landing-v2 .integr-row{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2rem}
-.landing-v2 .chip{font-family:var(--font-mono);font-size:.8rem;padding:.55rem 1.1rem;border:1px solid var(--line);border-radius:999px;color:var(--text-mute);background:#fff;transition:all .2s}
+.landing-v2 .chip{font-family:var(--font-body);font-size:.85rem;font-weight:500;padding:.55rem 1.1rem;border:1px solid var(--line);border-radius:999px;color:var(--text-mute);background:#fff;transition:all .2s}
 .landing-v2 .chip:hover{border-color:var(--live);color:var(--text)}
 .landing-v2 .chip-more{border-style:dashed;color:var(--live);border-color:rgba(47,107,255,.5)}
 
@@ -253,7 +248,7 @@ const styles = `
 .landing-v2 .prgrid{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;margin-top:3rem;max-width:840px}
 .landing-v2 .prcard{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:2.4rem;position:relative}
 .landing-v2 .prcard-pro{border:2px solid var(--ink);box-shadow:0 24px 60px rgba(11,18,32,.12)}
-.landing-v2 .prbadge{position:absolute;top:-13px;left:2.4rem;background:var(--live);color:#fff;font-size:.72rem;font-weight:700;padding:.25rem .8rem;border-radius:999px;letter-spacing:.04em;text-transform:uppercase}
+.landing-v2 .prbadge{position:absolute;top:-13px;left:2.4rem;background:var(--live);color:#fff;font-family:var(--font-body);font-size:.72rem;font-weight:600;padding:.25rem .8rem;border-radius:999px;letter-spacing:0;text-transform:none}
 .landing-v2 .prcard h3{font-family:var(--font-display);font-weight:700;font-size:1.3rem}
 .landing-v2 .prprice{font-family:var(--font-display);font-weight:800;font-size:2.8rem;margin:.8rem 0 .1rem;letter-spacing:-.02em}
 .landing-v2 .prprice span{font-size:1rem;font-weight:500;color:var(--text-mute)}
@@ -358,7 +353,7 @@ export default function Home() {
       <style dangerouslySetInnerHTML={{ __html: styles }} />
 
       <div
-        className={`landing-v2 ${displayFont.variable} ${bodyFont.variable} ${monoFont.variable} ${accentFont.variable}`}
+        className={`landing-v2 ${displayFont.variable} ${bodyFont.variable} ${accentFont.variable}`}
       >
         <nav>
           <div className="wrap nav-inner">
@@ -439,19 +434,19 @@ export default function Home() {
 
                 <g>
                   <rect className="gnode" x="40" y="44" width="150" height="52" rx="10" />
-                  <text className="glabel" x="60" y="66">PORTALE</text>
+                  <text className="glabel" x="60" y="66">Portale</text>
                   <text className="glabel-sub" x="60" y="84">ImmoScout24 · willhaben</text>
 
                   <rect className="gnode" x="40" y="139" width="150" height="52" rx="10" />
-                  <text className="glabel" x="60" y="161">JUSTIMMO</text>
+                  <text className="glabel" x="60" y="161">Justimmo</text>
                   <text className="glabel-sub" x="60" y="179">Objekte &amp; Kontakte</text>
 
                   <rect className="gnode" x="40" y="234" width="150" height="52" rx="10" />
-                  <text className="glabel" x="60" y="256">POSTFACH</text>
+                  <text className="glabel" x="60" y="256">Postfach</text>
                   <text className="glabel-sub" x="60" y="274">Gmail · Outlook</text>
 
                   <rect className="gnode" x="40" y="329" width="150" height="52" rx="10" />
-                  <text className="glabel" x="60" y="351">KALENDER</text>
+                  <text className="glabel" x="60" y="351">Kalender</text>
                   <text className="glabel-sub" x="60" y="369">Termine &amp; Rundgänge</text>
                 </g>
 
@@ -462,7 +457,7 @@ export default function Home() {
                   </circle>
                   <rect className="gnode-core" x="480" y="172" width="140" height="76" rx="14" />
                   <circle cx="502" cy="196" r="4" fill="#2F6BFF" />
-                  <text className="glabel" x="514" y="200" fontWeight="500">AXANTILO</text>
+                  <text className="glabel" x="514" y="200" fontWeight="500">Axantilo</text>
                   <text className="glabel-sub" x="502" y="222">versteht · erstellt ·</text>
                   <text className="glabel-sub" x="502" y="236">plant · rechnet ab</text>
                 </g>
@@ -551,19 +546,19 @@ export default function Home() {
 
                 <g>
                   <rect className="gnode" x="20" y="16" width="320" height="58" rx="12" />
-                  <text className="glabel" x="36" y="40">PORTALE</text>
+                  <text className="glabel" x="36" y="40">Portale</text>
                   <text className="glabel-sub" x="36" y="58">ImmoScout24 · willhaben</text>
 
                   <rect className="gnode" x="20" y="84" width="320" height="58" rx="12" />
-                  <text className="glabel" x="36" y="108">JUSTIMMO</text>
+                  <text className="glabel" x="36" y="108">Justimmo</text>
                   <text className="glabel-sub" x="36" y="126">Objekte &amp; Kontakte</text>
 
                   <rect className="gnode" x="20" y="152" width="320" height="58" rx="12" />
-                  <text className="glabel" x="36" y="176">POSTFACH</text>
+                  <text className="glabel" x="36" y="176">Postfach</text>
                   <text className="glabel-sub" x="36" y="194">Gmail · Outlook</text>
 
                   <rect className="gnode" x="20" y="220" width="320" height="58" rx="12" />
-                  <text className="glabel" x="36" y="244">KALENDER</text>
+                  <text className="glabel" x="36" y="244">Kalender</text>
                   <text className="glabel-sub" x="36" y="262">Termine &amp; Rundgänge</text>
                 </g>
 
@@ -574,7 +569,7 @@ export default function Home() {
                   </circle>
                   <rect className="gnode-core" x="20" y="318" width="320" height="88" rx="14" />
                   <circle cx="44" cy="348" r="5" fill="#2F6BFF" />
-                  <text className="glabel" x="58" y="352" fontWeight="500">AXANTILO</text>
+                  <text className="glabel" x="58" y="352" fontWeight="500">Axantilo</text>
                   <text className="glabel-sub" x="58" y="372">versteht · erstellt · plant · rechnet ab</text>
                 </g>
 
@@ -967,7 +962,7 @@ export default function Home() {
               <div className="chat rv rv-d2" id="chatDemo">
                 <div className="chat-head">
                   <span className="logo-dot" />
-                  <span>AXANTILO ONBOARDING · LIVE</span>
+                  <span>Axantilo Onboarding · Live</span>
                 </div>
                 <div className="chat-body">
                   <div className="chat-line ai">
