@@ -110,7 +110,9 @@ const styles = `
 
 /* ---------- graph ---------- */
 .landing-v2 .graph-shell{margin:3.5rem auto 0;position:relative;padding-bottom:3.5rem}
-.landing-v2 .graph{width:100%;height:auto}
+.landing-v2 .graph{width:100%;height:auto;display:block}
+.landing-v2 .graph-shell--desktop{display:block}
+.landing-v2 .graph-shell--mobile{display:none}
 .landing-v2 .gnode{fill:var(--ink-soft);stroke:var(--line-dark);stroke-width:1}
 .landing-v2 .gnode-core{fill:#0F1B33;stroke:rgba(47,107,255,.5);stroke-width:1.5}
 .landing-v2 .glabel{font-family:var(--font-mono);font-size:11.5px;fill:var(--text-on-dark);letter-spacing:.04em}
@@ -120,6 +122,16 @@ const styles = `
 .landing-v2 .gout{font-family:var(--font-body);font-size:12px;fill:var(--text-on-dark)}
 .landing-v2 .gcheck{fill:none;stroke:var(--live);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .landing-v2 .gcore-ring{fill:none;stroke:var(--live);stroke-width:1;opacity:.35}
+@media(max-width:720px){
+  .landing-v2 .graph-shell--desktop{display:none}
+  .landing-v2 .graph-shell--mobile{display:block;margin-top:2.2rem;padding-bottom:2rem}
+  .landing-v2 .graph-shell--mobile .graph{min-height:min(92vw,680px)}
+  .landing-v2 .graph-mobile .glabel{font-size:13px}
+  .landing-v2 .graph-mobile .glabel-sub{font-size:11.5px}
+  .landing-v2 .graph-mobile .gout{font-size:13px}
+  .landing-v2 .graph-mobile .gpath{stroke-width:2}
+  .landing-v2 .graph-mobile .gpulse{r:5}
+}
 @media(prefers-reduced-motion:reduce){
   .landing-v2 .rv{opacity:1;transform:none;transition:none}
   .landing-v2 .logo-dot{animation:none}
@@ -406,8 +418,8 @@ export default function Home() {
               </span>
             </div>
 
-            {/* orchestration graph */}
-            <div className="graph-shell rv rv-d4">
+            {/* orchestration graph — desktop (horizontal) */}
+            <div className="graph-shell graph-shell--desktop rv rv-d4">
               <svg
                 className="graph"
                 viewBox="0 0 1080 420"
@@ -513,6 +525,117 @@ export default function Home() {
                 <circle className="gpulse" r="4">
                   <animateMotion dur="2.6s" repeatCount="indefinite" begin="3.0s">
                     <mpath href="#p8" />
+                  </animateMotion>
+                </circle>
+              </svg>
+            </div>
+
+            {/* orchestration graph — mobile (vertical, volle Breite) */}
+            <div className="graph-shell graph-shell--mobile rv rv-d4">
+              <svg
+                className="graph graph-mobile"
+                viewBox="0 0 360 820"
+                role="img"
+                aria-label="Mobil: Deine Tools fließen durch Axantilo — heraus kommen automatisch erledigte Anfragen, Exposés, Anzeigen und Rechnungen."
+              >
+                <path id="m1" className="gpath" d="M 180 74 C 180 110, 180 250, 180 318" />
+                <path id="m2" className="gpath" d="M 180 142 C 180 178, 180 260, 180 318" />
+                <path id="m3" className="gpath" d="M 180 210 C 180 246, 180 280, 180 318" />
+                <path id="m4" className="gpath" d="M 180 278 C 180 300, 180 310, 180 318" />
+                <path id="m5" className="gpath" d="M 180 406 C 180 440, 180 470, 180 498" />
+                <path id="m6" className="gpath" d="M 180 406 C 180 450, 180 520, 180 578" />
+                <path id="m7" className="gpath" d="M 180 406 C 180 460, 180 570, 180 658" />
+                <path id="m8" className="gpath" d="M 180 406 C 180 470, 180 620, 180 738" />
+
+                <g>
+                  <rect className="gnode" x="20" y="16" width="320" height="58" rx="12" />
+                  <text className="glabel" x="36" y="40">PORTALE</text>
+                  <text className="glabel-sub" x="36" y="58">ImmoScout24 · willhaben</text>
+
+                  <rect className="gnode" x="20" y="84" width="320" height="58" rx="12" />
+                  <text className="glabel" x="36" y="108">JUSTIMMO</text>
+                  <text className="glabel-sub" x="36" y="126">Objekte &amp; Kontakte</text>
+
+                  <rect className="gnode" x="20" y="152" width="320" height="58" rx="12" />
+                  <text className="glabel" x="36" y="176">POSTFACH</text>
+                  <text className="glabel-sub" x="36" y="194">Gmail · Outlook</text>
+
+                  <rect className="gnode" x="20" y="220" width="320" height="58" rx="12" />
+                  <text className="glabel" x="36" y="244">KALENDER</text>
+                  <text className="glabel-sub" x="36" y="262">Termine &amp; Rundgänge</text>
+                </g>
+
+                <g>
+                  <circle className="gcore-ring" cx="180" cy="362" r="72">
+                    <animate attributeName="r" values="58;78" dur="2.6s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values=".35;0" dur="2.6s" repeatCount="indefinite" />
+                  </circle>
+                  <rect className="gnode-core" x="20" y="318" width="320" height="88" rx="14" />
+                  <circle cx="44" cy="348" r="5" fill="#2F6BFF" />
+                  <text className="glabel" x="58" y="352" fontWeight="500">AXANTILO</text>
+                  <text className="glabel-sub" x="58" y="372">versteht · erstellt · plant · rechnet ab</text>
+                </g>
+
+                <g>
+                  <rect className="gnode" x="20" y="470" width="320" height="58" rx="12" />
+                  <path className="gcheck" d="M 36 496 l 5 5 l 9 -10" />
+                  <text className="gout" x="58" y="494">Anfrage beantwortet</text>
+                  <text className="glabel-sub" x="58" y="512">in 4 Minuten, mit Exposé</text>
+
+                  <rect className="gnode" x="20" y="550" width="320" height="58" rx="12" />
+                  <path className="gcheck" d="M 36 576 l 5 5 l 9 -10" />
+                  <text className="gout" x="58" y="574">Exposé erstellt</text>
+                  <text className="glabel-sub" x="58" y="592">Text, Layout, Rundgang-Link</text>
+
+                  <rect className="gnode" x="20" y="630" width="320" height="58" rx="12" />
+                  <path className="gcheck" d="M 36 656 l 5 5 l 9 -10" />
+                  <text className="gout" x="58" y="654">Anzeige geschaltet</text>
+                  <text className="glabel-sub" x="58" y="672">Meta &amp; Portale, automatisch</text>
+
+                  <rect className="gnode" x="20" y="710" width="320" height="58" rx="12" />
+                  <path className="gcheck" d="M 36 736 l 5 5 l 9 -10" />
+                  <text className="gout" x="58" y="734">Rechnung gestellt</text>
+                  <text className="glabel-sub" x="58" y="752">nach Abschluss, inkl. Ablage</text>
+                </g>
+
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.8s" repeatCount="indefinite" begin="0s">
+                    <mpath href="#m1" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.8s" repeatCount="indefinite" begin="0.7s">
+                    <mpath href="#m2" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.8s" repeatCount="indefinite" begin="1.4s">
+                    <mpath href="#m3" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.8s" repeatCount="indefinite" begin="2.1s">
+                    <mpath href="#m4" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.5s">
+                    <mpath href="#m5" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.2s">
+                    <mpath href="#m6" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.9s">
+                    <mpath href="#m7" />
+                  </animateMotion>
+                </circle>
+                <circle className="gpulse" r="5">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" begin="2.6s">
+                    <mpath href="#m8" />
                   </animateMotion>
                 </circle>
               </svg>
