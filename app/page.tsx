@@ -63,7 +63,8 @@ const styles = `
   font-weight:600;
 }
 .landing-v2 .eyebrow{font-size:1.35rem}
-.landing-v2 .hero-eyebrow{font-size:1.2rem}
+.landing-v2 .hero-eyebrow{font-size:0.95rem}
+.landing-v2 .hero-eyebrow{display:block;color:var(--live);margin-bottom:1.2rem;padding:0;border:none;background:transparent;border-radius:0}
 .landing-v2 .area-head .mono{font-size:1.4rem}
 .landing-v2 .countchip{font-size:1.25rem}
 
@@ -81,6 +82,8 @@ const styles = `
 .landing-v2 .nav-links{display:flex;gap:1.8rem;align-items:center}
 .landing-v2 .nav-links a{color:var(--text-on-dark-mute);text-decoration:none;font-size:.92rem;font-weight:500;transition:color .2s}
 .landing-v2 .nav-links a:hover{color:var(--text-on-dark)}
+.landing-v2 .nav-links a.btn-live{color:#fff}
+.landing-v2 .nav-links a.btn-live:hover{color:#fff}
 .landing-v2 .nav-login{color:var(--text-on-dark-mute);text-decoration:none;font-size:.82rem;font-weight:500;border:1px dashed var(--line-dark);border-radius:999px;padding:.35rem .85rem;transition:color .2s,border-color .2s}
 .landing-v2 .nav-login:hover{color:var(--text-on-dark);border-color:var(--live)}
 .landing-v2 .btn{display:inline-block;text-decoration:none;font-weight:600;border-radius:999px;padding:.72rem 1.5rem;font-size:.95rem;transition:transform .18s ease,box-shadow .18s ease,background .18s ease;cursor:pointer;border:none;font-family:var(--font-body)}
@@ -96,7 +99,7 @@ const styles = `
 /* ---------- hero ---------- */
 .landing-v2 .hero{background:var(--ink);color:var(--text-on-dark);padding:150px 0 0;position:relative;overflow:hidden}
 .landing-v2 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 45% at 70% 15%,rgba(127,166,245,.12),transparent 60%);pointer-events:none}
-.landing-v2 .hero-eyebrow{display:inline-flex;align-items:center;gap:.6rem;color:var(--live);border:1px solid rgba(47,107,255,.35);border-radius:999px;padding:.4rem 1rem;margin-bottom:1.6rem;background:var(--live-dim)}
+.landing-v2 .hero-eyebrow{display:block;color:var(--live);margin-bottom:1.2rem;padding:0;border:none;background:transparent;border-radius:0}
 .landing-v2 .hero h1{font-family:var(--font-display);font-weight:800;font-size:clamp(2.4rem,5.4vw,4.1rem);line-height:1.06;letter-spacing:-.02em;max-width:16ch}
 .landing-v2 .hero h1 em{font-style:normal;color:var(--live)}
 .landing-v2 .hero-sub{margin-top:1.4rem;font-size:clamp(1.05rem,1.6vw,1.25rem);color:var(--text-on-dark-mute);max-width:56ch}
