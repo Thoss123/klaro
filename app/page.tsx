@@ -152,7 +152,7 @@ const styles = `
 .landing-v2 .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin-top:3rem}
 .landing-v2 .pcard{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1.8rem;transition:transform .25s ease,box-shadow .25s ease}
 .landing-v2 .pcard:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(11,18,32,.08)}
-.landing-v2 .ptime{font-family:var(--font-mono);font-size:.8rem;color:var(--text-mute);letter-spacing:.05em}
+.landing-v2 .ptime{font-family:var(--font-body);font-size:.9rem;color:var(--text-mute);font-weight:500}
 .landing-v2 .pcard h3{font-family:var(--font-display);font-weight:600;font-size:1.15rem;margin:.7rem 0 .5rem}
 .landing-v2 .pcard p{color:var(--text-mute);font-size:.95rem}
 @media(max-width:820px){.landing-v2 .pgrid{grid-template-columns:1fr}}
