@@ -99,7 +99,6 @@ const styles = `
 /* ---------- hero ---------- */
 .landing-v2 .hero{background:var(--ink);color:var(--text-on-dark);padding:150px 0 0;position:relative;overflow:hidden}
 .landing-v2 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 45% at 70% 15%,rgba(127,166,245,.12),transparent 60%);pointer-events:none}
-.landing-v2 .hero-eyebrow{display:block;color:var(--live);margin-bottom:1.2rem;padding:0;border:none;background:transparent;border-radius:0}
 .landing-v2 .hero h1{font-family:var(--font-display);font-weight:800;font-size:clamp(2.4rem,5.4vw,4.1rem);line-height:1.06;letter-spacing:-.02em;max-width:16ch}
 .landing-v2 .hero h1 em{font-style:normal;color:var(--live)}
 .landing-v2 .hero-sub{margin-top:1.4rem;font-size:clamp(1.05rem,1.6vw,1.25rem);color:var(--text-on-dark-mute);max-width:56ch}
