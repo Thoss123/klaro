@@ -250,6 +250,10 @@ export function layoutStepPositions(
     const layer = layers.get(id) ?? 0;
     for (const e of mainEdges.filter(x => x.source === id)) {
       const next = layer + 1;
+      // Zyklus-Schutz: Rückschleifen-Kanten (z.B. Human-in-the-Loop IF→Erzeuger) würden
+      // die Layer sonst unbegrenzt hochzählen. Eine gültige Vorwärts-Schichtung braucht
+      // nie mehr Layer als Hauptschritte — darüber hinaus nicht weiter relaxieren.
+      if (next >= mainSteps.length) continue;
       if (!layers.has(e.target) || (layers.get(e.target) ?? 0) < next) {
         layers.set(e.target, next);
         queue.push(e.target);

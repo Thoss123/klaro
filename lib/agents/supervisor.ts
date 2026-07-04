@@ -42,7 +42,7 @@ Du prüfst, ob aus dem aktuellen Gesprächsausschnitt ein Canvas-Workflow-Update
 
 Regeln:
 - Es darf nur um GENAU EIN Thema / EINEN Pain Point gehen.
-- Wenn der Chat-Ausschnitt einen bestehenden Pain Point betrifft, der schon einen Workflow hat → merge_with_existing=true und target_pain_point = dessen id.
+- Ein Pain Point darf MEHRERE Workflows haben (Struktur-Lösung aus getrennten Abläufen). merge_with_existing=true NUR, wenn der Ausschnitt erkennbar DENSELBEN Ablauf weiterbespricht/korrigiert, der schon als Workflow existiert (gleiches Thema, gleicher Titel). Bespricht der Coach einen NEUEN, eigenständigen Ablauf zum selben Pain Point (anderer Auslöser/anderes Ergebnis) → merge_with_existing=false.
 - Wenn der Ausschnitt kein klares Workflow-Thema hat (Smalltalk, allgemeine Frage, mehrere Themen gemischt) → verdict "revise_coach" oder "block".
 - "approved": klares einzelnes Thema, das einem Pain Point zugeordnet werden kann.
 - "revise_coach": Thema unklar oder Coach driftet — kein Canvas-Update.

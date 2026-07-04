@@ -13,10 +13,20 @@ export default function AuthForm({
   onSuccess,
   onExistingAccount,
   defaultMode = 'signup',
+  oauthRedirectTo,
 }: {
   onSuccess: () => void
   onExistingAccount?: (details: { email: string; password: string }) => void
   defaultMode?: 'login' | 'signup'
+  /**
+   * Where the Google-OAuth flow should return after a successful login.
+   * OAuth is a full-page redirect, so it can't run `onSuccess` — it uses this
+   * instead. Defaults to the current page (correct for the onboarding wizard,
+   * which resumes in place), but auth pages like /login must pass a real
+   * destination, otherwise the callback bounces the user back to the login
+   * form and it looks like an endless loop.
+   */
+  oauthRedirectTo?: string
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,7 +102,8 @@ export default function AuthForm({
       // Lokale Axantilo-Session löschen, damit ein anderer Google-Account nicht an der alten Session hängen bleibt.
       await supabase.auth.signOut({ scope: 'local' });
       const origin = getBrowserOrigin();
-      const callbackUrl = authCallbackUrl(origin, window.location.pathname + window.location.search);
+      const returnTo = oauthRedirectTo ?? window.location.pathname + window.location.search;
+      const callbackUrl = authCallbackUrl(origin, returnTo);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

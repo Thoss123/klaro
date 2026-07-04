@@ -55,7 +55,7 @@ export const AXANTILO_TOOLS: AITool[] = [
       properties: {
         next_phase: {
           type: "string",
-          description: "Name der nächsten Phase (z.B. 'analyse', 'plan', 'umsetzung')"
+          description: "Name der nächsten Phase (z.B. 'analyse', 'umsetzung')"
         }
       },
       required: ["next_phase"]
@@ -110,7 +110,7 @@ export const AXANTILO_TOOLS: AITool[] = [
   },
   {
     name: "edit_workflow",
-    description: "Bearbeitet einen bereits gebauten Workflow auf dem Canvas (z.B. OpenAI → Mistral, Schritt tauschen, IF einfügen). Nur wenn der Workflow schon in {{workflows}} steht — NICHT für den ersten Build.",
+    description: "Ändert einen bereits gebauten Workflow auf dem Canvas. DU baust die geänderte KOMPLETTE Schrittliste selbst (wie bei build_workflow) und gibst sie mit — kein separater Editor. Schritte, die du UNVERÄNDERT lässt, MIT IHRER id aus {{workflows}} übernehmen → sie behalten ihre Konfiguration/Zugänge. Weggelassene Schritte werden gelöscht. Nur wenn der Workflow schon in {{workflows}} steht (NICHT für den ersten Build).",
     schema: {
       type: "object",
       properties: {
@@ -118,12 +118,34 @@ export const AXANTILO_TOOLS: AITool[] = [
           type: "string",
           description: "Die id des gebauten Workflows (z.B. wf_1)"
         },
-        instruction: {
-          type: "string",
-          description: "Was geändert werden soll, z.B. 'OpenAI zu Mistral ändern' oder 'Schritt 2 soll Gmail sein'"
+        steps: {
+          type: "array",
+          description: "Die komplette überarbeitete Schrittliste (chronologisch). Erster Schritt = trigger.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "id eines bestehenden Schritts aus {{workflows}}, wenn unverändert (behält Konfiguration). Bei neuem Schritt weglassen." },
+              label: { type: "string", description: "Kurzer deutscher Schritt-Text (was passiert)" },
+              type: { type: "string", description: "trigger | action | ai | decision | human | output" },
+              tool: { type: "string", description: "Tool/Node, z.B. gmail, slack, googleDrive, chainLlm, agent, if, webhook" }
+            },
+            required: ["label"]
+          }
+        },
+        edges: {
+          type: "array",
+          description: "Optional: Verzweigung/Schleife. Pro Edge {from, to} (1-basierte Schritt-Nr.), optional branch 'true'|'false'|'default'. Ohne edges werden die Schritte linear verbunden; Freigabe-Schleifen entstehen automatisch.",
+          items: {
+            type: "object",
+            properties: {
+              from: { type: "number" },
+              to: { type: "number" },
+              branch: { type: "string" }
+            }
+          }
         }
       },
-      required: ["workflow_id", "instruction"]
+      required: ["workflow_id", "steps"]
     }
   },
   {
@@ -253,15 +275,16 @@ export const AXANTILO_TOOLS: AITool[] = [
   }
 ];
 
-/** Phase-gated tool list — research_solutions is Phase 3 only; build_workflow is Phase 4 only. */
+/** Phase-gated tool list — research_solutions gehört zur gemergten Analyse; build_workflow zur Umsetzung. */
 export function getToolsForPhase(phase: string): AITool[] {
-  if (phase === 'plan') {
+  // Gemergte Phase 2 (Analyse & Plan); 'plan' als Legacy-Alias.
+  if (phase === 'analyse' || phase === 'plan') {
     return AXANTILO_TOOLS.filter(t => t.name !== 'build_workflow');
   }
   if (phase === 'umsetzung') {
     return AXANTILO_TOOLS.filter(t => t.name !== 'research_solutions');
   }
-  // Phase 1/2: weder Recherche, noch Build, noch Vorlagen-Templatisierung.
+  // Phase 1 (Diagnose): weder Recherche, noch Build, noch Vorlagen-Templatisierung.
   return AXANTILO_TOOLS.filter(
     t => t.name !== 'research_solutions' && t.name !== 'build_workflow' && t.name !== 'create_document_template',
   );

@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { loadProjects, loadSessions, createProject, createSession, loadSessionOnboarding, ensureDefaultProject, updateProjectName, deleteProject, devResetUserData } from '@/lib/supabase-chat';
 import { Project, SessionSummary } from '@/lib/types';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
-import { Plus, Folder, LogOut, MoreHorizontal, Trash2, Pencil, ExternalLink, Check, X, Workflow as WorkflowIcon, RotateCcw } from 'lucide-react';
+import { Plus, Folder, LogOut, MoreHorizontal, Trash2, Pencil, ExternalLink, Check, X, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Logo } from '@/components/Logo';
 
 const PHASE_CONFIG: Record<string, { label: string; pill: string }> = {
   diagnose:  { label: 'Diagnose',  pill: 'bg-slate-100 text-slate-600' },
@@ -146,17 +147,9 @@ export default function DashboardPage() {
       {/* Nav */}
       <nav className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-600 text-white font-bold text-lg">K</span>
-          <span className="font-bold text-gray-900 text-lg">Axantilo</span>
+          <Logo height={30} />
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => router.push('/workflows')}
-            className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-indigo-600 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
-            title="Workflows"
-          >
-            <WorkflowIcon size={16} /> <span className="hidden sm:inline">Workflows</span>
-          </button>
           {process.env.NODE_ENV === 'development' && (
             <button
               onClick={handleDevRestart}

@@ -12,12 +12,10 @@ import { useMounted } from '@/lib/use-mounted';
 import { Workflow, WorkflowStep, StepConfig } from '@/lib/types';
 import WorkflowFlowCanvas from './WorkflowFlowCanvas';
 import StepConfigPanel from './StepConfigPanel';
-import WorkflowEditorChat, { type WorkflowEditorUpdate } from './WorkflowEditorChat';
 import N8nNodePickerModal from './N8nNodePickerModal';
 import { inputFieldsForStep, runForStep } from '@/lib/workflow-io';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import type { WorkflowEdge } from '@/lib/types';
-import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 
 type DeployState = 'idle' | 'deploying' | 'done' | 'error';
 type RunState = 'idle' | 'running' | 'done' | 'error';
@@ -33,7 +31,6 @@ export default function WorkflowDeployModal({
   onStepSave,
   onStepPanelClose,
   onEdgesUpdate,
-  onWorkflowUpdate,
   onStepsUpdate,
   onDeleteStep,
   onToggleStepDisabled,
@@ -47,14 +44,11 @@ export default function WorkflowDeployModal({
   runData = [],
   deployError,
   runError,
-  resolving = false,
-  workflowDbId,
   publishState = 'inactive',
   publishError = '',
   onRun,
   onPublish,
   onClose,
-  editorCoachContext,
   variant = 'modal',
 }: {
   workflow: Workflow;
@@ -65,7 +59,6 @@ export default function WorkflowDeployModal({
   onStepSave: (stepId: string, config: StepConfig) => void;
   onStepPanelClose: () => void;
   onEdgesUpdate: (edges: WorkflowEdge[]) => void;
-  onWorkflowUpdate: (update: WorkflowEditorUpdate) => void;
   onStepsUpdate?: (steps: WorkflowStep[]) => void;
   onQuickInsert?: (step: WorkflowStep) => void;
   onDeleteStep?: (stepId: string) => void;
@@ -81,15 +74,12 @@ export default function WorkflowDeployModal({
   deployError: string;
   runError: string;
   allRequiredConfigured: boolean;
-  resolving?: boolean;
-  workflowDbId?: string;
   publishState?: PublishState;
   publishError?: string;
   onDeploy: () => void;
   onRun: () => void;
   onPublish?: (activate: boolean) => void;
   onClose: () => void;
-  editorCoachContext?: WorkflowEditorCoachContext;
   /** 'modal' = Portal-Overlay (Standard), 'page' = füllt den Container ohne Overlay (eigene Route). */
   variant?: 'modal' | 'page';
 }) {
@@ -335,17 +325,6 @@ export default function WorkflowDeployModal({
             >
               <Plus size={20} /> Neuer Schritt
             </button>
-
-            <WorkflowEditorChat
-              workflow={workflow}
-              stepConfigs={stepConfigs}
-              workflowDbId={workflowDbId}
-              coachContext={editorCoachContext}
-              runData={runData}
-              runError={runState === 'error' ? runError : ''}
-              onWorkflowUpdate={onWorkflowUpdate}
-              disabled={resolving}
-            />
 
             <AnimatePresence>
               {activeStep && (

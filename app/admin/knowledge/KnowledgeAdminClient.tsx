@@ -28,7 +28,7 @@ const SECTIONS: { label: string; folder?: string }[] = [
   { label: 'UI-Guides', folder: 'ui-guides' },
 ];
 
-const PHASES = ['', 'diagnose', 'analyse', 'plan', 'umsetzung'];
+const PHASES = ['', 'diagnose', 'analyse', 'umsetzung'];
 
 export default function KnowledgeAdminClient() {
   const [entries, setEntries] = useState<Entry[]>([]);

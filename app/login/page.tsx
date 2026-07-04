@@ -28,7 +28,7 @@ export default function LoginPage() {
           <ArrowLeft size={16} /> Zurück zur Startseite
         </Link>
       </div>
-      <AuthForm onSuccess={handleSuccess} defaultMode="login" />
+      <AuthForm onSuccess={handleSuccess} defaultMode="login" oauthRedirectTo="/dashboard" />
     </div>
   );
 }

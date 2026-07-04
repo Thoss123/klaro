@@ -1,9 +1,9 @@
 import type { CanvasData, Workflow } from '@/lib/types';
 
-/** Phase-3 sketches — shown on the Plan node; not deploy-ready until built in Phase 4. */
+/** Plan-Skizzen aus der gemergten Phase 2 — not deploy-ready until built in Umsetzung. */
 export function getWorkflowPlans(canvas: CanvasData): Workflow[] {
   if (canvas.workflow_plans?.length) return canvas.workflow_plans;
-  if (canvas.phase === 'plan') return canvas.workflows ?? [];
+  if (canvas.phase === 'analyse') return canvas.workflows ?? [];
   return canvas.workflow_plans ?? [];
 }
 

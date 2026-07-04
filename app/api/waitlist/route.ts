@@ -135,7 +135,9 @@ export async function POST(req: NextRequest) {
 
     const { data: existing } = await supabase
       .from('waitlist_signups')
-      .select('id, status, prozesse, unternehmensgroesse, tools, vorname, firmenname, email, telefon, step_reached')
+      .select(
+        'id, status, prozesse, unternehmensgroesse, tools, vorname, firmenname, email, telefon, step_reached, completed_at',
+      )
       .eq('session_token', sessionToken)
       .maybeSingle();
 

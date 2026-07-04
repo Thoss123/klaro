@@ -224,6 +224,53 @@ export function ensureRequiredSubNodes(
   return { steps: nextSteps, edges: nextEdges };
 }
 
+/**
+ * Stellt sicher, dass jeder AI-Sub-Node (v.a. Chat Model) GENAU EINEN Parent hat.
+ * Wenn ein Sub-Node an mehrere Agenten/Chains hängt (z.B. ein geteiltes Mistral-Modell),
+ * wird er für jeden weiteren Parent geklont — n8n erlaubt kein Teilen eines Sub-Nodes.
+ */
+export function splitSharedAiSubNodes(
+  steps: WorkflowStep[],
+  edges: WorkflowEdge[],
+): { steps: WorkflowStep[]; edges: WorkflowEdge[] } {
+  // Pro Sub-Node (source) die AI-Edges sammeln.
+  const bySource = new Map<string, WorkflowEdge[]>();
+  for (const e of edges) {
+    if (!isAiConnection(e.connectionType)) continue;
+    const arr = bySource.get(e.source) ?? [];
+    arr.push(e);
+    bySource.set(e.source, arr);
+  }
+
+  let nextSteps = [...steps];
+  let nextEdges = [...edges];
+
+  for (const [sourceId, aiEdges] of bySource) {
+    if (aiEdges.length <= 1) continue; // nicht geteilt
+    const original = nextSteps.find(s => s.id === sourceId);
+    if (!original) continue;
+
+    // Ersten Parent beim Original lassen, ab dem zweiten klonen.
+    for (let i = 1; i < aiEdges.length; i++) {
+      const edge = aiEdges[i];
+      const cloneId = `${sourceId}-clone-${i}-${Math.random().toString(36).slice(2, 6)}`;
+      const clone: WorkflowStep = {
+        ...original,
+        id: cloneId,
+        subNodeOf: edge.connectionType
+          ? { parentId: edge.target, slot: edge.connectionType }
+          : original.subNodeOf,
+      };
+      nextSteps.push(clone);
+      nextEdges = nextEdges.map(e => (e === edge ? { ...e, source: cloneId } : e));
+    }
+  }
+
+  // aiSubNodes/subNodeOf nach dem Split neu ableiten.
+  nextSteps = syncAiGraphMeta(nextSteps, nextEdges);
+  return { steps: nextSteps, edges: nextEdges };
+}
+
 /** Default-Katalog-Node für einen Slot (z. B. OpenAI Chat Model). */
 export function defaultEntryForSlot(
   slot: string,

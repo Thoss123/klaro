@@ -21,7 +21,7 @@ export interface WorkflowQAInput {
   research?: ResearchBrief | null;
 }
 
-const VALID_STEP_TYPES = ['trigger', 'action', 'ai', 'decision', 'output'] as const;
+const VALID_STEP_TYPES = ['trigger', 'action', 'ai', 'human', 'decision', 'output'] as const;
 
 /** Local, deterministic checks so QA catches the obvious errors even if the LLM misses them. */
 export function staticWorkflowChecks(wf: Workflow | null | undefined): string[] {
@@ -55,11 +55,15 @@ Prüfe den geplanten Workflow gegen diese Checkliste:
 4. Titel 3–5 Wörter, Deutsch.
 5. Tools nur aus den genannten use_cases-Tools.
 6. VERBOTEN: Veröffentlichen/Suite, bevor Material/Video existiert.
+7. **Eine Node = eine Aufgabe** — kein Schritt, der zwei Dinge tut (z.B. „transkribieren UND speichern"). Aufteilen.
+8. **Selbst-lieferndes Tool** (Fireflies/Otter transkribiert selbst) = Quelle/Trigger, KEIN extra KI-„transkribieren"-Schritt.
+9. **Freigabe durch Menschen** = ein \`human\`-Schritt (senden + warten) gefolgt von einem \`decision\`-Schritt (Ja/Nein), nicht nur ein einzelnes \`decision\`.
+10. **Trigger** passend zur echten Quelle (neue Mail/Zeitplan/eingehendes Ereignis), nicht beliebig.
 
 Wenn Probleme: status "fail" und liefere fixed_steps (korrigierte, vollständige Schrittliste).
 Wenn alles passt: status "pass", fixed_steps weglassen.
 
-Erlaubte step.type: trigger, action, ai, decision, output.
+Erlaubte step.type: trigger, action, ai, human, decision, output.
 
 Antworte AUSSCHLIESSLICH mit JSON:
 {"status":"pass|fail","issues":["..."],"fixed_steps":[{"id":"s1","label":"...","type":"trigger"}],"notes":"..."}`;

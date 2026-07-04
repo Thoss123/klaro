@@ -3,35 +3,22 @@ const SYSTEM_PREFIX = '[__axantilo_system__]';
 /** Hidden user message that kicks off the coach per phase (not shown in UI, not saved). */
 export function getHiddenInitMessage(phase: string): string {
   switch (phase) {
+    // Gemergte Phase 2 (Analyse & Plan) — 'plan' nur noch als Legacy-Alias.
     case 'analyse':
-      return (
-        `${SYSTEM_PREFIX} phase=analyse\n` +
-        'Starte Phase 2 (Analyse). Keine Phase-1-Begrüßung, kein „Lass uns gleich starten“, ' +
-        'keine Onboarding-Fragen zum Angebot. Sag ZUERST in einem Satz, was Phase 2 tut: nur den ' +
-        'Ist-Stand ermitteln (womit sie heute arbeiten), noch keine neuen Tools entscheiden. ' +
-        'Dann kurz die potenziellen Verbesserungen recap, danach DIREKT die erste Tool-Frage zum wichtigsten Punkt — ' +
-        'im Chat „potenzielle Verbesserung"/„Bereich" sagen, nicht „Pain Point". ' +
-        'KEINE A/B/C-Veränderungsfrage (entfällt; Tool-Wechsel besprechen wir später konkret in Phase 3). ' +
-        'Wenn alle Tools erfasst sind: die Punkte gemeinsam mit dem Nutzer bewerten und nach Aufwand/Hebel ordnen. ' +
-        'Nutze für klare Auswahlen Klick-Buttons.'
-      );
     case 'plan':
       return (
-        `${SYSTEM_PREFIX} phase=plan\n` +
-        'Starte Phase 3 (Plan). Prüfe ZUERST still, ob mehrere Pain Points über denselben Kanal laufen — ' +
-        'wenn ja, schlage einen gemeinsamen Workflow vor. ' +
-        'Sag ZUERST in einem Satz, was Phase 3 tut: jetzt entwerfen wir pro Baustelle den konkreten ' +
-        'Ablauf (wie KI/Automatisierung den nervigen Teil übernimmt). ' +
-        'Geh die Pain Points in der rank-Reihenfolge aus Phase 2 durch. ' +
-        'Dann kurz Recap was du aus Phase 1–2 schon weißt (Pain + Tools), ' +
-        'dann nur EINE Lücken-Frage zum ersten (wichtigsten) Pain Point — keine pauschale Veränderungsfrage, ' +
-        'kein kompletter Workflow von vorn, keine erneute Vorstellung. ' +
-        'Sobald der Ablauf klar ist: leite ZUERST Ziel + Lösungsweg her und lass ihn bestätigen ' +
-        '(„Passt der Ansatz?", mit Buttons); ungeeignete Ist-Tools fallweise auf bessere umstellen anbieten. ' +
-        'ERST DANN recherchiere mögliche Lösungen und biete 2–3 konkrete Ansätze ' +
-        'mit Vor-/Nachteilen zur Auswahl an (mit Auswahl-Buttons). Erst nach seiner Wahl das Canvas-Update. ' +
-        'Sag dem Nutzer in 1 Satz: Den Workflow-Plan in der Roadmap rechts legst du erst an, ' +
-        'wenn ihr hier den konkreten Ablauf für einen Pain Point besprochen habt — nicht schon jetzt.'
+        `${SYSTEM_PREFIX} phase=analyse\n` +
+        'Starte Phase 2 (Analyse & Plan). Keine Phase-1-Begrüßung, kein „Lass uns gleich starten“, ' +
+        'keine Onboarding-Fragen zum Angebot. Sag ZUERST in einem Satz, was diese Phase tut: ' +
+        'wir schauen, womit sie heute arbeiten, bewerten die Punkte nach Aufwand und Hebel und entwerfen ' +
+        'dann pro Punkt den konkreten Ablauf. ' +
+        'Dann kurz die potenziellen Verbesserungen recap, danach DIREKT die erste Tool-Frage zum wichtigsten Punkt — ' +
+        'im Chat „potenzielle Verbesserung"/„Bereich" sagen, nicht „Pain Point". ' +
+        'Arbeite pro Punkt: erst Ist-Tools erfassen (nur konkrete Programmnamen des Nutzers), ' +
+        'dann Reihenfolge gemeinsam festlegen, dann pro Punkt den Ablauf entwerfen ' +
+        '(Ansatz herleiten → bestätigen lassen → erst dann workflow_plan). ' +
+        'Den Workflow-Plan in der Roadmap rechts legst du erst an, wenn der konkrete Ablauf besprochen und bestätigt ist. ' +
+        'Nutze für klare Auswahlen Klick-Buttons.'
       );
     case 'umsetzung':
       return (

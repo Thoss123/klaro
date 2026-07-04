@@ -44,8 +44,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  */
 const PHASE_TYPE_MAP: Record<string, KnowledgeSourceType[]> = {
   diagnose: ['use_case', 'branche', 'ui_guide', 'wissen'],
-  analyse: ['use_case', 'tool', 'branche', 'ui_guide', 'wissen'],
-  plan: ['use_case', 'tool', 'template_baustein', 'template_workflow', 'wissen'],
+  // Gemergte Phase 2 (Analyse & Plan): Tools + konkrete Lösungen/Templates.
+  analyse: ['use_case', 'tool', 'branche', 'template_baustein', 'template_workflow', 'ui_guide', 'wissen'],
+  plan: ['use_case', 'tool', 'template_baustein', 'template_workflow', 'wissen'], // Legacy-Alias
   umsetzung: ['tool', 'template_baustein', 'template_workflow', 'ui_guide'],
 };
 

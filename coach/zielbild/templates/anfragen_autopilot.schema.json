@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Variablen: Anfragen-Autopilot (PLATZHALTER)",
+  "description": "Variablen-Schema für Phase 3 (template_schema_load). Jede Variable trägt 'default' und 'beschreibung_fuer_coach' — der Coach formuliert daraus Default-Vorschläge ('Standard ist X — passt?'). required-Felder müssen gesetzt sein, bevor das Gate 3→4 öffnet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["antwort_modus", "followup_tage"],
+  "properties": {
+    "antwort_modus": {
+      "type": "string",
+      "enum": ["entwurf", "direkt"],
+      "default": "entwurf",
+      "beschreibung_fuer_coach": "Antworten zuerst als Entwurf ins Postfach legen oder direkt senden. Standard: Entwurf — der Kunde behält die Kontrolle."
+    },
+    "followup_tage": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 30 },
+      "default": [1, 3, 7],
+      "beschreibung_fuer_coach": "An welchen Tagen nach der Erstantwort ein Follow-up rausgeht. Standard: Tag 1, 3 und 7."
+    },
+    "ausnahmen": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "beschreibung_fuer_coach": "Fälle, die IMMER direkt an den Makler gehen (Stammkunden, bestimmte Objekte, bestimmte Absender). Aktiv abfragen."
+    }
+  }
+}

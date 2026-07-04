@@ -11,7 +11,8 @@ export function shouldSuppressPlanWorkflowCoachNotice(
   canvas: Partial<CanvasData>,
   reason?: string,
 ): boolean {
-  if (phase !== 'plan' || countValidWorkflows(canvas) === 0) return false;
+  // Gemergte Phase 2 (Analyse & Plan); 'plan' nur noch als Legacy-Alias.
+  if ((phase !== 'analyse' && phase !== 'plan') || countValidWorkflows(canvas) === 0) return false;
   return [
     'plan_awaiting_workflow_chat',
     'thin_user_context',

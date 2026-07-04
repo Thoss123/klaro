@@ -4,8 +4,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSystemPrompt } from '@/lib/claude';
+import { getCoachSystemPrompt, isCoachV2Enabled } from '@/lib/coach/assemble';
 import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels';
 import { resolveDiagnosePath } from '@/lib/onboarding-multi';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 // Rough token estimate: German text averages ~3.5 chars/token for Mistral tokenizer
 function estimateTokens(text: string): number {
@@ -20,10 +22,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Dev only' }, { status: 403 });
   }
 
-  const { messages, onboarding, phase, canvas } = await req.json();
+  const { messages, onboarding, phase, canvas, project_id } = await req.json();
 
   const currentPhase = phase || 'diagnose';
   let systemPrompt = getSystemPrompt(currentPhase);
+  // Gleiche Prompt-Wahl wie /api/chat: Coach v2 (base + Phasenmodul) wenn aktiv.
+  if (isCoachV2Enabled()) {
+    const v2Prompt = getCoachSystemPrompt(currentPhase);
+    if (v2Prompt) systemPrompt = v2Prompt;
+  }
+
+  // Interne Gesprächsstrategie (projects.strategy) — wie im Chat-Route injiziert.
+  let strategieText = 'Noch keine Strategie vorhanden.';
+  if (project_id && typeof project_id === 'string') {
+    try {
+      const supabase = await createSupabaseServerClient();
+      const { data: projRow } = await supabase
+        .from('projects')
+        .select('strategy')
+        .eq('id', project_id)
+        .maybeSingle();
+      if (projRow?.strategy?.trim()) strategieText = projRow.strategy.trim();
+    } catch { /* dev only — fail open */ }
+  }
+  systemPrompt = systemPrompt.replace(/{{strategie}}/g, strategieText);
 
   // Inject onboarding
   if (onboarding) {
@@ -35,9 +57,10 @@ export async function POST(req: NextRequest) {
     const anredeText = isSolo
       ? `Sprich den Nutzer mit dem Vornamen "${vorname}" an (Du-Form).`
       : `Sprich die Gruppe mit "ihr" an; Ansprechpartner: ${vorname}.`;
+    const rechercheVal = onboarding.firmen_recherche?.trim();
     const firmenKontext =
       firmenname !== 'Nicht angegeben'
-        ? `Unternehmen: ${firmenname}. Rolle: ${rolle}.`
+        ? `Unternehmen: ${firmenname}. Rolle: ${rolle}.${rechercheVal ? ` Automatisch recherchiert: ${rechercheVal}` : ''}`
         : `Rolle: ${rolle}.`;
 
     systemPrompt = systemPrompt

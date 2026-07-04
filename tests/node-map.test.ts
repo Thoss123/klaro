@@ -159,8 +159,11 @@ describe('formatNodeMapForPrompt', () => {
     const typical = formatNodeMapForPrompt(
       NODE_MAP.slice(0, 12).map(e => e.n8nType),
     );
-    expect(typical.length).toBeLessThan(6000);
+    // Budget bewusst erhöht: die Struktur-Grundregeln (eine-Node-eine-Aufgabe,
+    // Freigabe=sendAndWait+Loopback, Chain-vs-Agent, Pflichtfelder …) sind immer-an
+    // und sollen vom Coach durchgehend befolgt werden.
+    expect(typical.length).toBeLessThan(8000);
     const lineCount = typical.split('\n').length;
-    expect(lineCount).toBeLessThan(40);
+    expect(lineCount).toBeLessThan(50);
   });
 });

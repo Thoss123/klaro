@@ -5,7 +5,9 @@
 import { aiSlotsFor, subNodeCount } from './ai-subnodes';
 import { isN8nMcpConfigured, mcpGetNodeTypes, mcpPrepareTestPinData } from './n8n-mcp-bridge';
 import { getN8nCatalog, getNodeByName } from './n8n-catalog';
+import { buildInitialParameters, missingCrucialParams } from './n8n-parameter-utils';
 import { requiresConfig, isConfigured } from './workflow-deploy';
+import type { N8nCatalogSnapshot } from './n8n-catalog-types';
 import type { StepConfig, Workflow, WorkflowStep } from './types';
 
 export interface WorkflowValidationIssue {
@@ -107,6 +109,61 @@ export function validateWorkflowStructure(
   return { valid: errors.length === 0, errors, warnings };
 }
 
+/**
+ * Schema-basierte Checks gegen den Katalog: Node existiert + alle KRITISCHEN
+ * Pflichtfelder gefüllt. resourceLocator-Felder (Airtable Base/Table, Sheets-Dokument,
+ * Slack-Channel …) sind harte Fehler — sie müssen aus dem Tool gewählt werden.
+ */
+function catalogIssues(
+  workflow: Workflow,
+  stepConfigs: Record<string, StepConfig>,
+  catalog: N8nCatalogSnapshot,
+): { issues: WorkflowValidationResult; nodeIds: Set<string> } {
+  const errors: WorkflowValidationIssue[] = [];
+  const warnings: WorkflowValidationIssue[] = [];
+  const nodeIds = new Set<string>();
+
+  for (const step of workflow.steps) {
+    const n8nType = stepConfigs[step.id]?.n8nType || step.n8nType;
+    if (!n8nType) continue;
+    nodeIds.add(n8nType);
+
+    const node = getNodeByName(catalog, n8nType);
+    if (!node) {
+      warnings.push({
+        code: 'catalog_miss',
+        message: `„${step.label}": ${n8nType} nicht im lokalen Katalog — MCP prüft live.`,
+        stepId: step.id,
+      });
+      continue;
+    }
+
+    if (step.subNodeOf) continue; // Sub-Node-Parameter prüft der Parent-Kontext.
+
+    const values = {
+      ...buildInitialParameters(node.properties || []),
+      ...(step.parameters ?? {}),
+      ...(stepConfigs[step.id]?.parameters ?? {}),
+    };
+    for (const prop of missingCrucialParams(node.properties || [], values)) {
+      const isResource = prop.type === 'resourceLocator';
+      const issue: WorkflowValidationIssue = {
+        code: isResource ? 'missing_resource' : 'missing_required',
+        message: isResource
+          ? `„${step.label}": Pflichtfeld „${prop.displayName || prop.name}" muss aus dem Tool gewählt werden (z. B. Base/Tabelle).`
+          : `„${step.label}": Pflichtfeld „${prop.displayName || prop.name}" fehlt.`,
+        stepId: step.id,
+      };
+      // resourceLocator blockiert (kann nicht erraten werden); andere required-Felder = Warnung
+      // (werden oft per Expression aus Vorschritten gefüllt).
+      if (isResource) errors.push(issue);
+      else warnings.push(issue);
+    }
+  }
+
+  return { issues: { valid: errors.length === 0, errors, warnings }, nodeIds };
+}
+
 /** Katalog + MCP get_node_types — prüft ob Nodes auf der Instanz bekannt sind. */
 export async function validateWorkflowWithMcp(
   workflow: Workflow,
@@ -114,25 +171,11 @@ export async function validateWorkflowWithMcp(
   n8nWorkflowId?: string,
 ): Promise<WorkflowValidationResult> {
   const base = validateWorkflowStructure(workflow, stepConfigs);
-  const errors = [...base.errors];
-  const warnings = [...base.warnings];
-
   const catalog = await getN8nCatalog();
-  const nodeIds = new Set<string>();
-
-  for (const step of workflow.steps) {
-    const n8nType = stepConfigs[step.id]?.n8nType || step.n8nType;
-    if (!n8nType) continue;
-
-    if (!getNodeByName(catalog, n8nType)) {
-      warnings.push({
-        code: 'catalog_miss',
-        message: `„${step.label}": ${n8nType} nicht im lokalen Katalog — MCP prüft live.`,
-        stepId: step.id,
-      });
-    }
-    nodeIds.add(n8nType);
-  }
+  const cat = catalogIssues(workflow, stepConfigs, catalog);
+  const errors = [...base.errors, ...cat.issues.errors];
+  const warnings = [...base.warnings, ...cat.issues.warnings];
+  const nodeIds = cat.nodeIds;
 
   if (isN8nMcpConfigured() && nodeIds.size > 0) {
     try {
@@ -163,5 +206,11 @@ export async function validateWorkflowForDeploy(
   if (isN8nMcpConfigured()) {
     return validateWorkflowWithMcp(workflow, stepConfigs, n8nWorkflowId);
   }
-  return validateWorkflowStructure(workflow, stepConfigs);
+  // Ohne MCP trotzdem schema-basiert prüfen (Node existiert + Pflichtfelder gefüllt).
+  const base = validateWorkflowStructure(workflow, stepConfigs);
+  const catalog = await getN8nCatalog();
+  const cat = catalogIssues(workflow, stepConfigs, catalog);
+  const errors = [...base.errors, ...cat.issues.errors];
+  const warnings = [...base.warnings, ...cat.issues.warnings];
+  return { valid: errors.length === 0, errors, warnings };
 }

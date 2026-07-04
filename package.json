@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:n8n": "node scripts/test-n8n.mjs",
+    "sim": "node scripts/simulate.mjs",
     "icons:n8n": "node scripts/copy-n8n-icons.mjs",
     "index-knowledge": "node scripts/index-knowledge.mjs",
     "index-tools": "node scripts/index-knowledge.mjs tools",

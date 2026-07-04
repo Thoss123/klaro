@@ -187,6 +187,8 @@ export async function createSession(onboarding: OnboardingData, userId: string, 
       vorname: onboarding.vorname || onboarding.username || null,
       firmenname: onboarding.firmenname || null,
       rolle_im_unternehmen: onboarding.rolle_im_unternehmen || null,
+      firmen_website: onboarding.firmen_website || null,
+      technik_level: onboarding.technik_level || null,
       phase: phase,
       memory: memory || null,
       title: defaultTitle,
@@ -281,7 +283,7 @@ export async function loadSessionOnboarding(sessionId: string): Promise<Onboardi
   const supabase = createSupabaseBrowserClient()
   const { data, error } = await supabase
     .from('sessions')
-    .select('ziel, ki_erfahrung, wer_setzt_um, hindernis, branche, tempo, unternehmensgroesse, vorname, firmenname, rolle_im_unternehmen, memory')
+    .select('ziel, ki_erfahrung, wer_setzt_um, hindernis, branche, tempo, unternehmensgroesse, technik_level, vorname, firmenname, rolle_im_unternehmen, firmen_website, memory, firmen_recherche')
     .eq('id', sessionId)
     .maybeSingle()
 

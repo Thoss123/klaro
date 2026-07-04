@@ -19,8 +19,6 @@ import { defaultLinearEdges, insertStepInGraph, removeStepFromGraph, withTrigger
 import N8nNodePickerModal from './N8nNodePickerModal';
 import { shortLabel } from '@/lib/short-label';
 import WorkflowDeployModal from './WorkflowDeployModal';
-import type { WorkflowEditorUpdate } from './WorkflowEditorChat';
-import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 
 type DeployState = 'idle' | 'deploying' | 'done' | 'error';
 type RunState = 'idle' | 'running' | 'done' | 'error';
@@ -48,7 +46,6 @@ export default function WorkflowDeployCard({
   autoOpen = false,
   onAutoOpen,
   onWorkflowPersist,
-  editorCoachContext,
   fullPage = false,
   onClose,
 }: {
@@ -64,7 +61,6 @@ export default function WorkflowDeployCard({
   onAutoOpen?: () => void;
   /** Bearbeitungen am Graph ins Projekt-Canvas zurückschreiben. */
   onWorkflowPersist?: (workflow: Workflow) => void;
-  editorCoachContext?: WorkflowEditorCoachContext;
   /** Editor füllt die ganze Seite (eigene Route) statt Karte + Popup. */
   fullPage?: boolean;
   /** Nur im fullPage-Modus: Zurück-Navigation. */
@@ -156,30 +152,6 @@ export default function WorkflowDeployCard({
       }, 800);
     }
   }, [workflow, onWorkflowPersist, activeStep, deployedWorkflowId, stepConfigs]);
-
-  const handleWorkflowUpdate = useCallback((update: WorkflowEditorUpdate) => {
-    applyGraph(update.steps, update.edges);
-
-    if (update.stepConfigUpdates) {
-      for (const [stepId, partial] of Object.entries(update.stepConfigUpdates)) {
-        const prev = stepConfigs[stepId];
-        onStepConfigSave(stepId, {
-          ...prev,
-          ...partial,
-          configType: 'n8n',
-          n8nType: partial.n8nType ?? prev?.n8nType,
-          n8nTypeVersion: partial.n8nTypeVersion ?? prev?.n8nTypeVersion,
-          parameters: { ...prev?.parameters, ...partial.parameters },
-          credentialType: partial.credentialType ?? prev?.credentialType,
-        });
-      }
-    }
-
-    if (update.openStepId) {
-      const step = update.steps.find(s => s.id === update.openStepId);
-      if (step) setActiveStep(step);
-    }
-  }, [applyGraph, stepConfigs, onStepConfigSave]);
 
   const handleEdgesUpdate = useCallback((nextEdges: WorkflowEdge[]) => {
     applyGraph(steps, nextEdges);
@@ -530,10 +502,8 @@ export default function WorkflowDeployCard({
           activeStep={activeStep}
           onStepClick={step => setActiveStep(step)}
           onStepSave={handleStepConfigSaveWithSync}
-          workflowDbId={deployedWorkflowId}
           onStepPanelClose={() => setActiveStep(null)}
           onEdgesUpdate={handleEdgesUpdate}
-          onWorkflowUpdate={handleWorkflowUpdate}
           onStepsUpdate={handleStepsUpdate}
           onQuickInsert={handleQuickInsert}
           onDeleteStep={handleDeleteStep}
@@ -555,7 +525,6 @@ export default function WorkflowDeployCard({
           onRun={handleRun}
           onPublish={handlePublish}
           onClose={() => onClose?.()}
-          editorCoachContext={editorCoachContext}
         />
         <N8nNodePickerModal
           open={!!subNodePicker}
@@ -639,10 +608,8 @@ export default function WorkflowDeployCard({
             activeStep={activeStep}
             onStepClick={step => setActiveStep(step)}
             onStepSave={handleStepConfigSaveWithSync}
-            workflowDbId={deployedWorkflowId}
             onStepPanelClose={() => setActiveStep(null)}
             onEdgesUpdate={handleEdgesUpdate}
-            onWorkflowUpdate={handleWorkflowUpdate}
             onStepsUpdate={handleStepsUpdate}
             onQuickInsert={handleQuickInsert}
             onDeleteStep={handleDeleteStep}
@@ -664,7 +631,6 @@ export default function WorkflowDeployCard({
             onRun={handleRun}
             onPublish={handlePublish}
             onClose={() => { setModalOpen(false); setActiveStep(null); }}
-            editorCoachContext={editorCoachContext}
           />
         )}
 

@@ -1,0 +1,102 @@
+{
+  "_doc": {
+    "zweck": "Türsteher-Konfiguration. Der Orchestrator (n8n) prüft exit_check in CODE gegen den State (state_schema.json) — nie das LLM. phase_advance vom Modell ist nur ein Signal; erfüllt der State das Exit-Kriterium nicht, wird der Übergang abgelehnt und der Coach bekommt einen Hinweis, was fehlt.",
+    "condition_format": "Bedingung = { path, op, value } mit JSONPath auf den State. Ops: eq, in, is_true, min_length, max_length. Für Prüfungen, die externes Wissen brauchen (Template-Schemas, Workflow-Index), gilt { op: 'fn', fn: '<name>' } — im Orchestrator implementierte Funktionen, unten dokumentiert.",
+    "fns": {
+      "required_connections_verified": "Liest für jeden Eintrag in state.selected_workflows die benötigten Tools aus workflows_index.json/Template und prüft, dass state.connections für jedes dieser Tools status == 'verified' enthält.",
+      "variables_complete_for_selected_workflows": "Validiert state.variables[wf_id] gegen coach/templates/{wf_id}.schema.json (alle required-Felder gesetzt, Typen korrekt) für jeden gewählten Workflow mit status != 'deployed'.",
+      "latest_deploy_test_successful": "Prüft, dass der jüngste Eintrag in state.deploys testlauf == 'erfolgreich' hat."
+    },
+    "global_tools_hinweis": "phase_advance und state_update sind in jeder Phase verfügbar (state_update ist zusätzlich pro Phase gelistet, wo es Kernaufgabe ist).",
+    "eintritts_hooks": "Beim Eintritt in Phase 2: Orchestrator markiert Tools, für die bereits status == 'verified' in state.connections steht, als erledigt (Coach bestätigt nur kurz, verbindet nicht neu). Beim Eintritt in Phase 1b aus Phase 5: zusammenfassung_bestaetigt und readiness werden auf false zurückgesetzt (gelten pro Durchlauf)."
+  },
+  "global_tools": ["phase_advance"],
+  "phases": {
+    "0": {
+      "tools": ["state_update"],
+      "rag_scopes": [],
+      "exit_to": ["1a", "1b"],
+      "exit_check": {
+        "description": "Modus erkannt und gesetzt",
+        "all": [
+          { "path": "$.mode", "op": "in", "value": ["fuehren", "ausfuehren"] }
+        ]
+      }
+    },
+    "1a": {
+      "tools": ["state_update", "rag_query"],
+      "rag_scopes": ["einwand", "usecase", "branche_makler"],
+      "exit_to": ["1b", "exit_warteliste"],
+      "exit_check": {
+        "description": "Für 1b: Kunde ist erkennbar bereit. Für exit_warteliste: keine Bedingung — ein sauberer Ausstieg ist immer erlaubt.",
+        "per_target": {
+          "1b": {
+            "all": [
+              { "path": "$.kunde_bereit", "op": "eq", "value": true }
+            ]
+          },
+          "exit_warteliste": { "all": [] }
+        }
+      }
+    },
+    "1b": {
+      "tools": ["state_update", "rag_query", "credit_check"],
+      "rag_scopes": ["workflow"],
+      "exit_to": ["2"],
+      "exit_check": {
+        "description": "1–2 Workflows gewählt und Zugangsdaten griffbereit",
+        "all": [
+          { "path": "$.selected_workflows", "op": "min_length", "value": 1 },
+          { "path": "$.selected_workflows", "op": "max_length", "value": 2 },
+          { "path": "$.readiness", "op": "eq", "value": true }
+        ]
+      }
+    },
+    "2": {
+      "tools": ["oauth_initiate", "connection_test", "tool_provision_guide", "state_update"],
+      "rag_scopes": ["integration"],
+      "exit_to": ["3"],
+      "exit_check": {
+        "description": "Alle für die gewählten Workflows benötigten Verbindungen sind verified",
+        "all": [
+          { "op": "fn", "fn": "required_connections_verified" }
+        ]
+      }
+    },
+    "3": {
+      "tools": ["template_schema_load", "state_update"],
+      "rag_scopes": ["workflow"],
+      "exit_to": ["4"],
+      "exit_check": {
+        "description": "Variablen vollständig gegen Template-Schema UND Zusammenfassung explizit bestätigt (hartes Gate)",
+        "all": [
+          { "op": "fn", "fn": "variables_complete_for_selected_workflows" },
+          { "path": "$.zusammenfassung_bestaetigt", "op": "eq", "value": true }
+        ]
+      }
+    },
+    "4": {
+      "tools": ["workflow_instantiate", "test_run", "protocol_query", "credit_check", "state_update"],
+      "rag_scopes": ["integration"],
+      "exit_to": ["5"],
+      "exit_check": {
+        "description": "Deploy erfolgt und Testlauf erfolgreich",
+        "all": [
+          { "path": "$.deploys", "op": "min_length", "value": 1 },
+          { "op": "fn", "fn": "latest_deploy_test_successful" }
+        ]
+      }
+    },
+    "5": {
+      "tools": ["template_schema_load", "workflow_update", "protocol_query", "credit_check", "state_update"],
+      "rag_scopes": ["workflow", "integration"],
+      "exit_to": ["1b"],
+      "exit_check": {
+        "description": "Kreislauf: neuer Workflow-Wunsch → zurück zu 1b (Mini-Durchlauf 1b→2→3→4→5). Keine State-Bedingung — der Wunsch selbst ist der Trigger; Orchestrator setzt beim Wechsel readiness/zusammenfassung_bestaetigt zurück (siehe eintritts_hooks).",
+        "per_target": {
+          "1b": { "all": [] }
+        }
+      }
+    }
+  }
+}

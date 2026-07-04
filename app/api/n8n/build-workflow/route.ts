@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { applyResolverToSteps, runNodeResolver } from '@/lib/agents/node-resolver';
 import { getN8nCatalog, getNodeByName, getCatalogIndex } from '@/lib/n8n-catalog';
-import { ensureRequiredSubNodes } from '@/lib/ai-subnodes';
+import { ensureRequiredSubNodes, splitSharedAiSubNodes } from '@/lib/ai-subnodes';
 import { defaultLinearEdges, layoutStepPositions, withTriggerFirst } from '@/lib/workflow-graph';
+import { expandPatterns } from '@/lib/workflow-expand';
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
 import { shortLabel, shortWorkflowTitle } from '@/lib/short-label';
 import type { CanvasData, Workflow, WorkflowStep } from '@/lib/types';
@@ -119,18 +120,23 @@ export async function POST(req: NextRequest) {
     note: s.note ?? s.label,
     label: shortLabel(s.label, { n8nType: s.n8nType }),
   }));
-  // 2. Linearer Default-Graph, dann Trigger garantiert erster + verbunden.
-  const linear = defaultLinearEdges(appliedSteps);
-  const { steps: connectedSteps, edges: connectedEdges } = withTriggerFirst(appliedSteps, linear);
+  // 2. Basis-Graph: vom Plan gelieferte Edges (Coach) nutzen, sonst linear.
+  const validPlanEdges = Array.isArray(plan.edges)
+    ? plan.edges.filter(e => appliedSteps.some(s => s.id === e.source) && appliedSteps.some(s => s.id === e.target))
+    : [];
+  const baseEdges = validPlanEdges.length ? validPlanEdges : defaultLinearEdges(appliedSteps);
+
+  // 2b. Muster deterministisch expandieren: Human-in-the-Loop → sendAndWait → IF → Loopback;
+  //     „Durchreich"-Set-Nodes entfernen. Danach Trigger garantiert erster + verbunden.
+  const expanded = expandPatterns(appliedSteps, baseEdges);
+  const { steps: connectedSteps, edges: connectedEdges } = withTriggerFirst(expanded.steps, expanded.edges);
 
   // 3. Echte Agent-Struktur: jedem AI-Agent/Chain seinen Pflicht-Chat-Model-Sub-Node anhängen
   // (Mistral-Default). Ohne Chat Model ist ein Agent-Node nicht ausführbar.
   const index = await getCatalogIndex();
-  const { steps: withSubs, edges: withSubEdges } = ensureRequiredSubNodes(
-    connectedSteps,
-    connectedEdges,
-    index,
-  );
+  const required = ensureRequiredSubNodes(connectedSteps, connectedEdges, index);
+  // 3b. Jeder Agent/Chain bekommt sein EIGENES Chat Model — kein geteiltes Sub-Node.
+  const { steps: withSubs, edges: withSubEdges } = splitSharedAiSubNodes(required.steps, required.edges);
 
   // 4. Layout: Hauptkette horizontal, Sub-Nodes unter ihrem Parent.
   const positioned = layoutStepPositions(withSubs, withSubEdges, { force: true });

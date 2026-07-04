@@ -61,12 +61,15 @@ describe('filterToolsFromUserChat', () => {
 describe('inferDocumentPhase', () => {
   it('infers phase from content keywords', () => {
     expect(inferDocumentPhase({ title: 'Deploy', content: 'go-live credential' })).toBe('umsetzung');
-    expect(inferDocumentPhase({ title: 'Plan', content: 'workflow blaupause' })).toBe('plan');
+    expect(inferDocumentPhase({ title: 'Plan', content: 'workflow blaupause' })).toBe('analyse');
     expect(inferDocumentPhase({ title: 'Tools', content: 'marketing stack canva' })).toBe('analyse');
     expect(inferDocumentPhase({ title: 'X', content: 'allgemein' })).toBe('diagnose');
   });
   it('respects an explicit valid phase', () => {
-    expect(inferDocumentPhase({ title: 'X', content: 'y', phase: 'plan' })).toBe('plan');
+    expect(inferDocumentPhase({ title: 'X', content: 'y', phase: 'analyse' })).toBe('analyse');
+  });
+  it('maps legacy plan docs to analyse', () => {
+    expect(inferDocumentPhase({ title: 'X', content: 'y', phase: 'plan' as never })).toBe('analyse');
   });
 });
 
@@ -80,13 +83,13 @@ describe('isValidWorkflow', () => {
 
 describe('stripPhaseFromCanvas', () => {
   const base: CanvasData = {
-    phase: 'plan',
+    phase: 'analyse',
     pain_points: [{ id: 'pp_1', title: 'P', description: 'd', priority: 'hoch' }],
     use_cases: [{ id: 'uc_1', title: 'U', linked_pain_point: 'pp_1', effort: 'x', impact: 'y' }],
     workflows: [{ id: 'wf_1', title: 'W', linked_pain_point: 'pp_1', steps: [{ id: 's1', label: 'Go' }] }],
     documents: [
       { id: 'd1', title: 'Diag', content: 'allgemein diagnose text here enough', phase: 'diagnose' },
-      { id: 'd2', title: 'Plan', content: 'workflow blaupause text here enough', phase: 'plan' },
+      { id: 'd2', title: 'Plan', content: 'workflow blaupause text here enough', phase: 'analyse' },
     ],
     company: { offer: 'Beratung', change_appetite: 'balanced' },
   };
@@ -99,17 +102,13 @@ describe('stripPhaseFromCanvas', () => {
     expect(c.documents.map(d => d.id)).toEqual(['d2']);
   });
 
-  it('clears analyse blobs but keeps pain points', () => {
+  it('clears merged analyse blobs (tools + plans) but keeps pain points', () => {
     const c = stripPhaseFromCanvas(base, 'analyse');
     expect(c.use_cases).toHaveLength(0);
+    expect(c.workflows).toHaveLength(0);
     expect(c.pain_points).toHaveLength(1);
     expect(c.company?.offer).toBe('Beratung');
     expect(c.company?.change_appetite).toBeUndefined();
-  });
-
-  it('clears plan workflows and docs', () => {
-    const c = stripPhaseFromCanvas(base, 'plan');
-    expect(c.workflows).toHaveLength(0);
     expect(c.documents.map(d => d.id)).toEqual(['d1']);
   });
 
@@ -122,12 +121,17 @@ describe('stripPhaseFromCanvas', () => {
 });
 
 describe('normalizeCanvasData', () => {
-  it('extracts workflows only in plan/umsetzung', () => {
+  it('extracts workflows only in analyse/umsetzung (merged phase)', () => {
     const raw = {
       workflows: [{ id: 'wf_1', title: 'A B', linked_pain_point: 'pp_1', steps: [{ id: 's1', label: 'Go', type: 'trigger' }] }],
     };
-    const inPlan = normalizeCanvasData(raw, null, 'plan');
-    expect(inPlan.workflows).toHaveLength(1);
+    const inAnalyse = normalizeCanvasData(raw, null, 'analyse');
+    expect(inAnalyse.workflows).toHaveLength(1);
+
+    // Legacy-Alias: alte 'plan'-Aufrufer verhalten sich wie analyse.
+    const inLegacyPlan = normalizeCanvasData(raw, null, 'plan');
+    expect(inLegacyPlan.workflows).toHaveLength(1);
+    expect(inLegacyPlan.phase).toBe('analyse');
 
     const inDiagnose = normalizeCanvasData(raw, null, 'diagnose');
     expect(inDiagnose.workflows).toHaveLength(0);
@@ -137,7 +141,7 @@ describe('normalizeCanvasData', () => {
     const raw = {
       workflows: [{ id: 'wf_1', title: 'Eins Zwei Drei Vier Fünf Sechs Sieben', linked_pain_point: 'pp_1', steps: [{ id: 's1', label: 'Go' }] }],
     };
-    const c = normalizeCanvasData(raw, null, 'plan');
+    const c = normalizeCanvasData(raw, null, 'analyse');
     expect(c.workflows[0].title.split(/\s+/)).toHaveLength(5);
   });
 

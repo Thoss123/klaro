@@ -250,7 +250,7 @@ export default function WaitlistWizard({
               </button>
             ) : (
               <Link
-                href="/"
+                href="/immobilienmakler"
                 className={`inline-flex items-center justify-center gap-2 ${ACCENT} ${ACCENT_HOVER} text-white font-semibold px-6 py-3.5 rounded-xl transition-colors`}
               >
                 Zurück zur Startseite
@@ -275,7 +275,10 @@ export default function WaitlistWizard({
             ← Axantilo
           </button>
         ) : (
-          <Link href="/" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
+          <Link
+            href="/immobilienmakler"
+            className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors"
+          >
             ← Axantilo
           </Link>
         )}
@@ -352,7 +355,6 @@ function QuestionStep({
   onBack,
   isFirst = false,
   mode = 'single',
-  autoAdvance = false,
   otherOptionValue,
   otherInputLabel,
   otherInputPlaceholder,
@@ -366,7 +368,6 @@ function QuestionStep({
   onBack?: () => void;
   isFirst?: boolean;
   mode?: 'single' | 'multi';
-  autoAdvance?: boolean;
   otherOptionValue?: string;
   otherInputLabel?: string;
   otherInputPlaceholder?: string;
@@ -414,11 +415,7 @@ function QuestionStep({
       onSelect(opt.value);
     } else {
       onSelect(opt.value);
-      if (autoAdvance) {
-        setTimeout(() => onNext(), 180);
-      } else {
-        setTimeout(() => onNext(), 180);
-      }
+      setTimeout(() => onNext(), 180);
     }
   };
 
@@ -555,6 +552,11 @@ function ContactStep({
     (data.firmenname || '').trim().length > 0 &&
     isValidEmail(data.email || '');
 
+  // Wie im Onboarding: Enter schickt ab, sobald alle Pflichtfelder passen.
+  const submitOnEnter = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && canSubmit && !submitting) onSubmit();
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex justify-center mb-[-1rem]">
@@ -583,6 +585,7 @@ function ContactStep({
             placeholder="z. B. Thomas"
             className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-[#2F6BFF] focus:ring-2 focus:ring-[#2F6BFF]/20 outline-none transition-all"
             autoFocus
+            onKeyDown={submitOnEnter}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -593,6 +596,7 @@ function ContactStep({
             onChange={(e) => onChange('firmenname', e.target.value)}
             placeholder="z. B. Mustermann Immobilien"
             className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-[#2F6BFF] focus:ring-2 focus:ring-[#2F6BFF]/20 outline-none transition-all"
+            onKeyDown={submitOnEnter}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -603,6 +607,7 @@ function ContactStep({
             onChange={(e) => onChange('email', e.target.value)}
             placeholder="du@maklerbuero.at"
             className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-[#2F6BFF] focus:ring-2 focus:ring-[#2F6BFF]/20 outline-none transition-all"
+            onKeyDown={submitOnEnter}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -615,6 +620,7 @@ function ContactStep({
             onChange={(e) => onChange('telefon', e.target.value)}
             placeholder="+43 …"
             className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-[#2F6BFF] focus:ring-2 focus:ring-[#2F6BFF]/20 outline-none transition-all"
+            onKeyDown={submitOnEnter}
           />
         </label>
       </div>

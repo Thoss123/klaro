@@ -7,7 +7,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const origin = getRequestOrigin(request)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/chat'
+  const requestedNext = searchParams.get('next') ?? '/chat'
+  // Never send an authenticated user back to an auth page — that would loop
+  // straight back into the login form. Fall back to the dashboard instead.
+  const next = requestedNext === '/login' ? '/dashboard' : requestedNext
 
   if (code) {
     const cookieStore = await cookies()

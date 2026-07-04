@@ -193,6 +193,7 @@ export default function OnboardingWizard() {
       const payload = { ...DEV_DEFAULTS, ...buildPayload() } as OnboardingData;
       const projectId = await ensureDefaultProject(session.user.id);
       const sessionId = await createSession(payload, session.user.id, 'diagnose', undefined, undefined, projectId);
+      await triggerStrategy(sessionId, projectId, payload);
       clearOnboardingStorage();
       router.push(`/chat?id=${sessionId}`);
     } catch (e) {
@@ -224,6 +225,23 @@ export default function OnboardingWizard() {
     localStorage.removeItem('axantilo_intro_message');
   };
 
+  // Recherchiert die Firma und erstellt die interne Gesprächsstrategie, bevor
+  // der erste Chat losgeht — der Coach startet dann mit Hypothesen statt kalt.
+  // Fail-open: Onboarding darf nie an einer langsamen/fehlgeschlagenen Suche hängen bleiben.
+  const triggerStrategy = async (sessionId: string, projectId: string, payload: OnboardingData) => {
+    if (!payload.firmenname?.trim()) return;
+    try {
+      await fetch('/api/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'initial', sessionId, projectId }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      console.warn('Strategie-Erstellung fehlgeschlagen, Onboarding läuft ohne weiter:', e);
+    }
+  };
+
   const handleAuthSuccess = async () => {
     const payload = buildPayload();
     const supabase = createSupabaseBrowserClient();
@@ -238,6 +256,7 @@ export default function OnboardingWizard() {
       const userId = session.user.id;
       const projectId = await ensureDefaultProject(userId);
       const sessionId = await createSession(payload, userId, 'diagnose', undefined, undefined, projectId);
+      await triggerStrategy(sessionId, projectId, payload);
       clearOnboardingStorage();
       router.push(`/chat?id=${sessionId}`);
     } catch (e) {
@@ -273,6 +292,7 @@ export default function OnboardingWizard() {
         undefined,
         projectId,
       );
+      await triggerStrategy(sessionId, projectId, payload);
       clearOnboardingStorage();
       router.push(`/chat?id=${sessionId}`);
     } catch (e) {
@@ -412,6 +432,10 @@ export default function OnboardingWizard() {
             placeholder="z. B. Muster GmbH"
             value={data.firmenname}
             onChange={(v) => updateData('firmenname', v)}
+            secondaryLabel="Eure Website (optional) — damit der Coach sich vorab über euch informieren kann."
+            secondaryPlaceholder="z. B. www.muster-gmbh.de"
+            secondaryValue={data.firmen_website}
+            onSecondaryChange={(v) => updateData('firmen_website', v)}
             onNext={nextStep}
             onBack={prevStep}
           />
@@ -525,6 +549,10 @@ function TextQuestionStep({
   onNext,
   onBack,
   isFirst = false,
+  secondaryLabel,
+  secondaryPlaceholder,
+  secondaryValue,
+  onSecondaryChange,
 }: {
   title: string;
   subtitle?: string;
@@ -534,6 +562,11 @@ function TextQuestionStep({
   onNext: () => void;
   onBack?: () => void;
   isFirst?: boolean;
+  /** Optionales zweites Freitextfeld (z.B. Firmen-Website) — blockiert „Weiter" nicht. */
+  secondaryLabel?: string;
+  secondaryPlaceholder?: string;
+  secondaryValue?: string;
+  onSecondaryChange?: (v: string) => void;
 }) {
   const trimmed = (value || '').trim();
   return (
@@ -564,6 +597,23 @@ function TextQuestionStep({
           if (e.key === 'Enter' && trimmed) onNext();
         }}
       />
+      {onSecondaryChange && (
+        <div className="mt-[-1rem]">
+          {secondaryLabel && (
+            <p className="text-sm text-gray-400 mb-1.5">{secondaryLabel}</p>
+          )}
+          <input
+            type="text"
+            value={secondaryValue || ''}
+            onChange={(e) => onSecondaryChange(e.target.value)}
+            placeholder={secondaryPlaceholder}
+            className="w-full px-5 py-3 text-base border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && trimmed) onNext();
+            }}
+          />
+        </div>
+      )}
       <button
         type="button"
         onClick={onNext}

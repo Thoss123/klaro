@@ -1,29 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CanvasData, CanvasDocument, DocumentTemplate, PainPoint, UseCase, Workflow } from '@/lib/types';
+import { CanvasData, CanvasDocument, DocumentTemplate, IdeaCard, PainPoint, SolutionStructure, UseCase, Workflow } from '@/lib/types';
 import { inferDocumentPhase, isValidWorkflow, normalizeCompanyProfile, parseToolList, toDisplayText } from '@/lib/canvas-normalize';
 import { getBuiltWorkflows, getWorkflowPlans } from '@/lib/workflow-plans';
+import { phaseIndex } from '@/lib/phases';
+import IdeaCardGrid from './IdeaCardGrid';
+import ToolEvaluationCard from './ToolEvaluationCard';
 import { Check, Lock, FileText, Target, AlertTriangle, GitBranch, Download, X, Clock, Building2 } from 'lucide-react';
 import type { StepConfig, WorkflowStepConfigs } from '@/lib/types';
-import type { WorkflowEditorCoachContext } from '@/lib/workflow-editor-context';
 import WorkflowDeployCard from './WorkflowDeployCard';
 import WorkflowPlanFlow from './WorkflowPlanFlow';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
 const PHASE_NAMES: Record<string, string> = {
   diagnose:  'PHASE 1: DIAGNOSE',
-  analyse:   'PHASE 2: TOOLS & SETUP',
-  plan:      'PHASE 3: WORKFLOWS',
-  umsetzung: 'PHASE 4: UMSETZUNG',
+  analyse:   'PHASE 2: ANALYSE & PLAN',
+  umsetzung: 'PHASE 3: UMSETZUNG',
 };
 
-// Node definitions — 4 phases on a tall vertical canvas (DO NOT change layout/curve/side cards)
+// Node definitions — 3 Phasen (Analyse+Plan gemergt) auf hohem vertikalem Canvas
 const NODES = {
-  diagnose:  { top: '90%', left: '40%', boxSide: 'right' as const, svgY: 90, svgX: 40 },
-  analyse:   { top: '65%', left: '45%', boxSide: 'left'  as const, svgY: 65, svgX: 45 },
-  plan:      { top: '40%', left: '40%', boxSide: 'right' as const, svgY: 40, svgX: 40 },
-  umsetzung: { top: '13%', left: '45%', boxSide: 'left'  as const, svgY: 13, svgX: 45 },
+  diagnose:  { top: '88%', left: '40%', boxSide: 'right' as const, svgY: 88, svgX: 40 },
+  analyse:   { top: '52%', left: '45%', boxSide: 'left'  as const, svgY: 52, svgX: 45 },
+  umsetzung: { top: '13%', left: '40%', boxSide: 'right' as const, svgY: 13, svgX: 40 },
 };
 
 /** Hide redundant blobs when a phase document already covers the same topic */
@@ -43,7 +42,7 @@ function railTop(phase: keyof typeof NODES): string {
   return NODES[phase].top;
 }
 
-const numMap: Record<string, string> = { diagnose: '1', analyse: '2', plan: '3', umsetzung: '4' };
+const numMap: Record<string, string> = { diagnose: '1', analyse: '2', umsetzung: '3' };
 
 // Strip raw IDs like "(pp_1)" from display titles
 const cleanTitle = (s: unknown) =>
@@ -63,11 +62,13 @@ export default function RoadmapCanvas({
   openDeployWorkflowId,
   onDeployModalOpened,
   onWorkflowPersist,
-  editorCoachContext,
+  onSendMessage,
   isUpdating = false,
 }: {
   data: CanvasData
   currentPhase: string
+  /** Klick auf interaktive Canvas-Elemente (z.B. Ideen-Karte) schickt eine Chat-Nachricht. */
+  onSendMessage?: (text: string) => void
   /** Live-Hinweis: das Canvas wird gerade (im Hintergrund) neu aufgebaut. */
   isUpdating?: boolean
   /** Highest phase ever reached in this project (keeps later phases unlocked) */
@@ -83,8 +84,6 @@ export default function RoadmapCanvas({
   openDeployWorkflowId?: string | null
   onDeployModalOpened?: (workflowId: string) => void
   onWorkflowPersist?: (workflow: Workflow) => void
-  /** Gleicher Coach-Kontext wie Haupt-Chat für Workflow-Editor. */
-  editorCoachContext?: WorkflowEditorCoachContext
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [openDoc, setOpenDoc] = useState<CanvasDocument | null>(null);
@@ -118,11 +117,8 @@ export default function RoadmapCanvas({
   }, [currentPhase]);
 
   const progressPhase = maxReachedPhase || data.phase || 'diagnose';
-  const maxReachedIdx = Math.max(
-    0,
-    PHASE_ORDER.indexOf(progressPhase as (typeof PHASE_ORDER)[number])
-  );
-  const isAccessible = (phase: string) => PHASE_ORDER.indexOf(phase) <= maxReachedIdx;
+  const maxReachedIdx = Math.max(0, phaseIndex(progressPhase));
+  const isAccessible = (phase: string) => phaseIndex(phase) <= maxReachedIdx;
 
   const painPoints = data.pain_points || [];
   const useCases   = data.use_cases   || [];
@@ -142,15 +138,22 @@ export default function RoadmapCanvas({
 
   const sortedPainPoints = [...painPoints].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
 
+  const ideaCards = data.idea_cards || [];
+  const toolEvaluations = data.tool_evaluations || [];
+  const solutionStructures = data.solution_structures || [];
+  const handleIdeaClick = onSendMessage
+    ? (card: IdeaCard) => onSendMessage(`Erzähl mir mehr zu: „${card.title}"`)
+    : undefined;
+
   const diagDocs = docsByPhase('diagnose');
   const analyseDocs = docsByPhase('analyse');
-  const planDocs = docsByPhase('plan');
   const umsetzungDocs = docsByPhase('umsetzung');
 
-  // Dokument-Vorlagen (Angebote, Mails, …). In Phase 3 in der Plan-Rail, in Phase 4
-  // in der Umsetzung-Rail — über currentPhase getrennt, damit nichts doppelt erscheint.
+  // Dokument-Vorlagen (Angebote, Mails, …). In der gemergten Analyse in der
+  // Analyse-Rail, in der Umsetzung in der Umsetzung-Rail — über currentPhase
+  // getrennt, damit nichts doppelt erscheint.
   const templates = data.document_templates || [];
-  const planTemplates = currentPhase === 'plan' ? templates : [];
+  const analyseTemplates = currentPhase === 'analyse' ? templates : [];
   const umsetzungTemplates = currentPhase === 'umsetzung' ? templates : [];
 
   const showCompanyCard =
@@ -185,23 +188,21 @@ export default function RoadmapCanvas({
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Desktop / tablet: curved roadmap with absolute-positioned nodes + side rails */}
-      <div className="hidden @[640px]:block w-full relative min-h-[420vh]">
+      {/* Desktop: curved roadmap — ab Container-Breite 720px (passt zum verfügbaren Canvas) */}
+      <div className="hidden @[720px]:block w-full min-w-0 relative min-h-[320vh]">
 
         <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
           <path
-            d={`M ${NODES.diagnose.svgX} ${NODES.diagnose.svgY} C 35 80, 50 78, ${NODES.analyse.svgX} ${NODES.analyse.svgY} C 40 55, 35 52, ${NODES.plan.svgX} ${NODES.plan.svgY} C 35 30, 50 28, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`}
+            d={`M ${NODES.diagnose.svgX} ${NODES.diagnose.svgY} C 35 74, 50 70, ${NODES.analyse.svgX} ${NODES.analyse.svgY} C 40 36, 35 32, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`}
             fill="none" stroke="#e2e8f0" strokeWidth="0.3" strokeDasharray="1 1.5" vectorEffect="non-scaling-stroke"
           />
-          <ActivePath d={`M ${NODES.diagnose.svgX} ${NODES.diagnose.svgY} C 35 80, 50 78, ${NODES.analyse.svgX} ${NODES.analyse.svgY}`} active={maxReachedIdx >= 1} />
-          <ActivePath d={`M ${NODES.analyse.svgX} ${NODES.analyse.svgY} C 40 55, 35 52, ${NODES.plan.svgX} ${NODES.plan.svgY}`} active={maxReachedIdx >= 2} />
-          <ActivePath d={`M ${NODES.plan.svgX} ${NODES.plan.svgY} C 35 30, 50 28, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`} active={maxReachedIdx >= 3} />
+          <ActivePath d={`M ${NODES.diagnose.svgX} ${NODES.diagnose.svgY} C 35 74, 50 70, ${NODES.analyse.svgX} ${NODES.analyse.svgY}`} active={maxReachedIdx >= 1} />
+          <ActivePath d={`M ${NODES.analyse.svgX} ${NODES.analyse.svgY} C 40 36, 35 32, ${NODES.umsetzung.svgX} ${NODES.umsetzung.svgY}`} active={maxReachedIdx >= 2} />
         </svg>
 
         <PhaseNode phase="diagnose" title="Problem Identifikation" desc="Potenzielle Verbesserungen & Unternehmensprofil." nodeConfig={NODES.diagnose} isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
-        <PhaseNode phase="analyse" title="Tools & Setup" desc="Ist-Tools." nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
-        <PhaseNode phase="plan" title="Workflows" desc="Automatisierungs-Blaupausen." nodeConfig={NODES.plan} isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
-        <PhaseNode phase="umsetzung" title="Umsetzung" desc="Deployment & Go-Live." nodeConfig={NODES.umsetzung} isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
+        <PhaseNode phase="analyse" title="Analyse & Plan" desc="Ist-Tools, Bewertung & Workflow-Pläne." nodeConfig={NODES.analyse} isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
+        <PhaseNode phase="umsetzung" title="Umsetzung" desc="Deployment & Go-Live." nodeConfig={NODES.umsetzung} isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('umsetzung')} />
 
         {/* Phase 1 — links (Checkpoint + Titel rechts) */}
         {(diagDocs.length > 0 || showPainCards) && (
@@ -224,15 +225,25 @@ export default function RoadmapCanvas({
             )}
           </ContentRail>
         )}
-        {showCompanyCard && company && (
+        {((showCompanyCard && company) || ideaCards.length > 0) && (
           <ContentRail side="right" top={railTop('diagnose')}>
-            <SectionLabel>Unternehmen</SectionLabel>
-            <CompanyInlineCard company={company} onExpand={() => setShowCompany(true)} />
+            {showCompanyCard && company && (
+              <>
+                <SectionLabel>Unternehmen</SectionLabel>
+                <CompanyInlineCard company={company} onExpand={() => setShowCompany(true)} />
+              </>
+            )}
+            {ideaCards.length > 0 && (
+              <>
+                <SectionLabel className={showCompanyCard && company ? 'mt-5' : ''}>Was KI bei euch kann</SectionLabel>
+                <IdeaCardGrid cards={ideaCards} onCardClick={handleIdeaClick} />
+              </>
+            )}
           </ContentRail>
         )}
 
-        {/* Phase 2 — rechts */}
-        {(analyseDocs.length > 0 || showUseCases) && (
+        {/* Phase 2 (Analyse & Plan) — rechts: Dokumente + Ist-Tools + Tool-Bewertungen */}
+        {(analyseDocs.length > 0 || showUseCases || toolEvaluations.length > 0) && (
           <ContentRail side="right" top={railTop('analyse')}>
             {analyseDocs.length > 0 && (
               <>
@@ -250,15 +261,40 @@ export default function RoadmapCanvas({
                 </div>
               </>
             )}
+            {toolEvaluations.length > 0 && (
+              <>
+                <SectionLabel className={analyseDocs.length > 0 || showUseCases ? 'mt-5' : ''}>Tool-Bewertungen</SectionLabel>
+                <div className="flex flex-col gap-3">
+                  {toolEvaluations.map(te => (
+                    <ToolEvaluationCard key={te.id} evaluation={te} />
+                  ))}
+                </div>
+              </>
+            )}
           </ContentRail>
         )}
 
-        {/* Phase 3 — links */}
-        {((planWorkflows.length > 0 && maxReachedIdx >= 2) || planDocs.length > 0 || planTemplates.length > 0) && (
-          <ContentRail side="left" top={railTop('plan')}>
-            {planWorkflows.length > 0 && maxReachedIdx >= 2 && (
+        {/* Phase 2 (Analyse & Plan) — links: Struktur-Pläne + Workflow-Pläne + Vorlagen */}
+        {((planWorkflows.length > 0 && maxReachedIdx >= 1) || analyseTemplates.length > 0 || solutionStructures.length > 0) && (
+          <ContentRail side="left" top={railTop('analyse')}>
+            {solutionStructures.length > 0 && (
               <>
-                <SectionLabel>Workflows</SectionLabel>
+                <SectionLabel>Lösungs-Strukturen</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  {solutionStructures.map(ss => (
+                    <SolutionStructureCard
+                      key={ss.id}
+                      structure={ss}
+                      workflows={[...planWorkflows, ...builtWorkflows]}
+                      linkedTitle={cleanTitle(painPoints.find(p => p.id === ss.linked_pain_point)?.title ?? '')}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {planWorkflows.length > 0 && maxReachedIdx >= 1 && (
+              <>
+                <SectionLabel className={solutionStructures.length > 0 ? 'mt-5' : ''}>Workflows</SectionLabel>
                 <div className={twoColGrid}>
                   {planWorkflows.map(wf => {
                     const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
@@ -274,25 +310,19 @@ export default function RoadmapCanvas({
                 </div>
               </>
             )}
-            {planDocs.length > 0 && (
+            {analyseTemplates.length > 0 && (
               <>
-                <SectionLabel className={planWorkflows.length > 0 && maxReachedIdx >= 2 ? 'mt-5' : ''}>Dokumente</SectionLabel>
-                <DocStack docs={planDocs} onOpen={setOpenDoc} />
-              </>
-            )}
-            {planTemplates.length > 0 && (
-              <>
-                <SectionLabel className={planWorkflows.length > 0 || planDocs.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
-                <TemplateStack templates={planTemplates} onOpen={setOpenTemplate} />
+                <SectionLabel className={planWorkflows.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
+                <TemplateStack templates={analyseTemplates} onOpen={setOpenTemplate} />
               </>
             )}
           </ContentRail>
         )}
 
-        {/* Phase 4 — Umsetzung: alle Deploy-Karten in der Phase-4-Rail */}
-        {(umsetzungDocs.length > 0 || umsetzungTemplates.length > 0 || (builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId)) && (
+        {/* Phase 3 — Umsetzung: alle Deploy-Karten in der Umsetzung-Rail */}
+        {(umsetzungDocs.length > 0 || umsetzungTemplates.length > 0 || (builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId)) && (
           <ContentRail side="right" top={railTop('umsetzung')} className="!w-[min(52%,400px)]">
-            {builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId && (
+            {builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId && (
               <>
                 <SectionLabel>Deployment</SectionLabel>
                 <div className="grid grid-cols-1 gap-4 min-w-0">
@@ -312,7 +342,6 @@ export default function RoadmapCanvas({
                         deployedWorkflowId={deployedWorkflowIds?.[wf.id]}
                         onDeployed={(dbId) => onWorkflowDeployed?.(wf.id, dbId)}
                         onWorkflowPersist={onWorkflowPersist}
-                        editorCoachContext={editorCoachContext}
                       />
                     );
                   })}
@@ -321,13 +350,13 @@ export default function RoadmapCanvas({
             )}
             {umsetzungDocs.length > 0 && (
               <>
-                <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId ? 'mt-5' : ''}>Dokumente</SectionLabel>
+                <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId ? 'mt-5' : ''}>Dokumente</SectionLabel>
                 <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
               </>
             )}
             {umsetzungTemplates.length > 0 && (
               <>
-                <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId) || umsetzungDocs.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
+                <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId) || umsetzungDocs.length > 0 ? 'mt-5' : ''}>Vorlagen</SectionLabel>
                 <TemplateStack templates={umsetzungTemplates} onOpen={setOpenTemplate} />
               </>
             )}
@@ -336,10 +365,10 @@ export default function RoadmapCanvas({
 
       </div>
 
-      {/* Mobile: single-column vertical stack — each phase with its cards full-width */}
-      <div className="@[640px]:hidden flex flex-col gap-7 px-4 py-3 pb-8">
+      {/* Schmaler Canvas (<720px): volle Breite, einspaltig */}
+      <div className="@[720px]:hidden flex w-full min-w-0 max-w-full flex-col gap-7 px-4 py-3 pb-8">
         {/* Phase 1 — Diagnose */}
-        <section>
+        <section className="w-full min-w-0">
           <MobilePhaseHeader phase="diagnose" title="Problem Identifikation" isAccessible={isAccessible('diagnose')} isActive={currentPhase === 'diagnose'} isCompleted={maxReachedIdx > 0} onClick={() => onPhaseClick('diagnose')} />
           {diagDocs.length > 0 && (
             <>
@@ -363,11 +392,17 @@ export default function RoadmapCanvas({
               <CompanyInlineCard company={company} onExpand={() => setShowCompany(true)} />
             </>
           )}
+          {ideaCards.length > 0 && (
+            <>
+              <SectionLabel className="mt-4 mb-2">Was KI bei euch kann</SectionLabel>
+              <IdeaCardGrid cards={ideaCards} onCardClick={handleIdeaClick} />
+            </>
+          )}
         </section>
 
-        {/* Phase 2 — Tools & Setup */}
-        <section>
-          <MobilePhaseHeader phase="analyse" title="Tools & Setup" isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
+        {/* Phase 2 — Analyse & Plan */}
+        <section className="w-full min-w-0">
+          <MobilePhaseHeader phase="analyse" title="Analyse & Plan" isAccessible={isAccessible('analyse')} isActive={currentPhase === 'analyse'} isCompleted={maxReachedIdx > 1} onClick={() => onPhaseClick('analyse')} />
           {analyseDocs.length > 0 && (
             <>
               <SectionLabel className="mb-2">Dokumente</SectionLabel>
@@ -384,14 +419,34 @@ export default function RoadmapCanvas({
               </div>
             </>
           )}
-        </section>
-
-        {/* Phase 3 — Workflows */}
-        <section>
-          <MobilePhaseHeader phase="plan" title="Workflows" isAccessible={isAccessible('plan')} isActive={currentPhase === 'plan'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('plan')} />
-          {planWorkflows.length > 0 && maxReachedIdx >= 2 && (
+          {toolEvaluations.length > 0 && (
             <>
-              <SectionLabel className="mb-2">Workflows</SectionLabel>
+              <SectionLabel className="mt-4 mb-2">Tool-Bewertungen</SectionLabel>
+              <div className="grid grid-cols-1 gap-3">
+                {toolEvaluations.map(te => (
+                  <ToolEvaluationCard key={te.id} evaluation={te} />
+                ))}
+              </div>
+            </>
+          )}
+          {solutionStructures.length > 0 && (
+            <>
+              <SectionLabel className="mt-4 mb-2">Lösungs-Strukturen</SectionLabel>
+              <div className="grid grid-cols-1 gap-3">
+                {solutionStructures.map(ss => (
+                  <SolutionStructureCard
+                    key={ss.id}
+                    structure={ss}
+                    workflows={[...planWorkflows, ...builtWorkflows]}
+                    linkedTitle={cleanTitle(painPoints.find(p => p.id === ss.linked_pain_point)?.title ?? '')}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {planWorkflows.length > 0 && maxReachedIdx >= 1 && (
+            <>
+              <SectionLabel className="mt-4 mb-2">Workflows</SectionLabel>
               <div className="grid grid-cols-1 gap-3">
                 {planWorkflows.map(wf => {
                   const linkedPP = painPoints.find(p => p.id === wf.linked_pain_point);
@@ -402,24 +457,18 @@ export default function RoadmapCanvas({
               </div>
             </>
           )}
-          {planDocs.length > 0 && (
+          {analyseTemplates.length > 0 && (
             <>
-              <SectionLabel className={planWorkflows.length > 0 && maxReachedIdx >= 2 ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
-              <DocStack docs={planDocs} onOpen={setOpenDoc} />
-            </>
-          )}
-          {planTemplates.length > 0 && (
-            <>
-              <SectionLabel className={planWorkflows.length > 0 || planDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Vorlagen</SectionLabel>
-              <TemplateStack templates={planTemplates} onOpen={setOpenTemplate} />
+              <SectionLabel className="mt-4 mb-2">Vorlagen</SectionLabel>
+              <TemplateStack templates={analyseTemplates} onOpen={setOpenTemplate} />
             </>
           )}
         </section>
 
-        {/* Phase 4 — Umsetzung */}
-        <section>
-          <MobilePhaseHeader phase="umsetzung" title="Umsetzung" isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 3} onClick={() => onPhaseClick('umsetzung')} />
-          {builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId && (
+        {/* Phase 3 — Umsetzung */}
+        <section className="w-full min-w-0">
+          <MobilePhaseHeader phase="umsetzung" title="Umsetzung" isAccessible={isAccessible('umsetzung')} isActive={currentPhase === 'umsetzung'} isCompleted={maxReachedIdx > 2} onClick={() => onPhaseClick('umsetzung')} />
+          {builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId && (
             <>
               <SectionLabel className="mb-2">Deployment</SectionLabel>
               <div className="space-y-3">
@@ -438,7 +487,6 @@ export default function RoadmapCanvas({
                       deployedWorkflowId={deployedWorkflowIds?.[wf.id]}
                       onDeployed={(dbId) => onWorkflowDeployed?.(wf.id, dbId)}
                       onWorkflowPersist={onWorkflowPersist}
-                      editorCoachContext={editorCoachContext}
                     />
                   );
                 })}
@@ -447,13 +495,13 @@ export default function RoadmapCanvas({
           )}
           {umsetzungDocs.length > 0 && (
             <>
-              <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
+              <SectionLabel className={builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId ? 'mt-4 mb-2' : 'mb-2'}>Dokumente</SectionLabel>
               <DocStack docs={umsetzungDocs} onOpen={setOpenDoc} />
             </>
           )}
           {umsetzungTemplates.length > 0 && (
             <>
-              <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 3 && projectId) || umsetzungDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Vorlagen</SectionLabel>
+              <SectionLabel className={(builtWorkflows.length > 0 && maxReachedIdx >= 2 && projectId) || umsetzungDocs.length > 0 ? 'mt-4 mb-2' : 'mb-2'}>Vorlagen</SectionLabel>
               <TemplateStack templates={umsetzungTemplates} onOpen={setOpenTemplate} />
             </>
           )}
@@ -518,10 +566,10 @@ function ContentRail({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`absolute z-10 flex flex-col gap-3 pointer-events-auto
-        -translate-y-1/2 @max-[1200px]:translate-y-0 @max-[1200px]:mt-36
+      className={`absolute z-10 flex flex-col gap-3 pointer-events-auto min-w-0
+        -translate-y-1/2 @max-[960px]:translate-y-0 @max-[960px]:mt-36
         ${side === 'left' ? 'left-[2%]' : 'right-[2%]'}
-        w-[min(44%,320px)] ${className}`}
+        w-[min(44%,320px)] max-w-[calc(50%-4rem)] ${className}`}
       style={{ top }}
     >
       {children}
@@ -684,6 +732,40 @@ function UseCaseInlineCard({ useCase: uc, onExpand }: { useCase: UseCase; onExpa
           )}
         </ul>
       )}
+    </StructuredCard>
+  );
+}
+
+/** Struktur-Plan: EINE Lösung aus mehreren Workflows — Gruppierungs-Karte. */
+function SolutionStructureCard({
+  structure,
+  workflows,
+  linkedTitle,
+}: {
+  structure: SolutionStructure;
+  workflows: Workflow[];
+  linkedTitle?: string;
+}) {
+  const linked = structure.workflow_ids
+    .map(id => workflows.find(w => w.id === id))
+    .filter((w): w is Workflow => !!w);
+  return (
+    <StructuredCard
+      title={cleanTitle(structure.title)}
+      icon={<GitBranch size={15} className="text-violet-500" />}
+      tone="violet"
+    >
+      {linkedTitle && <p className="text-[11px] text-gray-400 mb-1.5">↳ {linkedTitle}</p>}
+      {linked.length > 0 ? (
+        <ol className="space-y-0.5 list-decimal list-inside">
+          {linked.map(w => (
+            <li key={w.id}>{cleanTitle(w.title)}</li>
+          ))}
+        </ol>
+      ) : (
+        <p className="italic text-gray-400">Workflows werden gerade entworfen …</p>
+      )}
+      {structure.notes && <p className="mt-1.5 text-[11px] text-gray-400">{structure.notes}</p>}
     </StructuredCard>
   );
 }
@@ -1148,14 +1230,14 @@ function PhaseNode({
 }) {
   return (
     <div className="absolute group z-20" style={{ top: nodeConfig.top, left: nodeConfig.left, transform: 'translate(-50%, -50%)' }}>
-      {/* ≥1536px: horizontal — title beside circle (classic roadmap, enough room so it won't hit the side cards) */}
-      <div className="hidden @[1536px]:flex items-center">
+      {/* ≥1280px Container: horizontal — Titel neben Kreis */}
+      <div className="hidden @[1280px]:flex items-center">
         {nodeConfig.boxSide === 'left' && <TitleBox phase={phase} title={title} desc={desc} side="left" isAccessible={isAccessible} />}
         <PhaseCircle phase={phase} isAccessible={isAccessible} isActive={isActive} isCompleted={isCompleted} onClick={onClick} />
         {nodeConfig.boxSide === 'right' && <TitleBox phase={phase} title={title} desc={desc} side="right" isAccessible={isAccessible} />}
       </div>
-      {/* <1536px: stacked — title above circle (avoids horizontal collision when space is tight) */}
-      <div className="flex @[1536px]:hidden flex-col items-center gap-2">
+      {/* <1280px Container: gestapelt — Titel über Kreis */}
+      <div className="flex @[1280px]:hidden flex-col items-center gap-2">
         <TitleBoxStacked phase={phase} title={title} desc={desc} isAccessible={isAccessible} />
         <PhaseCircle phase={phase} isAccessible={isAccessible} isActive={isActive} isCompleted={isCompleted} onClick={onClick} />
       </div>

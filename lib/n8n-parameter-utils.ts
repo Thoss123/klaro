@@ -60,6 +60,38 @@ export function getVisibleProperties(
   return properties.filter(p => isRenderableProperty(p) && isPropertyVisible(p, values));
 }
 
+/**
+ * Ein Feld ist „kritisch", wenn der Node ohne es nicht läuft: required ODER ein
+ * resourceLocator (Airtable Base/Table, Sheets-Dokument, Slack-Channel …), der
+ * vom Nutzer/Tool gewählt werden muss.
+ */
+export function isCrucialProperty(prop: N8nNodeProperty): boolean {
+  return prop.required === true || prop.type === 'resourceLocator';
+}
+
+/** Wert leer? — inkl. resourceLocator-Objekt mit leerem `.value`. */
+export function isEmptyParamValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return true;
+  if (typeof value === 'object' && value !== null && 'value' in (value as Record<string, unknown>)) {
+    const v = (value as { value?: unknown }).value;
+    return v === undefined || v === null || v === '';
+  }
+  return false;
+}
+
+/**
+ * Sichtbare, kritische Pflichtfelder, die (für die aktuell gewählte Operation) noch leer sind.
+ * resourceLocator-Felder sind tool-abhängig → müssen per Live-Optionen gewählt werden.
+ */
+export function missingCrucialParams(
+  properties: N8nNodeProperty[],
+  values: Record<string, unknown>,
+): N8nNodeProperty[] {
+  return getVisibleProperties(properties, values)
+    .filter(isCrucialProperty)
+    .filter(p => isEmptyParamValue(values[p.name]));
+}
+
 export function buildInitialParameters(
   properties: N8nNodeProperty[],
 ): Record<string, unknown> {

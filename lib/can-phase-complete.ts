@@ -7,7 +7,19 @@ export function canAdvanceFromPhase(
   canvas: CanvasData,
   opts?: { coachSignaledComplete?: boolean },
 ): { ok: boolean; reason?: string } {
-  if (phase === 'plan') {
+  // Türsteher-Prinzip (coach/config/phases.json): Phasen-Gates prüft Code,
+  // nicht das Modell. Ohne mindestens eine konkret erfasste potenzielle
+  // Verbesserung gibt es nichts zu analysieren — Übergang ablehnen.
+  if (phase === 'diagnose') {
+    const painPoints = (canvas.pain_points || []).filter(p => !!p.title?.trim());
+    if (painPoints.length === 0) {
+      return { ok: false, reason: 'no_pain_points' };
+    }
+  }
+
+  // Gemergte Phase 2 (Analyse & Plan): ohne mindestens einen validen
+  // Workflow-Plan gibt es nichts umzusetzen — Übergang ablehnen.
+  if (phase === 'analyse' || phase === 'plan') {
     const workflows = (canvas.workflows || []).filter(isValidWorkflow);
     if (workflows.length === 0) {
       return { ok: false, reason: 'no_workflows' };

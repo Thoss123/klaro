@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workflowStructureChanged } from '@/lib/agents/workflow-editor';
+import { workflowStructureChanged } from '@/lib/apply-workflow-edit';
 import type { Workflow } from '@/lib/types';
 
 describe('workflowStructureChanged', () => {

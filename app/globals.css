@@ -12,6 +12,33 @@
   --color-foreground: var(--foreground);
 }
 
+/* Tailwind v4 Preflight setzt bei Buttons kein pointer — einheitliches Klick-Feedback app-weit */
+@layer base {
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  select:not(:disabled),
+  summary,
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  ::file-selector-button {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
 @layer utilities {
   .bg-grid {
     background-size: 50px 50px;
@@ -96,6 +123,7 @@
   border-bottom: 1px solid #f3f4f6;
   background: transparent;
   color: #6b7280;
+  cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
 
@@ -127,6 +155,7 @@
   width: 140px;
   height: 96px;
   border-radius: 0.75rem;
+  cursor: pointer;
 }
 
 .workflow-flow-editor .workflow-flow-minimap-mask {

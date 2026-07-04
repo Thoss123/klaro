@@ -51,9 +51,13 @@ const markdownComponents: Components = {
   td: ({ children }) => (
     <td className="border-t border-gray-100 px-3 py-2 align-top text-gray-600">{children}</td>
   ),
-  h1: ({ children }) => <h1 className="text-xl font-bold mb-3 text-gray-900 [&_strong]:font-bold [&_strong]:text-inherit">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 text-gray-900 [&_strong]:font-bold [&_strong]:text-inherit">{children}</h2>,
-  h3: ({ children }) => <h3 className="font-semibold mb-2 text-gray-900 [&_strong]:font-semibold [&_strong]:text-inherit">{children}</h3>,
+  // Überschriften bewusst auf normale Textgröße: Coach-Nachrichten sollen
+  // einheitlich groß wirken (kein riesiges/fettes h2). cleanupBotFormatting
+  // wandelt Überschriften ohnehin in Fließtext um — das hier ist die Absicherung,
+  // falls doch ein "##" durchrutscht: dann rendert es als normaler Absatz.
+  h1: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  h2: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  h3: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
 };
 
 export default function MessageBubble({ message, feedback }: { message: Message, onEdit?: (id: string, newContent: string) => void, feedback?: MessageFeedbackContext }) {

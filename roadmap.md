@@ -72,6 +72,21 @@ Coach: <trigger_canvas_update>
 
 ---
 
+## Coach v2 — Modulares Prompt-System (Erledigt – Juli 2026)
+
+**Ziel:** Weg vom monolithischen Phasen-Prompt in `lib/claude.ts` — hin zu modularen Prompt-Dateien mit klaren Verhaltens-Prinzipien, per Feature-Flag revertierbar.
+
+- `[x]` **Prompt-Module:** `coach/prompts/base.md` (Identität, **Modus-Regel Führen/Ausführen**, Einwand-Trio, Guardrails, Stand-Block) + `phase_diagnose|analyse|plan|umsetzung.md` — inkl. Intent-Typen A/B/C, konkrete-statt-abstrakte Fragen, Default-Vorschläge, hartes Ja-Gate, „Es läuft"-Moment, Betrieb-Weiche (Änderung vs. neuer Wunsch).
+- `[x]` **Assembly:** `lib/coach/assemble.ts` — `AXANTILO_SHARED_RULES` + base + Modul pro Request; Dev liest die .md-Dateien bei jedem Request frisch (Prompt-Tuning ohne Neustart); Prod cached + `outputFileTracingIncludes` in `next.config.mjs`.
+- `[x]` **Feature-Flag `COACH_V2`** (default an) in `app/api/chat/route.ts`; fail-open auf den alten Pfad, wenn Dateien fehlen. Revert = `COACH_V2=false`.
+- `[x]` **Türsteher ausgebaut:** `canAdvanceFromPhase('diagnose')` blockt Phasenwechsel ohne erfasste potenzielle Verbesserung (`no_pain_points`); Übersicht aller Gates (Code vs. Prompt) in `coach/config/phases.json`.
+- `[x]` **Tests:** `tests/coach-assemble.test.ts` (Assembly, Flag, Platzhalter-Pipeline, kein hartkodierter Workflow) + erweiterte Gate-Tests.
+- `[x]` **Sicherung:** alter Prompt-Stand in `_archive/2026-07-02/`; alte Prompts bleiben unverändert in `lib/claude.ts`.
+- `[ ]` **QA:** Simulationslauf (`/simulate-coaching`) über alle 4 Phasen mit Coach v2; Vergleich gegen alten Prompt-Pfad.
+- `[ ]` **Zielbild-Migration** (dokumentiert in `coach/zielbild/`): eigenes State-Objekt + State-Extraktion → History-Kompression an Phasengrenzen → Phasen 0/1a/1b als Verfeinerung der Diagnose → server-seitige Orchestrator-Gates.
+
+---
+
 ## Sprint 2: Core-Engine — n8n API Anbindung
 
 **Ziel:** Eine erreichbare n8n-Instanz + verifizierte Proxy-Routen. Ohne das kein Playbook-Webhooks und kein Phase-4-Deploy.
@@ -432,6 +447,7 @@ Viele Workflows verarbeiten wiederkehrende Dokumente/Texte (Angebote, Verträge,
 
 | Version | Änderung |
 |---------|----------|
+| v1.5 | Coach v2: modulares Prompt-System (`coach/prompts/` + `lib/coach/assemble.ts`, Flag `COACH_V2`), Modus-Regel/Einwand-Trio/Ja-Gate als Basis-Prinzipien, Diagnose-Gate im Türsteher, Zielbild-Doku `coach/zielbild/` |
 | v1.4 | Vorlagen & Dokumente: PDF-Parsing + OCR-Fallback, `DocumentTemplate`-Modell, Templatisierung (`create_document_template`), Phase-3-Discovery + Phase-4-Einbau, Canvas-Rendering „Vorlagen"; DOCX/XLSX/PPTX + Google-Live in Roadmap |
 | v1.3 | Zentrale Infrastruktur (Shared OAuth/Twilio/Resend/n8n), Webhook-Router, Node-Map-Builder, RAG Knowledge Base (erledigt), Sprint Qualität (Pfad-Logik inkl. Pfad D), Post-MVP Data Layer + Dashboard Builder; n8n Host Hetzner→Hostinger (live) |
 | v1.2 | Backlog Coach Advisor; Sprint 2 Runbook + Supabase 2.0 |

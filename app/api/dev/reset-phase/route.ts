@@ -3,7 +3,7 @@ import { stripPhaseFromCanvas } from '@/lib/phase-reset';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import type { CanvasData, Phase } from '@/lib/types';
 
-const PHASES: Phase[] = ['diagnose', 'analyse', 'plan', 'umsetzung'];
+const PHASES: Phase[] = ['diagnose', 'analyse', 'umsetzung'];
 
 export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {
@@ -67,15 +67,18 @@ export async function POST(req: NextRequest) {
     phase as Phase,
   );
 
-  const clearUmsetzung = phase === 'umsetzung' || phase === 'plan' || phase === 'analyse' || phase === 'diagnose';
-  const clearPlan = phase === 'plan' || phase === 'analyse' || phase === 'diagnose';
+  // Reset räumt die gewählte Phase + alle nachgelagerten ab. 'plan' taucht als
+  // Legacy-Wert noch in alten DB-Zeilen auf und wird beim Analyse-Reset mit abgeräumt.
+  const clearUmsetzung = phase === 'umsetzung' || phase === 'analyse' || phase === 'diagnose';
   const clearAnalyse = phase === 'analyse' || phase === 'diagnose';
   const clearDiagnose = phase === 'diagnose';
 
-  const phasesToClear = new Set<Phase>();
+  const phasesToClear = new Set<string>();
   if (clearDiagnose) phasesToClear.add('diagnose');
-  if (clearAnalyse) phasesToClear.add('analyse');
-  if (clearPlan) phasesToClear.add('plan');
+  if (clearAnalyse) {
+    phasesToClear.add('analyse');
+    phasesToClear.add('plan');
+  }
   if (clearUmsetzung) phasesToClear.add('umsetzung');
 
   const phasesArray = Array.from(phasesToClear);
@@ -164,7 +167,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: sessionCanvasError.message }, { status: 500 });
   }
 
-  if (phasesArray.includes('plan') || phasesArray.includes('umsetzung')) {
+  if (phasesArray.includes('analyse') || phasesArray.includes('umsetzung')) {
     await supabase.from('workflows').delete().eq('project_id', projectId).eq('user_id', user.id);
   }
 

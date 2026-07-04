@@ -14,8 +14,12 @@ export type OnboardingData = {
   username?: string
   firmenname?: string
   rolle_im_unternehmen?: string
+  /** Optionale Firmen-Website — Basis für die automatische Firmen-Recherche. */
+  firmen_website?: string
   intro_message?: string
   memory?: string
+  /** Kurze, automatisch recherchierte Zusammenfassung des Unternehmens (vor dem ersten Chat), ungeprüft. */
+  firmen_recherche?: string
 }
 
 // Chat
@@ -42,7 +46,9 @@ export type Project = {
 }
 
 // Canvas
-export type Phase = 'diagnose' | 'analyse' | 'plan' | 'umsetzung'
+// 3 Phasen seit dem Merge von Analyse+Plan; Legacy-Wert 'plan' wird über
+// normalizePhase (lib/phases.ts) auf 'analyse' gemappt.
+export type Phase = 'diagnose' | 'analyse' | 'umsetzung'
 
 export type PainPoint = {
   id: string
@@ -189,6 +195,53 @@ export type DataLayer = {
   notes?: string
 }
 
+/**
+ * Ideen-Karte (Phase 1): „Was KI in diesem Bereich kann" — vom Coach aufs
+ * Canvas gelegt (wie die Landingpage-Karten). Klick schickt eine Chat-Nachricht,
+ * mit der der Coach den Bereich vertieft.
+ */
+export type IdeaCard = {
+  id: string                          // idea_1
+  /** Geschäftsbereich, unter dem die Karte gruppiert wird — z.B. "Vermarktung & Anfragen" */
+  area: string
+  title: string
+  description: string
+  /** Kurzer Ablauf-Teaser im Landingpage-Stil: "Anfrage kommt rein → … → Antwort raus" */
+  flow?: string
+  /** proposed = vorgeschlagen · interested = Nutzer will vertiefen · dismissed = abgewunken */
+  status?: 'proposed' | 'interested' | 'dismissed'
+}
+
+/** Tool-Bewertung (Phase 2): mögliche Zusatz-Tools mit Sternen, Pro/Contra, Kosten. */
+export type ToolEvaluation = {
+  id: string                          // te_1
+  tool_name: string
+  /** Domain fürs Logo (Favicon-Service) — z.B. "canva.com" */
+  logo_domain?: string
+  /** 1–5 Sterne */
+  rating?: number
+  pros: string[]
+  cons: string[]
+  cost_monthly?: string               // z.B. "0 € (Free Tier)" / "ab 12 €/Monat"
+  /** Einordnung in einem Satz — wofür/warum (nicht) empfohlen */
+  verdict?: string
+  linked_pain_point?: string
+  linked_use_case?: string
+}
+
+/**
+ * Struktur-Plan (Phase 2/3): EINE Lösung, die aus MEHREREN Workflows besteht
+ * (z.B. Ads = Creatives-Flow + Publishing-Flow + Auswertungs-Flow).
+ */
+export type SolutionStructure = {
+  id: string                          // ss_1
+  title: string
+  linked_pain_point: string
+  /** ids der zugehörigen Workflows/Pläne (workflow_plans/workflows) */
+  workflow_ids: string[]
+  notes?: string
+}
+
 export type CanvasData = {
   pain_points: PainPoint[]
   use_cases: UseCase[]
@@ -204,6 +257,12 @@ export type CanvasData = {
   data_layer?: DataLayer
   /** Phase-3/4: Dokument-/Nachrichten-Vorlagen je Workflow (Angebote, Mails, …) */
   document_templates?: DocumentTemplate[]
+  /** Phase-1: Ideen-Karten „was KI hier kann" (klickbar, vom Coach gelegt) */
+  idea_cards?: IdeaCard[]
+  /** Phase-2: bewertete Zusatz-Tools (Sterne, Pro/Contra, Kosten) */
+  tool_evaluations?: ToolEvaluation[]
+  /** Phase-2/3: Lösungen aus mehreren Workflows (Struktur-Pläne) */
+  solution_structures?: SolutionStructure[]
 }
 
 // Session

@@ -1,4 +1,4 @@
-# Axantilo – Project Documentation (Stand: Juni 2026)
+# Axantilo – Project Documentation (Stand: Juli 2026)
 
 Dieses Dokument ist die **Single Source of Truth** für die gesamte Architektur, das Datenmodell und die Vision von Axantilo. Es ersetzt alte Spezifikationen und spiegelt den realen Code-Stand wider.
 
@@ -30,6 +30,14 @@ Um Kosten zu senken und die Intelligenz zu maximieren, läuft Axantilo **nicht**
 - **Rolle:** Ein Berater, der gezielt Fragen stellt und Lösungen erarbeitet.
 - **Modell:** `mistral-large-latest` (teuer, aber hochintelligent im Text).
 - **Route:** `/api/chat`
+- **Prompt-System (Coach v2, Juli 2026):** Der System-Prompt ist **modular** —
+  `AXANTILO_SHARED_RULES` (Tag-/Stil-Vertrag) + `coach/prompts/base.md`
+  (Identität, **Modus-Regel Führen/Ausführen**, Einwand-Trio, Guardrails) +
+  ein Phasenmodul `coach/prompts/phase_{diagnose|analyse|plan|umsetzung}.md`,
+  assembliert pro Request in `lib/coach/assemble.ts`. Prompt-Änderungen =
+  Markdown-Edits, im Dev ohne Neustart wirksam. Revert: `COACH_V2=false`
+  (alter monolithischer Pfad in `lib/claude.ts` bleibt intakt). Details:
+  `coach/assembly/assemble_prompt.md`; Ziel-Ausbaustufe: `coach/zielbild/`.
 
 ### 2.2 Der Blob Builder (Mistral Small)
 - **Aufgabe:** Strukturiert Daten. Nimmt den rohen Chatverlauf und extrahiert daraus das JSON für das UI-Canvas (Pain Points, Workflows).
@@ -135,6 +143,30 @@ Wissensdatenbank für den Coach mit **atomaren Dateien**: Jede Datei = eine voll
 
 ## 5. Phasenablauf im Detail
 
+### Leitprinzipien des Coach-Gesprächs (Coach v2, `coach/prompts/base.md`)
+
+Diese Regeln gelten **in jeder Phase** und sind die Grundidee des Systems:
+
+- **Modus-Regel (Führen/Ausführen):** Zögert oder zweifelt der Nutzer
+  (Warum-/Sicherheits-/Sinnfragen), wechselt der Coach sofort in den
+  Führen-Modus — erklären, Einwand lösen, Vertrauen — egal wie weit die
+  Umsetzung ist. Erst wenn gelöst, geht es im Ausführen-Modus exakt dort
+  weiter. Führen schlägt Fortschritt.
+- **Einwand-Trio:** Kontrollverlust → Entwurfsmodus/Freigabe-Schritt;
+  Datenschutz → EU-Hosting/DSGVO/AVV in 1–2 Sätzen; „zu technisch" →
+  „dieses Gespräch IST das Setup".
+- **Türsteher-Prinzip:** `phase_complete` vom Modell ist nur ein Signal —
+  ob der Übergang stattfindet, prüft Code (`lib/can-phase-complete.ts`,
+  Übersicht in `coach/config/phases.json`).
+- **Hartes Ja-Gate:** Kein Ablauf wird gebaut/live geschaltet ohne explizit
+  bestätigte Klartext-Zusammenfassung („Wenn X passiert, dann: 1… 2… 3…").
+- **Default-Vorschläge statt offener Fragen:** Einstellungen kommen als
+  Vorschlag mit Standardwert („Follow-up an Tag 1/3/7 — passt?"), Ausnahmen
+  werden aktiv abgefragt.
+- **„Es läuft"-Moment:** Nach dem Testlauf übersetzt der Coach das Ergebnis
+  in Alltagssprache mit etwas Greifbarem; Abschluss immer mit: was läuft
+  automatisch / wie pausieren / der Chat bleibt der Draht.
+
 ### Onboarding (Adaptive Pfad-Logik)
 Basierend auf den Antworten im Onboarding ändert der Coach seine Strategie:
 Vier Pfade je nach Onboarding-Ziel (`{{ziel}}`-Variable):
@@ -180,10 +212,15 @@ Ein Dashboard wird **automatisch** aus den deployten Workflows + dem Data Layer 
 
 ---
 
-## 8. Aktueller Build-Status (Juni 2026)
+## 8. Aktueller Build-Status (Juli 2026)
 
 - **Phase 1 (Diagnose) Chat + Canvas:** funktioniert.
 - **Onboarding:** funktioniert (inkl. Pfad-Variable `{{ziel}}`).
+- **Coach v2 (modulares Prompt-System):** live hinter `COACH_V2` (default an) —
+  base.md + 4 Phasenmodule in `coach/prompts/`, Assembly in
+  `lib/coach/assemble.ts`, Diagnose-Gate im Türsteher
+  (`lib/can-phase-complete.ts`). Alte Prompts unverändert in `lib/claude.ts`
+  (Revert-Pfad) + Sicherung in `_archive/2026-07-02/`.
 - **Supabase-Schema:** deployed, **inkl. `pgvector`**.
 - **RAG-Struktur:** Knowledge-Ordner `/knowledge` + `knowledge_base`-Tabelle + Indexierung + Admin-UI angelegt und getestet.
 - **n8n-Anbindung:** Live-Instanz auf Hostinger VPS erreichbar; Deploy-/Execution-Routen vorhanden.

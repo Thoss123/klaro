@@ -8,6 +8,8 @@ export default defineConfig([
     ".next/",
     "dist/",
     ".git/",
+    // Agent-Worktrees anderer Sessions — werden dort separat gelintet.
+    ".claude/worktrees/",
     "next-env.d.ts",
     // Standalone CommonJS dev/debug scripts — not part of the Next.js app.
     "mcp-tools.js",

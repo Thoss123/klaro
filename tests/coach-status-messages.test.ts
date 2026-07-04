@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
 
 describe('coachStatusMessageForCanvas', () => {
-  it('explains plan phase deferral in coach voice', () => {
-    const msg = coachStatusMessageForCanvas('orchestration_deferred', 'plan');
+  it('explains workflow deferral in coach voice (merged analyse)', () => {
+    const msg = coachStatusMessageForCanvas('orchestration_deferred', 'analyse');
     expect(msg).toMatch(/Workflow-Plan/);
     expect(msg).not.toMatch(/\[System/i);
   });
 
-  it('stays silent when plan canvas already has workflows', () => {
-    const msg = coachStatusMessageForCanvas('orchestration_deferred', 'plan', {
+  it('stays silent when the analyse canvas already has workflows', () => {
+    const msg = coachStatusMessageForCanvas('orchestration_deferred', 'analyse', {
       workflows: [
         {
           id: 'w1',
@@ -22,12 +22,12 @@ describe('coachStatusMessageForCanvas', () => {
     expect(msg).toBeNull();
   });
 
-  it('explains awaiting user input in plan', () => {
-    const msg = coachStatusMessageForCanvas('plan_awaiting_workflow_chat', 'plan');
-    expect(msg).toMatch(/deine Antwort/);
+  it('explains awaiting user input in the merged analyse', () => {
+    const msg = coachStatusMessageForCanvas('thin_user_context', 'analyse');
+    expect(msg).toMatch(/Workflow-Plan|Konkretes/);
   });
 
   it('returns null for hidden init', () => {
-    expect(coachStatusMessageForCanvas('hidden_init', 'plan')).toBeNull();
+    expect(coachStatusMessageForCanvas('hidden_init', 'analyse')).toBeNull();
   });
 });

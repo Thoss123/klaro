@@ -25,21 +25,21 @@ describe('evaluateCanvasEligibility', () => {
     expect(r.reason).toBe('worker_already_running');
   });
 
-  it('blocks thin user context in plan (await workflow chat)', () => {
-    const r = evaluateCanvasEligibility({ isHiddenInit: false, projectId: 'p', phase: 'plan', userMessages: [{ role: 'user', content: 'ok' }], workerAlreadyScheduled: false });
-    expect(r.reason).toBe('plan_awaiting_workflow_chat');
+  it('blocks thin user context in the merged analyse', () => {
+    const r = evaluateCanvasEligibility({ isHiddenInit: false, projectId: 'p', phase: 'analyse', userMessages: [{ role: 'user', content: 'ok' }], workerAlreadyScheduled: false });
+    expect(r.reason).toBe('thin_user_context');
   });
 
   it('ignores hidden kickoff lines for eligibility', () => {
     const r = evaluateCanvasEligibility({
       isHiddenInit: false,
       projectId: 'p',
-      phase: 'plan',
-      userMessages: [{ role: 'user', content: getHiddenInitMessage('plan') }],
+      phase: 'analyse',
+      userMessages: [{ role: 'user', content: getHiddenInitMessage('analyse') }],
       workerAlreadyScheduled: false,
     });
     expect(r.eligible).toBe(false);
-    expect(r.reason).toBe('plan_awaiting_workflow_chat');
+    expect(r.reason).toBe('thin_user_context');
   });
 
   it('blocks diagnose welcome-only chatter', () => {

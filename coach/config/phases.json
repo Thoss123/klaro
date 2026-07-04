@@ -1,0 +1,55 @@
+{
+  "_doc": {
+    "zweck": "Maschinenlesbare Übersicht des LIVE-Phasensystems (Coach v2, 3 Phasen seit dem Merge von Analyse+Plan). Tools werden in lib/ai-tools.ts (getToolsForPhase) gefiltert, Code-Gates in lib/can-phase-complete.ts geprüft (Türsteher-Prinzip: Übergänge entscheidet Code, nicht das Modell). Prompt-Gates stehen zusätzlich als harte Regeln in den Phasenmodulen — sie sind nicht Code-prüfbar, weil die betroffenen Canvas-Daten teils asynchron geschrieben werden (Race beim phase_complete-Zeitpunkt).",
+    "prompt_assembly": "AXANTILO_SHARED_RULES + coach/prompts/base.md + coach/prompts/phase_{phase}.md — siehe lib/coach/assemble.ts und coach/assembly/assemble_prompt.md.",
+    "revert": "COACH_V2=false in .env.local → alter monolithischer Prompt-Pfad (lib/claude.ts) läuft unverändert (dort deckt der alte Phase-2-Prompt die gemergte Analyse ab).",
+    "legacy": "Phasen-Wert 'plan' existiert nur noch in alten DB-Zeilen und wird über normalizePhase (lib/phases.ts) als 'analyse' behandelt.",
+    "zielbild": "Die Ausbaustufe mit eigenem State-Objekt, 6 Phasen und n8n-Orchestrator liegt dokumentiert in coach/zielbild/."
+  },
+  "phases": {
+    "diagnose": {
+      "modul": "coach/prompts/phase_diagnose.md",
+      "tools": ["search_knowledge", "web_search", "prepare_phase", "request_credential", "deploy_workflow", "test_workflow", "edit_workflow"],
+      "tags": ["canvas_update", "options", "phase_complete"],
+      "rag_auto_inject": { "types": ["wissen"], "phase_filter": "1" },
+      "exit_to": ["analyse"],
+      "code_gate": "canAdvanceFromPhase('diagnose'): mindestens 1 potenzielle Verbesserung mit Titel auf dem Canvas (reason: no_pain_points)",
+      "prompt_gates": [
+        "Einwände zuerst systematisch geklärt (Nutzer bestätigt), dann Diagnose",
+        "Je Punkt: Tätigkeit inkl. WIE, Volumen pro Monat, Zeit, Wer",
+        "Ideen-Karten gezeigt (idea_cards) und Nutzer über Möglichkeiten informiert",
+        "Keine Lösungen/Tools vorgeschlagen (Nutzer-Ideen erfassen ist erlaubt)"
+      ]
+    },
+    "analyse": {
+      "modul": "coach/prompts/phase_analyse.md",
+      "tools": ["search_knowledge", "web_search", "prepare_phase", "request_credential", "deploy_workflow", "test_workflow", "edit_workflow", "research_solutions", "create_document_template"],
+      "tags": ["canvas_update", "trigger_canvas_update", "workflow_plan", "options", "phase_complete"],
+      "rag_auto_inject": { "types": ["wissen"], "phase_filter": "2|3 (alte Zählung — gemergte Phase deckt beide ab)" },
+      "exit_to": ["umsetzung"],
+      "code_gate": "canAdvanceFromPhase('analyse'): mindestens 1 valider Workflow-Plan; ohne coachSignaledComplete zusätzlich: jeder Punkt hat einen verlinkten Plan (reason: no_workflows | pain_points_without_workflow)",
+      "prompt_gates": [
+        "Alle Punkte haben Ist-Tools (konkrete Programmnamen, keine Annahmen)",
+        "Zusatz-Tools mit tool_evaluations bewertet (Sterne, Pro/Contra, Kosten); Kosten immer als Investition (ROI)",
+        "Reihenfolge vorgeschlagen, begründet und vom Nutzer bestätigt (rank)",
+        "Je Punkt: Klartext-Zusammenfassung im Wenn-Dann-Format + explizites Ja (hartes Gate — Guardrail 2 in base.md), erst dann workflow_plan",
+        "Lösungen dürfen aus mehreren Workflows bestehen (solution_structures)",
+        "Explizite Zustimmung zum Übergang"
+      ]
+    },
+    "umsetzung": {
+      "modul": "coach/prompts/phase_umsetzung.md",
+      "tools": ["search_knowledge", "web_search", "prepare_phase", "request_credential", "deploy_workflow", "test_workflow", "edit_workflow", "build_workflow", "create_document_template"],
+      "tags": ["options", "phase_complete", "canvas_built (vom Server nach Build)"],
+      "rag_auto_inject": { "types": ["wissen"], "phase_filter": "4" },
+      "exit_to": [],
+      "code_gate": "kein Code-Gate — Abschluss führt in die Auswahl-Karte (neuer Workflow / neuer Bereich), kein Phasen-Übergang",
+      "prompt_gates": [
+        "Reihenfolge pro Plan: bauen → prüfen → Zugänge → testen → live; bei Struktur-Plänen (mehrere Workflows) sinnvolle Bau-Reihenfolge vorschlagen",
+        "Kein Live-Gang ohne sauberen Testlauf; Testergebnis in Alltagssprache (Es-läuft-Moment)",
+        "Abschluss je Ablauf: was läuft automatisch / wie pausieren / Chat bleibt der Draht",
+        "Betrieb: Änderung an Gebautem → edit_workflow; neuer Wunsch → build_workflow Modus B"
+      ]
+    }
+  }
+}

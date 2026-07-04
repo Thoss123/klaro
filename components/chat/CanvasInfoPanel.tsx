@@ -2,14 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Check, Lock } from 'lucide-react';
-
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
-const PHASE_LABELS: Record<string, string> = {
-  diagnose: 'Diagnose',
-  analyse: 'Analyse',
-  plan: 'Plan',
-  umsetzung: 'Umsetzung',
-};
+import { PHASE_ORDER, PHASE_SHORT_LABELS as PHASE_LABELS, phaseIndex } from '@/lib/phases';
 
 type Props = {
   phase: string;
@@ -20,8 +13,9 @@ type Props = {
 };
 
 /**
- * Fixed top-right overlay on the canvas (desktop): phase progress pill with
+ * Fixed top-right overlay on the canvas (xl+): phase progress pill with
  * dropdown + project name as a plain auto-saving input (no dropdown).
+ * Below xl: use sidebar ProjectMenu instead — avoids overlap with narrow canvas.
  */
 export default function CanvasInfoPanel({
   phase,
@@ -54,8 +48,8 @@ export default function CanvasInfoPanel({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const currentIdx = Math.max(0, PHASE_ORDER.indexOf(phase));
-  const maxReachedIdx = Math.max(0, PHASE_ORDER.indexOf(maxReachedPhase));
+  const currentIdx = Math.max(0, phaseIndex(phase));
+  const maxReachedIdx = Math.max(0, phaseIndex(maxReachedPhase));
   const progress = ((currentIdx + 1) / PHASE_ORDER.length) * 100;
 
   const handleNameChange = (val: string) => {
@@ -71,7 +65,7 @@ export default function CanvasInfoPanel({
   };
 
   return (
-    <div ref={ref} className="absolute top-6 right-6 z-30 flex items-stretch gap-2.5">
+    <div ref={ref} className="absolute top-6 right-6 z-30 hidden xl:flex items-stretch gap-2.5">
       {/* Phase progress pill with dropdown */}
       <div className="relative">
         <button

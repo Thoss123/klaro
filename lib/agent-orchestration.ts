@@ -105,8 +105,9 @@ export async function runCanvasPipeline(
     totalTokens: 0,
   };
 
-  // Short-circuit: orchestration only governs workflow building in phase `plan`.
-  if (input.phase !== 'plan') {
+  // Short-circuit: orchestration only governs workflow building in der
+  // gemergten Phase `analyse` ('plan' als Legacy-Alias).
+  if (input.phase !== 'analyse' && input.phase !== 'plan') {
     olog('pipeline', true, `short-circuit phase=${input.phase}`);
     return { ...base, workerDirective: '' };
   }
@@ -128,7 +129,7 @@ export async function runCanvasPipeline(
 
   if (sup.data.verdict !== 'approved') {
     const existingWorkflows = countValidWorkflows(input.canvas);
-    if (input.phase === 'plan' && existingWorkflows > 0) {
+    if (existingWorkflows > 0) {
       olog(
         'pipeline',
         true,

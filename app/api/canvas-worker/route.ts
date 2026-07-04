@@ -12,13 +12,16 @@ export async function POST(req: NextRequest) {
     const { history, currentCanvas, phase, projectId } = await req.json();
     type ChatMsg = { role: string; content: string };
 
+    // Gemergte Phase 2: Legacy-Wert 'plan' läuft als 'analyse' weiter.
+    const workerPhase = (phase || 'diagnose') === 'plan' ? 'analyse' : (phase || 'diagnose');
+
     if (!projectId) {
       logSync('canvas', 'skip', 'missing projectId');
       return NextResponse.json({ status: 'skipped', reason: 'missing_project_id' });
     }
 
     const hist = filterCanvasHistory(history || []);
-    const histCheck = evaluateHistoryForCanvas(phase || 'diagnose', hist);
+    const histCheck = evaluateHistoryForCanvas(workerPhase, hist);
     if (!histCheck.ok) {
       logSync('canvas', 'skip', histCheck.detail, { reason: histCheck.reason, phase });
       return NextResponse.json({ status: 'skipped', reason: 'insufficient_context', detail: histCheck.detail });
@@ -38,12 +41,12 @@ export async function POST(req: NextRequest) {
     const client = new Mistral({ apiKey });
 
     // ── Sprint 3: Agent-Orchestrierung ──────────────────────────────────────
-    // In Phase `plan` läuft die Pipeline (Supervisor → Research → Workflow-QA)
-    // vor der Extraktion. Sie kann (a) blocken (Coach driftet) oder (b) eine
-    // ZWINGENDE Worker-Vorgabe liefern (ein Workflow, Reihenfolge, QA-Fixes).
+    // In der gemergten Analyse läuft die Pipeline (Supervisor → Research →
+    // Workflow-QA) vor der Extraktion. Sie kann (a) blocken (Coach driftet)
+    // oder (b) eine ZWINGENDE Worker-Vorgabe liefern (Workflow, Reihenfolge, QA-Fixes).
     let workerDirective = '';
     const pipeline = await runCanvasPipeline(mistralCompleteJson(client), {
-      phase: phase || 'diagnose',
+      phase: workerPhase,
       history: hist,
       canvas: (currentCanvas || {}) as Parameters<typeof runCanvasPipeline>[1]['canvas'],
     });
@@ -64,19 +67,16 @@ export async function POST(req: NextRequest) {
     }
     workerDirective = pipeline.workerDirective;
 
-    // Format chat history for context.
-    // In Phase `plan` extrahieren wir nur aus dem letzten Gesprächsblock (~7 Turns),
-    // damit der Worker nicht alten Kontext aus früheren Pain Points aufgreift.
-    const extractionHistory =
-      (phase || 'diagnose') === 'plan' ? (history as ChatMsg[]).slice(-14) : history;
-    const chatContext = (extractionHistory as ChatMsg[])
+    // Format chat history for context. Volle Historie — die gemergte Analyse
+    // braucht auch ältere Tool-Nennungen, nicht nur den letzten Gesprächsblock.
+    const chatContext = (history as ChatMsg[])
       .map((m) => `${m.role === 'user' ? 'Nutzer' : 'Coach'}: ${m.content}`)
       .join('\n\n');
 
-    // Phase `plan`: der Coach hängt die pain_point_id an den trigger-Tag.
+    // Gemergte Analyse: der Coach hängt die pain_point_id an den trigger-Tag.
     // Wir extrahieren sie und fokussieren den Worker hart auf genau diesen Pain Point.
     let focusPainPointId: string | null = null;
-    if ((phase || 'diagnose') === 'plan') {
+    if (workerPhase === 'analyse') {
       const triggerMsgs = (history as ChatMsg[]).filter(
         m => m.role === 'assistant' && typeof m.content === 'string' && m.content.includes('<trigger_canvas_update'),
       );
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     // System prompt explaining what to extract based on phase
     let extractionInstruction = '';
-    if (phase === 'diagnose') {
+    if (workerPhase === 'diagnose') {
       extractionInstruction = `Du extrahierst:
 1. **company** (Objekt) — NUR primitive Strings/Arrays, KEINE verschachtelten Objekte:
    offer (string), target_customers (string), acquisition (string), process_steps (string[]), change_appetite (string), notes (string).
@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
 3. **documents** (optional): { id, title, content, format:'markdown', phase:'diagnose' } — Unternehmenszusammenfassung.
 **workflows:** NICHT setzen (weglassen oder []).
 Behalte bestehende Einträge, ergänze oder aktualisiere — nichts erfinden.`;
-    } else if (phase === 'analyse') {
-      extractionInstruction = `Du extrahierst:
+    } else if (workerPhase === 'analyse') {
+      extractionInstruction = `Du extrahierst (gemergte Phase Analyse & Plan):
 - **pain_points** (NUR die bestehenden aus dem Canvas — KEINE neuen erfinden, Titel/Beschreibung nicht verändern): Wenn Nutzer und Coach im Chat eine **Reihenfolge/Priorisierung** der Pain Points festgelegt oder bestätigt haben, setze auf jedem betroffenen pain_point das Feld **rank** (Zahl, 1 = höchste Priorität, fortlaufend ohne Lücken). Ist im Chat keine Reihenfolge bestätigt, lass rank unverändert/weg.
 - **use_cases**: id, title, linked_pain_point, **tools** (string[]).
   **STRENG:** Jedes Tool muss wörtlich im Chat vom **Nutzer** vorkommen (z.B. "Canva", "Word", "ChatGPT").
@@ -106,14 +106,10 @@ Behalte bestehende Einträge, ergänze oder aktualisiere — nichts erfinden.`;
   Keine Ziel-Lösungen als Tool (kein "KI-gestützte Textgenerierung").
   KEIN automation_level pro Use Case.
 - **documents** (optional): Tool-/Prozess-Notizen mit phase:'analyse' (z.B. "Aktuelle Marketing-Tools").
-**workflows:** NICHT setzen (weglassen oder []) — das ist Phase 3.
+**workflows:** NICHT setzen (weglassen oder []) — Workflow-Pläne entstehen per Tool Call/workflow_plan-Tag, nicht durch dich.
+**tool_evaluations / idea_cards / solution_structures:** NICHT setzen — die schreibt der Coach selbst.
 Behalte bestehende Einträge, aktualisiere tools nur mit verifizierten Namen — nichts erfinden.`;
-    } else if (phase === 'plan') {
-      extractionInstruction = `Du extrahierst in Phase 3 KEINE workflows mehr, da diese jetzt per Tool Call erstellt werden.
-      
-- **documents** (optional): phase:'plan'.
-**use_cases / pain_points / company:** vom bestehenden Canvas übernehmen, nicht neu erfinden.`;
-    } else if (phase === 'umsetzung') {
+    } else if (workerPhase === 'umsetzung') {
       extractionInstruction = `Phase 4: documents mit phase:'umsetzung' falls Umsetzungsnotizen. Workflows nur ergänzen wenn im Chat besprochen.`;
     }
 
@@ -126,7 +122,7 @@ Behalte bestehende Einträge, aktualisiere tools nur mit verifizierten Namen —
     const globalRules = `
 **Phase-Grenzen (strikt):**
 - Extrahiere NUR Felder aus der Anweisung oben für die aktuelle Phase.
-- **workflows** nur in Phase "plan" oder "umsetzung" — sonst Feld weglassen.
+- **workflows** nur in Phase "umsetzung" (und nur wenn im Chat besprochen) — sonst Feld weglassen.
 `;
 
     const systemPrompt = `Du bist ein unsichtbarer Daten-Extraktor-Agent für ein KI-Beratungstool.
@@ -167,7 +163,7 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
     const updatedCanvas = normalizeCanvasData(
       newCanvas,
       (currentCanvas || null) as Parameters<typeof normalizeCanvasData>[1],
-      phase || 'diagnose',
+      workerPhase,
       hist
     );
 
@@ -187,8 +183,8 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
       }
     }
 
-    if (phase !== 'umsetzung' && Array.isArray(newCanvas.workflows) && newCanvas.workflows.length > 0) {
-      logSync('canvas', 'skip', `workflows ignored — phase=${phase} (only umsetzung extracts workflows)`);
+    if (workerPhase !== 'umsetzung' && Array.isArray(newCanvas.workflows) && newCanvas.workflows.length > 0) {
+      logSync('canvas', 'skip', `workflows ignored — phase=${workerPhase} (only umsetzung extracts workflows)`);
     }
 
     const diff = summarizeCanvasDiff(

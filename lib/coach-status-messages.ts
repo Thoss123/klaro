@@ -18,23 +18,17 @@ export function coachStatusMessageForCanvas(
     case 'plan_awaiting_workflow_chat':
     case 'thin_user_context':
       if (phase === 'umsetzung') return null;
-      if (phase === 'plan') {
-        return (
-          'Kurz zur Roadmap rechts: Den Workflow-Plan lege ich an, sobald wir hier einen ' +
-          'konkreten Ablauf für einen Pain Point besprochen haben. Dafür brauche ich noch ' +
-          'deine Antwort — danach skizziere ich den Plan automatisch dort.'
-        );
-      }
       if (phase === 'diagnose') {
         return (
           'Die Unternehmens- und Pain-Point-Karte rechts fülle ich aus, sobald du mir ' +
           'ein paar konkrete Beispiele aus deinem Alltag geschrieben hast — ein kurzer Satz reicht.'
         );
       }
-      if (phase === 'analyse') {
+      if (phase === 'analyse' || phase === 'plan') {
         return (
-          'Die Tool-Übersicht rechts ergänze ich, sobald du mir zu den genutzten Programmen ' +
-          'etwas Konkretes geschrieben hast — dann trage ich das dort ein.'
+          'Die Übersicht rechts ergänze ich, sobald du mir etwas Konkretes geschrieben hast — ' +
+          'Tools trage ich direkt ein, und den Workflow-Plan lege ich an, sobald wir einen ' +
+          'konkreten Ablauf besprochen haben.'
         );
       }
       return (
@@ -66,10 +60,7 @@ export function coachStatusMessageForCanvas(
 
 /** Nach erfolgreichem Canvas-Update — optional, wenn Coach gerade trigger gesendet hat. */
 export function coachStatusMessageCanvasUpdating(phase: string): string | null {
-  if (phase === 'plan') {
-    return 'Ich skizziere den Workflow gerade in der Roadmap rechts — einen Moment, dann kannst du dort die Schritte prüfen.';
-  }
-  if (phase === 'diagnose' || phase === 'analyse') {
+  if (phase === 'diagnose' || phase === 'analyse' || phase === 'plan') {
     return 'Ich trage das gerade in die Roadmap rechts ein — einen Moment.';
   }
   return null;

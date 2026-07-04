@@ -1,4 +1,5 @@
 import { getSystemPrompt } from '@/lib/claude'
+import { getCoachSystemPrompt, isCoachV2Enabled } from '@/lib/coach/assemble'
 import { NextRequest } from 'next/server'
 import { stripInternalTags } from '@/lib/strip-internal-tags'
 import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels'
@@ -20,6 +21,16 @@ export async function POST(req: NextRequest) {
     const currentPhase = phase || 'diagnose'
     let systemPrompt = getSystemPrompt(currentPhase)
 
+    // Coach v2: modularer Prompt aus /coach/prompts (base + Phasenmodul).
+    // Revert: COACH_V2=false in .env.local — dann läuft der alte Pfad oben.
+    if (isCoachV2Enabled()) {
+      const v2Prompt = getCoachSystemPrompt(currentPhase)
+      if (v2Prompt) {
+        systemPrompt = v2Prompt
+        console.log('[coach-v2] Modularer Coach-Prompt aktiv, Phase:', currentPhase)
+      }
+    }
+
     // ── DEBUG LOG ──────────────────────────────────────────────────────────────
     console.log('\n=== /api/chat REQUEST ===')
     console.log('Phase:', currentPhase)
@@ -39,9 +50,13 @@ export async function POST(req: NextRequest) {
         : `Sprich die Gruppe mit "ihr" an; Ansprechpartner: ${vorname}. Keine Dialog-Präfixe.`;
 
       const brancheVal = onboarding.branche?.trim() || 'Nicht angegeben'
+      const rechercheVal = onboarding.firmen_recherche?.trim();
+      const rechercheHinweis = rechercheVal
+        ? ` Automatisch recherchiert (ungeprüft): ${rechercheVal} Greife das gleich zu Beginn des Gesprächs auf und frag kurz nach, ob das so stimmt bzw. was du ergänzen musst — geh nicht davon aus, dass es exakt korrekt ist.`
+        : '';
       const firmenKontext =
         firmenname !== 'Nicht angegeben'
-          ? `Unternehmen: ${firmenname}${brancheVal !== 'Nicht angegeben' ? ` (${brancheVal})` : ''}. Rolle des Gesprächspartners: ${rolle}. Nutze den Firmennamen für Kontext — nichts erfinden.`
+          ? `Unternehmen: ${firmenname}${brancheVal !== 'Nicht angegeben' ? ` (${brancheVal})` : ''}. Rolle des Gesprächspartners: ${rolle}. Nutze den Firmennamen für Kontext — nichts erfinden.${rechercheHinweis}`
           : `Rolle des Gesprächspartners: ${rolle}.`;
 
       systemPrompt = systemPrompt.replace(/{{vorname}}/g, vorname);
@@ -138,6 +153,40 @@ export async function POST(req: NextRequest) {
     systemPrompt = systemPrompt.replace(/{{company}}/g, companyJson);
     systemPrompt = systemPrompt.replace(/{{tool_recommendations}}/g, formatToolRecommendations());
 
+    // ── Interne Gesprächsstrategie (projects.strategy) → {{strategie}} ────────
+    // Projektweit (jede Phase = eigene Session-Zeile); fail-open — ohne Strategie
+    // läuft der Coach einfach ohne Hypothesen los.
+    let strategieText = 'Noch keine Strategie vorhanden.';
+    if (project_id && systemPrompt.includes('{{strategie}}')) {
+      try {
+        const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+        const supabase = await createSupabaseServerClient();
+        const { data: projRow } = await supabase
+          .from('projects')
+          .select('strategy')
+          .eq('id', project_id)
+          .maybeSingle();
+        if (projRow?.strategy?.trim()) strategieText = projRow.strategy.trim();
+      } catch (e: unknown) {
+        console.warn('[strategie-inject] failed (fail-open):', e instanceof Error ? e.message : String(e));
+      }
+    }
+    systemPrompt = systemPrompt.replace(/{{strategie}}/g, strategieText);
+
+    // Node-Map-Regeln (eine-Node-eine-Aufgabe, Freigabe=sendAndWait+Loopback, Chain-vs-Agent,
+    // selbst-liefernde Tools, Trigger-Wahl, Pflichtfelder) — der Coach soll sie IMMER befolgen.
+    const { formatNodeMapForPrompt } = await import('@/lib/node-map');
+    const nodeMapRules = formatNodeMapForPrompt([
+      'n8n-nodes-base.scheduleTrigger', 'n8n-nodes-base.webhook', 'n8n-nodes-base.gmailTrigger',
+      'n8n-nodes-base.formTrigger', 'n8n-nodes-base.gmail', 'n8n-nodes-base.slack',
+      'n8n-nodes-base.if', 'n8n-nodes-base.switch', 'n8n-nodes-base.merge', 'n8n-nodes-base.wait',
+      '@n8n/n8n-nodes-langchain.agent', '@n8n/n8n-nodes-langchain.chainLlm',
+      '@n8n/n8n-nodes-langchain.chainSummarization', '@n8n/n8n-nodes-langchain.informationExtractor',
+      'n8n-nodes-base.googleDrive', 'n8n-nodes-base.googleDocs', 'n8n-nodes-base.googleSheets',
+      'n8n-nodes-base.airtable', 'n8n-nodes-base.set', 'n8n-nodes-base.httpRequest',
+    ]);
+    systemPrompt = systemPrompt.replace(/{{node_map_rules}}/g, nodeMapRules);
+
     // Current date → the coach's sense of "now" (otherwise it anchors on its training cutoff,
     // which makes "latest features/pricing" answers stale). German long format, e.g.
     // "Freitag, 12. Juni 2026".
@@ -182,11 +231,13 @@ export async function POST(req: NextRequest) {
     // zur aktuellen Phase passen — so erreicht das Wissen den Nutzer, auch wenn der
     // Coach das Tool nicht von sich aus aufruft.
     try {
-      const PHASE_NR: Record<string, string> = {
-        diagnose: '1', analyse: '2', plan: '3', umsetzung: '4',
+      // Wissens-Frontmatter taggt Phasen als Nummern (1–4, alte Zählung) —
+      // die gemergte Analyse deckt die alten Phasen 2 UND 3 ab.
+      const PHASE_NRS: Record<string, string[]> = {
+        diagnose: ['1'], analyse: ['2', '3'], plan: ['2', '3'], umsetzung: ['4'],
       };
-      const phaseNr = PHASE_NR[currentPhase];
-      if (phaseNr && lastMessage.trim().length > 1) {
+      const phaseNrs = PHASE_NRS[currentPhase];
+      if (phaseNrs && lastMessage.trim().length > 1) {
         const { searchKnowledge } = await import('@/lib/rag');
         const wissenHits = await searchKnowledge({
           query: lastMessage,
@@ -198,7 +249,7 @@ export async function POST(req: NextRequest) {
         const relevant = wissenHits.filter((h) => {
           const p = h?.metadata?.phase;
           if (p === undefined || p === null || String(p).trim() === '') return true; // ungetaggt → überall ok
-          return String(p).includes(phaseNr);
+          return phaseNrs.some(nr => String(p).includes(nr));
         });
         if (relevant.length > 0) {
           const block = relevant.map((h) => `### ${h.title}\n${h.content}`).join('\n\n---\n\n');
@@ -284,8 +335,8 @@ export async function POST(req: NextRequest) {
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"request_credential","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
                  return { status: 'pending', message: 'User has been prompted for credentials in the UI. Await confirmation.' };
                } else if (toolCall.name === 'create_document_template') {
-                 if (currentPhase !== 'plan' && currentPhase !== 'umsetzung') {
-                   return { status: 'error', message: 'create_document_template nur in Phase 3 oder 4.' };
+                 if (currentPhase !== 'analyse' && currentPhase !== 'plan' && currentPhase !== 'umsetzung') {
+                   return { status: 'error', message: 'create_document_template nur in Analyse & Plan oder Umsetzung.' };
                  }
                  if (!project_id) {
                    return { status: 'error', message: 'Kein Projekt — create_document_template abgebrochen.' };
@@ -327,12 +378,15 @@ export async function POST(req: NextRequest) {
                    const { data: { user } } = await supabase.auth.getUser();
                    if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
 
+                   const editSteps = Array.isArray(toolCall.args.steps) ? toolCall.args.steps : [];
+                   const editEdges = Array.isArray(toolCall.args.edges) ? toolCall.args.edges : undefined;
                    const out = await editWorkflowOnCanvas(
                      supabase,
                      user.id,
                      project_id,
                      argStr(toolCall.args.workflow_id),
-                     argStr(toolCall.args.instruction) || argStr(toolCall.args.message),
+                     editSteps,
+                     editEdges,
                    );
                    if (!out.ok) {
                      return { status: 'error', message: out.error };
@@ -402,8 +456,8 @@ export async function POST(req: NextRequest) {
                    return { status: 'error', message: 'Build fehlgeschlagen.' };
                  }
                } else if (toolCall.name === 'research_solutions') {
-                 if (currentPhase !== 'plan') {
-                   return { options: [], note: 'Recherche nur in Phase 3 verfügbar.' };
+                 if (currentPhase !== 'analyse' && currentPhase !== 'plan') {
+                   return { options: [], note: 'Recherche nur in Analyse & Plan verfügbar.' };
                  }
                  // Signal the UI that research is running (shown as a status hint).
                  controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"research_solutions","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));

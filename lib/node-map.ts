@@ -28,6 +28,13 @@ export interface NodeMapEntry {
   credentialType?: string;
   /** Typische Operationen als Kurzliste ("message:send"). */
   typicalOps?: string[];
+  /**
+   * Das Tool liefert dieses Ergebnis SELBST (z.B. Fireflies → "transkript").
+   * → KEIN separater KI-/Action-Schritt dafür; als Quelle/Trigger modellieren.
+   */
+  selfProduces?: string;
+  /** Kanonische Einzelverantwortung — ein Node, ein Job. */
+  oneJob?: string;
   /** Ein Satz: wie wird der Node korrekt eingebaut/verdrahtet. */
   wiringNote: string;
 }
@@ -154,7 +161,8 @@ export const NODE_MAP: NodeMapEntry[] = [
     role: 'action',
     credentialType: 'googleDriveOAuth2Api',
     typicalOps: ['file:upload', 'folder:create'],
-    wiringNote: `Dateien hochladen/ablegen; folderId wählen. ${GOOGLE_AUTH}`,
+    oneJob: 'Datei ablegen/hochladen — eigener Schritt, nie mit Transkription/KI in einen Node mischen.',
+    wiringNote: `Dateien hochladen/ablegen; folderId wählen. EIGENER Schritt (z.B. nach Transkript/KI). ${GOOGLE_AUTH}`,
   },
   {
     n8nType: 'n8n-nodes-base.googleCalendar',
@@ -253,14 +261,16 @@ export const NODE_MAP: NodeMapEntry[] = [
     aliases: ['ai agent', 'ki-agent', 'agent'],
     role: 'ai',
     typicalOps: ['promptType', 'text'],
-    wiringNote: 'Steht im Hauptflow; braucht ZWINGEND ein Chat Model als Sub-Node (ai_languageModel), optional Memory/Tools.',
+    oneJob: 'OFFENE Aufgabe: selbst entscheiden, Tools nutzen, mehrstufig/iterativ.',
+    wiringNote: 'NUR für offene Aufgaben (Tools nutzen, entscheiden, mehrstufig). Feste Einzelaufgabe (zusammenfassen/klassifizieren/extrahieren/aus Vorlage) → Basic LLM Chain. Braucht ZWINGEND ein Chat Model als Sub-Node (ai_languageModel), optional Memory/Tools.',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.chainLlm',
     displayName: 'Basic LLM Chain',
-    aliases: ['llm chain', 'prompt-kette', 'einfacher prompt'],
+    aliases: ['llm chain', 'prompt-kette', 'einfacher prompt', 'text generieren', 'umformulieren', 'aus vorlage'],
     role: 'ai',
-    wiringNote: 'Einfacher Prompt-Schritt im Hauptflow; braucht ein Chat Model als Sub-Node (ai_languageModel).',
+    oneJob: 'FESTE Einzelaufgabe: ein Prompt rein, ein Ergebnis raus — keine Tools, deterministisch.',
+    wiringNote: 'Default für feste KI-Aufgaben (generieren/umformulieren/Text aus Vorlage). Günstiger & verlässlicher als Agent, wenn keine Tools/Entscheidungen nötig. Braucht ein Chat Model als Sub-Node (ai_languageModel).',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.chainSummarization',
@@ -939,9 +949,19 @@ export const WIRING_PATTERNS: WiringPattern[] = [
     bau: 'IF nach dem Prüfschritt; Edge branch:"true" → Ja-Zweig, branch:"false" → Nein-Zweig. Wieder zusammenführen mit Merge: Edges der Zweige bekommen targetInput:0 bzw. targetInput:1. Bei >2 Fällen Switch mit branch:"switch-0/1/2".',
   },
   {
-    name: 'Human-in-the-Loop (Freigabe)',
-    wann: 'Ein Mensch soll prüfen/freigeben, bevor es weitergeht (z.B. Mail-Entwurf).',
-    bau: 'Einfachster Weg: sendAndWait-Operation (Gmail/Slack/Outlook/Teams/Discord/WhatsApp) — sendet die Nachricht und pausiert bis zum Freigabe-Klick. Alternativ manuell: Entwurf senden → Wait (bis Webhook/Zeit) → IF wertet die Antwort aus (true=senden, false=verwerfen).',
+    name: 'Human-in-the-Loop (Freigabe mit Rückschleife)',
+    wann: 'Ein Mensch soll prüfen/freigeben, bevor es weitergeht (z.B. Mail-/Angebots-Entwurf).',
+    bau: 'sendAndWait-Operation (Gmail/Slack/Outlook/Teams/Discord/WhatsApp) sendet den Entwurf an den Verantwortlichen und pausiert bis zur Antwort → IF wertet aus: branch:"true" (Freigabe) → Aktion ausführen; branch:"false" (Ablehnung) → Edge ZURÜCK zum Erzeuger-Schritt (mit Feedback überarbeiten), dann erneut zur Freigabe. NIE ein blanker IF ohne Senden/Warten.',
+  },
+  {
+    name: 'Eine Node = eine Aufgabe',
+    wann: 'Immer beim Entwerfen der Schritte.',
+    bau: 'Jeder Schritt macht genau EINE Sache. Tool, das sein Ergebnis selbst liefert (Fireflies/Otter = Transkript), ist die Quelle/der Trigger — nicht „transkribieren". Folgeaktionen (zusammenfassen, in Drive speichern, mailen) sind je ein eigener Node.',
+  },
+  {
+    name: 'KI: Chain vs. Agent',
+    wann: 'Sobald ein KI-Schritt geplant wird.',
+    bau: 'Feste Einzelaufgabe (zusammenfassen/klassifizieren/extrahieren/Text aus Vorlage) → Basic LLM Chain (chainLlm) bzw. Spezial-Chain (Summarization/InformationExtractor/TextClassifier). Offene Aufgabe (Tools, Entscheidungen, mehrstufig) → AI Agent. Beide brauchen ihr EIGENES Chat Model als Sub-Node.',
   },
   {
     name: 'Internet-Recherche',
@@ -965,13 +985,53 @@ export const WIRING_PATTERNS: WiringPattern[] = [
   },
 ];
 
+/**
+ * Externe Tools/Dienste, die KEINE eigenen n8n-Node-Typen sind, aber besonderes
+ * Verdrahtungs-Verhalten haben (z.B. Fireflies transkribiert selbst → als Quelle anbinden).
+ * Wird vom node-resolver UND im Prompt konsultiert.
+ */
+export interface ToolCapability {
+  /** Tool-/Dienst-Name + Phrasen, die darauf zeigen. */
+  aliases: string[];
+  /** Liefert dieses Ergebnis selbst → KEIN separater KI-/Action-Schritt dafür. */
+  selfProduces?: string;
+  /** n8n-Node, über den der Dienst als Quelle/Trigger andockt. */
+  triggerNode?: string;
+  /** Kurzer Hinweis für Prompt/Resolver. */
+  note: string;
+}
+
+export const TOOL_CAPABILITIES: ToolCapability[] = [
+  {
+    // Bewusst nur konkrete Dienst-NAMEN (nicht das generische „Transkript") — sonst würde
+    // „Transkript zusammenfassen" fälschlich als Quelle erkannt statt als KI-Folgeschritt.
+    aliases: ['fireflies', 'otter.ai', 'otter', 'tl;dv', 'tldv', 'fathom', 'meeting-bot', 'meeting bot'],
+    selfProduces: 'transkript',
+    triggerNode: 'n8n-nodes-base.webhook',
+    note: 'Fireflies/Otter & Co. transkribieren Meetings SELBST → in n8n als Trigger/Quelle (Webhook „Transkript fertig") anbinden, KEIN KI-Transkriptions-Schritt. Zusammenfassen/Speichern sind eigene Folgeschritte.',
+  },
+];
+
+/** Findet die Tool-Fähigkeit, die auf einen Text (Label/Tool) passt. */
+export function matchToolCapability(text: string | null | undefined): ToolCapability | undefined {
+  if (!text) return undefined;
+  const t = text.toLowerCase();
+  return TOOL_CAPABILITIES.find(c => c.aliases.some(a => t.includes(a)));
+}
+
 /** Universelle Regeln — klein, stabil, immer im Prompt. */
 const UNIVERSAL_RULES = [
-  'Schritt 1 ist IMMER ein Trigger (manualTrigger/scheduleTrigger/webhook/…).',
-  'Sub-Node-only-Typen (lmChat*, memory*, tool*, embeddings*) NIE in den Hauptflow — immer per subNodeOf + connectionType-Edge an einen AI-Parent.',
-  'IF/Switch-Ausgänge über branch auf den Edges; Merge-Eingänge über targetInput.',
+  'Schritt 1 = Trigger passend zur echten Quelle (neue Mail→gmailTrigger, Zeitplan→scheduleTrigger, Ereignis→webhook), nicht blind manualTrigger.',
+  'EINE Node = EINE Aufgabe — nie zwei Aktionen in einem Schritt („transkribieren UND speichern" = zwei Nodes).',
+  'Selbst-liefernde Tools (Fireflies/Otter transkribieren selbst) als Quelle/Trigger, KEIN extra KI-„transkribieren"-Schritt.',
+  'Menschliche Freigabe = sendAndWait (Mensch antwortet) + Verzweigung mit RÜCKSCHLEIFE bei „Nein" — nie nur ein blanker IF.',
+  'KI: feste Aufgabe (zusammenfassen/klassifizieren/extrahieren/aus Vorlage) → Basic LLM Chain; offene Aufgabe (Tools/entscheiden/mehrstufig) → AI Agent.',
+  'Jeder Agent/Chain hat sein EIGENES Chat Model — ein Modell nie an zwei Agenten teilen.',
+  'Sub-Node-only-Typen (lmChat*/memory*/tool*/embeddings*) nie im Hauptflow — per subNodeOf + connectionType-Edge an einen AI-Parent.',
+  'IF/Switch-Ausgänge über branch; Merge-Eingänge über targetInput. Set nur bei echtem Feld-Mapping, nicht als Durchreich-Node.',
   'Dynamische Felder als Expression mit führendem "=": "={{ $json.feld }}".',
-  'Google-Dienste (Gmail, Sheets, Docs, Drive, Calendar, YouTube): Auth läuft über Axantilos zentrale Google-OAuth-App — der User verbindet sein Konto in 3 Klicks, NIEMALS eigene OAuth-Clients/Token anleiten.',
+  'Pflichtfelder füllen (z.B. Airtable Base/Table) — tool-abhängige resourceLocator-Felder per Live-Optionen wählen, nicht leer lassen.',
+  'Google-Dienste (Gmail/Sheets/Docs/Drive/Calendar/YouTube): zentrale Google-OAuth-App (3 Klicks), nie eigene OAuth-Clients/Token.',
 ];
 
 const byType = new Map(NODE_MAP.map(e => [e.n8nType, e]));
@@ -1009,14 +1069,34 @@ export function swapTargets(): [RegExp, string][] {
   });
 }
 
+let cachedSwapTargets: [RegExp, string][] | null = null;
+
+/**
+ * Bester HAUPTFLOW-Node (kein Sub-Node) für einen freien Text per Alias-Match.
+ * Nutzt die swapTargets-Priorisierung; überspringt Sub-Node-only-Typen, damit
+ * ein Schritt nie auf ein Chat-Model o.ä. gemappt wird.
+ */
+export function matchMainNodeType(text: string | null | undefined): string | undefined {
+  if (!text) return undefined;
+  if (!cachedSwapTargets) cachedSwapTargets = swapTargets();
+  for (const [re, type] of cachedSwapTargets) {
+    const entry = byType.get(type);
+    if (entry?.subNodeSlot) continue;
+    if (re.test(text)) return type;
+  }
+  return undefined;
+}
+
 function entryLine(e: NodeMapEntry): string {
   const flags = [
     e.role,
     e.subNodeSlot ? `NUR Sub-Node:${e.subNodeSlot}` : null,
+    e.selfProduces ? `liefert-selbst:${e.selfProduces}` : null,
     e.credentialType ? `cred:${e.credentialType}` : null,
     e.typicalOps?.length ? `ops:${e.typicalOps.join(',')}` : null,
   ].filter(Boolean).join(' · ');
-  return `- ${e.n8nType} (${e.displayName}) [${flags}] — ${e.wiringNote}`;
+  const job = e.oneJob ? ` Aufgabe: ${e.oneJob}` : '';
+  return `- ${e.n8nType} (${e.displayName}) [${flags}] — ${e.wiringNote}${job}`;
 }
 
 /**
@@ -1041,6 +1121,10 @@ export function formatNodeMapForPrompt(relevantTypes: Iterable<string>): string 
   for (const r of UNIVERSAL_RULES) lines.push(`- ${r}`);
   lines.push('Bau-Patterns:');
   for (const p of WIRING_PATTERNS) lines.push(`- ${p.name} (${p.wann}) → ${p.bau}`);
+  if (TOOL_CAPABILITIES.length) {
+    lines.push('Tools mit Eigenheiten:');
+    for (const c of TOOL_CAPABILITIES) lines.push(`- ${c.aliases[0]}${c.selfProduces ? ` (liefert ${c.selfProduces} selbst)` : ''}: ${c.note}`);
+  }
   if (entries.length) {
     lines.push('Details zu den relevanten Nodes:');
     for (const e of entries) lines.push(entryLine(e));

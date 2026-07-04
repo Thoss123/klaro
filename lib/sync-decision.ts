@@ -78,14 +78,6 @@ export function evaluateCanvasEligibility(params: {
     return { eligible: false, reason: 'umsetzung_no_worker', detail: 'phase=umsetzung — canvas via build_workflow only' };
   }
 
-  if (phase === 'plan' && chars < 40) {
-    return {
-      eligible: false,
-      reason: 'plan_awaiting_workflow_chat',
-      detail: 'Plan: erst nach sichtbarem Nutzer-Input zum Workflow (kein Kickoff allein)',
-    };
-  }
-
   if (chars < 40) {
     return {
       eligible: false,

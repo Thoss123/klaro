@@ -3,9 +3,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { Mistral } from '@mistralai/mistralai';
-import { runWorkflowEditor } from '@/lib/agents/workflow-editor';
-import { mistralCompleteJson } from '@/lib/agents/llm';
+import { applyWorkflowEdit, type ProvidedEditStep } from '@/lib/apply-workflow-edit';
 import { getBuiltWorkflows } from '@/lib/workflow-plans';
 import type { CanvasData, Workflow } from '@/lib/types';
 
@@ -13,12 +11,17 @@ export type EditWorkflowCanvasResult =
   | { ok: true; workflow: Workflow; canvas: CanvasData; editorMessage: string; changed: boolean }
   | { ok: false; error: string; status: number };
 
+/**
+ * Wendet die vom Coach gelieferten Schritte (+ optionale Edges) auf den gebauten Workflow an
+ * und speichert das Canvas. Kein zweiter LLM mehr — der Haupt-Coach hat die Schritte bereits gebaut.
+ */
 export async function editWorkflowOnCanvas(
   supabase: SupabaseClient,
   userId: string,
   projectId: string,
   workflowId: string,
-  instruction: string,
+  steps: ProvidedEditStep[],
+  edges?: unknown,
 ): Promise<EditWorkflowCanvasResult> {
   const { data: project } = await supabase
     .from('projects')
@@ -49,16 +52,7 @@ export async function editWorkflowOnCanvas(
     return { ok: false, error: 'Workflow noch nicht gebaut — zuerst build_workflow aufrufen.', status: 404 };
   }
 
-  let complete;
-  if (process.env.MISTRAL_API_KEY) {
-    const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-    complete = mistralCompleteJson(client);
-  }
-
-  const result = await runWorkflowEditor(
-    { workflow, message: instruction.trim() },
-    complete,
-  );
+  const result = await applyWorkflowEdit(workflow, steps, edges);
 
   if (!result.changed) {
     return {

@@ -1,0 +1,13 @@
+{
+  "_doc": "Übersicht aller Workflows im System. Das ist die EINZIGE Datei, die bei einem neuen Workflow angefasst wird — sie ist Daten, kein Prompt. Beschreibungstexte, Credits-Schätzungen und Grenzen leben in der RAG-Datei; das n8n-JSON und das Variablen-Schema in coach/templates/. Kein Phasenmodul kennt Workflow-Namen oder -Anzahl.",
+  "workflows": [
+    {
+      "id": "anfragen_autopilot",
+      "bereich": "anfragen",
+      "status": "verfuegbar",
+      "template": "coach/templates/anfragen_autopilot.json",
+      "schema": "coach/templates/anfragen_autopilot.schema.json",
+      "rag_file": "rag/workflows/anfragen_autopilot.md"
+    }
+  ]
+}

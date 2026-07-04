@@ -81,7 +81,10 @@ export function stripInternalTags(content: string): string {
   text = text.replace(/\s*`{1,3}$/g, '');
 
   text = text.replace(/\([^)]*(?:schon im Canvas|frag nur das, was ich noch nicht weiß)[^)]*\)\s*/gi, '');
-  text = text.replace(/\n{2,}/g, '\n');
+  // Mehrfache Leerzeilen zu EINER zusammenfassen — aber den Absatz (Doppel-\n)
+  // erhalten: Markdown braucht die Leerzeile, damit Echo und Folgefrage als
+  // getrennte Absätze rendern (sonst kleben sie ohne Enter aneinander).
+  text = text.replace(/\n{3,}/g, '\n\n');
 
   return text.trim();
 }
@@ -94,6 +97,17 @@ export function cleanupBotFormatting(text: string): string {
   if (!text) return text;
 
   let cleaned = text;
+
+  // Überschriften → Fließtext: "## …" / "### …" rendert die ChatUI sonst groß
+  // (h2/h3). Coach-Nachrichten sollen einheitlich groß sein — nur die #-Marker
+  // am Zeilenanfang entfernen, der Text bleibt als normaler Absatz stehen.
+  cleaned = cleaned.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '');
+
+  // Komplett fette Zeile ("**ganzer Satz**") → entfetten. Eine Zeile, die NUR aus
+  // einem einzigen Fett-Span besteht (keine weiteren `**` darin), ist genau der
+  // Fall „ganzer Einstiegssatz fett", den der Nutzer nicht will. Inline-Fett für
+  // einzelne Schlüsselwörter (mehrere Spans oder Text drumherum) bleibt erhalten.
+  cleaned = cleaned.replace(/^[ \t]*\*\*([^*\n]+)\*\*[ \t]*$/gm, '$1');
 
   // Leerzeichen nach Komma wenn Ziffer folgt: "Monat,90" → "Monat, 90"
   cleaned = cleaned.replace(/,(\d)/g, ', $1');

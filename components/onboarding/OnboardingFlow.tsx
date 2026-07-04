@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, Variants } from 'framer-motion';
 import { Check, ArrowRight } from 'lucide-react';
+import { Logo } from '@/components/Logo';
 
 type Question = {
   id: string;
@@ -158,10 +159,8 @@ export default function OnboardingFlow() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-6 lg:px-10">
         <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-600 text-white font-bold text-lg tracking-tight shadow-md">
-            K
-          </span>
-          <span className="text-lg font-bold tracking-tight text-slate-800">Axantilo Coach</span>
+          <Logo height={28} />
+          <span className="text-lg font-bold tracking-tight text-slate-800">Coach</span>
         </div>
 
         <div className="hidden sm:block flex-1 max-w-md mx-auto">

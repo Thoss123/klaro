@@ -1,0 +1,7 @@
+{
+  "_doc": "PLATZHALTER — n8n-Template für den Anfragen-Autopiloten. Platzhalter im Format {{var_name}} werden bei workflow_instantiate aus state.variables['anfragen_autopilot'] ersetzt (validiert gegen anfragen_autopilot.schema.json). Das echte n8n-JSON wird hier eingesetzt, sobald der Workflow gebaut ist.",
+  "name": "Anfragen-Autopilot",
+  "nodes": [],
+  "connections": {},
+  "settings": {}
+}

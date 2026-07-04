@@ -3,14 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Check, Lock } from 'lucide-react';
 import { SessionSummary } from '@/lib/supabase-chat';
-
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
-const PHASE_LABELS: Record<string, string> = {
-  diagnose: 'Diagnose',
-  analyse: 'Analyse',
-  plan: 'Plan',
-  umsetzung: 'Umsetzung',
-};
+import { PHASE_ORDER, PHASE_SHORT_LABELS as PHASE_LABELS, phaseIndex } from '@/lib/phases';
 
 interface ProjectMenuProps {
   currentProject: { id: string; name: string } | null;
@@ -22,8 +15,6 @@ interface ProjectMenuProps {
   onCreate: () => void;
   /** Called after a navigation action (e.g. to close the sidebar). */
   onNavigate?: () => void;
-  /** Phase navigation list — hidden on large screens (lives in the canvas panel there). */
-  showPhases?: boolean;
 }
 
 /**
@@ -38,7 +29,6 @@ export default function ProjectMenu({
   onPhaseSelect,
   onRename,
   onNavigate,
-  showPhases = true,
 }: ProjectMenuProps) {
   const [projectName, setProjectName] = useState(currentProject?.name ?? '');
   const [isSaving, setIsSaving] = useState(false);
@@ -69,19 +59,19 @@ export default function ProjectMenu({
 
   if (!currentProject) return null;
 
-  const currentPhaseIdx = PHASE_ORDER.indexOf(canvasPhase);
+  const currentPhaseIdx = phaseIndex(canvasPhase);
   const projectSessions = sessions.filter(s => s.project_id === currentProject.id);
   const phaseStatus = (phase: string): 'completed' | 'active' | 'locked' => {
-    const idx = PHASE_ORDER.indexOf(phase);
+    const idx = phaseIndex(phase);
     if (idx < currentPhaseIdx) return 'completed';
     if (idx === currentPhaseIdx) return 'active';
-    return projectSessions.some(s => s.phase === phase) ? 'completed' : 'locked';
+    return projectSessions.some(s => phaseIndex(s.phase) === idx) ? 'completed' : 'locked';
   };
 
   return (
     <div className="flex flex-col gap-3">
       {/* Project name */}
-      <div className="md:hidden">
+      <div className="xl:hidden">
         <div className="px-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
           <span>Projekt</span>
           {isSaving && <span className="text-gray-300 normal-case font-medium">Speichert…</span>}
@@ -97,9 +87,8 @@ export default function ProjectMenu({
         />
       </div>
 
-      {/* Phase navigation */}
-      {showPhases && (
-      <div>
+      {/* Phase navigation — canvas panel has this at xl+ */}
+      <div className="xl:hidden">
         <div className="px-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Phasen</div>
         <div className="flex flex-col gap-0.5">
           {PHASE_ORDER.map((phase, idx) => {
@@ -142,7 +131,6 @@ export default function ProjectMenu({
           })}
         </div>
       </div>
-      )}
 
       {/* Project actions removed as per user instruction */}
     </div>

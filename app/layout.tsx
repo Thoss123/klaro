@@ -33,6 +33,19 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
   },
+  icons: {
+    icon: [
+      { url: "/icon1.png", type: "image/png" },
+      { url: "/icon0.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+    apple: "/apple-icon.png",
+  },
+  appleWebApp: {
+    title: "Axantilo",
+    statusBarStyle: "black-translucent",
+  },
+  manifest: "/manifest.json",
   openGraph: {
     title: "Axantilo – KI-Automatisierung für Ihr Unternehmen",
     description:

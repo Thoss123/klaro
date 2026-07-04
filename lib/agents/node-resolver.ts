@@ -3,10 +3,78 @@
  */
 
 import type { WorkflowStep } from '@/lib/types';
-import type { N8nCatalogIndexEntry, NodeResolverResult } from '@/lib/n8n-catalog-types';
+import type { N8nCatalogIndexEntry, NodeResolverResult, N8nCatalogSnapshot } from '@/lib/n8n-catalog-types';
 import { buildDefaultParameters, getNodeByName, getN8nCatalog, getCatalogIndex } from '@/lib/n8n-catalog';
 import { searchCatalogIndex } from '@/lib/n8n-categories';
+import { describeNodeForPrompt } from '@/lib/n8n-node-doc';
+import { matchMainNodeType, matchToolCapability } from '@/lib/node-map';
 import { type CompleteJson, safeParseJson } from '@/lib/agents/llm';
+
+const find = (index: N8nCatalogIndexEntry[], name: string) => index.find(e => e.name === name);
+
+/** Letzter KI-Fallback, wenn keine spezifischere Wahl greift. */
+function preferAiFallback(index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
+  return (
+    find(index, '@n8n/n8n-nodes-langchain.agent')
+    ?? find(index, '@n8n/n8n-nodes-langchain.openAi')
+    ?? find(index, 'n8n-nodes-base.openAi')
+    ?? index.find(e => e.displayName === 'OpenAI')
+  );
+}
+
+// Feste KI-Einzelaufgabe (ein Prompt rein, ein Ergebnis raus) vs. offene Agent-Aufgabe.
+const AI_OPEN_RE = /\bagent\b|recherchier|im web such|websuche|entscheid|mehrstufig|orchestr|nutzt? tools|werkzeug|autonom/i;
+const AI_SUMMARY_RE = /zusammenfass|summar/i;
+const AI_CLASSIFY_RE = /klassifizier|kategorisier|einstuf|sortier nach/i;
+const AI_EXTRACT_RE = /extrahier|extract|felder ausles|strukturier.*aus/i;
+
+/**
+ * Wählt den richtigen KI-Node: AI Agent NUR für offene Aufgaben (Tools/Entscheidungen/mehrstufig),
+ * sonst Basic LLM Chain bzw. die passende Spezial-Chain (Summarization/Classifier/Extractor).
+ */
+function pickAiNode(step: WorkflowStep, index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
+  const hay = `${step.label || ''} ${step.tool || ''}`.toLowerCase();
+  const hasTools = (step.aiSubNodes?.ai_tool?.length ?? 0) > 0;
+
+  if (hasTools || AI_OPEN_RE.test(hay)) {
+    return find(index, '@n8n/n8n-nodes-langchain.agent') ?? preferAiFallback(index);
+  }
+  // Feste Aufgaben → Spezial-Chain wenn klar, sonst Basic LLM Chain.
+  if (AI_SUMMARY_RE.test(hay)) {
+    return find(index, '@n8n/n8n-nodes-langchain.chainSummarization')
+      ?? find(index, '@n8n/n8n-nodes-langchain.chainLlm') ?? preferAiFallback(index);
+  }
+  if (AI_CLASSIFY_RE.test(hay)) {
+    return find(index, '@n8n/n8n-nodes-langchain.textClassifier')
+      ?? find(index, '@n8n/n8n-nodes-langchain.chainLlm') ?? preferAiFallback(index);
+  }
+  if (AI_EXTRACT_RE.test(hay)) {
+    return find(index, '@n8n/n8n-nodes-langchain.informationExtractor')
+      ?? find(index, '@n8n/n8n-nodes-langchain.chainLlm') ?? preferAiFallback(index);
+  }
+  return find(index, '@n8n/n8n-nodes-langchain.chainLlm') ?? preferAiFallback(index);
+}
+
+/** Trigger passend zur echten Quelle, statt blind manualTrigger. */
+function pickTriggerNode(hay: string, index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
+  if (/schedule|cron|täglich|stündlich|wöchentlich|zeitplan|jeden (morgen|tag)/.test(hay)) {
+    return find(index, 'n8n-nodes-base.scheduleTrigger');
+  }
+  if (/neue mail|eingehende mail|mail-eingang|posteingang|gmail/.test(hay)) {
+    return find(index, 'n8n-nodes-base.gmailTrigger');
+  }
+  if (/formular|form/.test(hay)) return find(index, 'n8n-nodes-base.formTrigger');
+  if (/webhook|api|http|eingehend|empfäng|signal/.test(hay)) return find(index, 'n8n-nodes-base.webhook');
+  return find(index, 'n8n-nodes-base.manualTrigger');
+}
+
+/** Freigabe-Kanal (Mensch antwortet) — Channel aus Label, sonst Gmail als Default. */
+function pickApprovalChannel(hay: string, index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
+  if (/slack/.test(hay)) return find(index, 'n8n-nodes-base.slack');
+  if (/whatsapp|sms|twilio/.test(hay)) return find(index, 'n8n-nodes-base.whatsApp') ?? find(index, 'n8n-nodes-base.twilio');
+  if (/telegram/.test(hay)) return find(index, 'n8n-nodes-base.telegram');
+  return find(index, 'n8n-nodes-base.gmail');
+}
 
 export interface NodeResolverInput {
   steps: WorkflowStep[];
@@ -23,24 +91,13 @@ const GENERIC_NODES = new Set([
   'n8n-nodes-base.noOp',
 ]);
 
-function preferAiNode(index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
-  // Bevorzugt der AI Agent (echte Agent-Struktur: Chat-Model-Sub-Node, Tools, Memory).
-  // Fällt auf den eigenständigen OpenAI-Node zurück, wenn der Agent nicht im Katalog ist.
-  return (
-    index.find(e => e.name === '@n8n/n8n-nodes-langchain.agent')
-    ?? index.find(e => e.name === '@n8n/n8n-nodes-langchain.openAi')
-    ?? index.find(e => e.name === 'n8n-nodes-base.openAi')
-    ?? index.find(e => e.displayName === 'OpenAI')
-  );
-}
-
 function sanitizeResult(
   step: WorkflowStep,
   result: NodeResolverResult,
   index: N8nCatalogIndexEntry[],
 ): NodeResolverResult {
   if (GENERIC_NODES.has(result.n8n_type) && step.type === 'ai') {
-    const preferred = preferAiNode(index);
+    const preferred = pickAiNode(step, index);
     if (preferred) return { ...result, n8n_type: preferred.name, type_version: preferred.version };
   }
   return result;
@@ -50,65 +107,68 @@ function filterResolverCandidates(entries: N8nCatalogIndexEntry[]): N8nCatalogIn
   return entries.filter(e => !GENERIC_NODES.has(e.name));
 }
 
-/** Deterministic fallback when LLM fails or for obvious step types. */
+// Nur EXPLIZITE Set-Phrasen → Edit Fields; "speichern/ablegen" geht ans echte Tool (Drive/Sheets/…).
+const EXPLICIT_SET_RE = /\b(feld(er)? setzen|felder umbenennen|daten setzen|mapping|edit fields)\b/i;
+const AI_LABEL_RE = /\bki\b|gpt|openai|generier|analysier|zusammenfass|klassifizier|extrahier|caption|texten|umformulier/i;
+
+/** Deterministic fallback when LLM fails or for obvious step types. NODE_MAP-getrieben. */
 export function heuristicResolveStep(
   step: WorkflowStep,
   index: N8nCatalogIndexEntry[],
 ): NodeResolverResult | null {
   const label = (step.label || '').toLowerCase();
+  const tool = (step.tool || '').toLowerCase();
+  const hay = `${label} ${tool}`.trim();
   const type = step.type || 'action';
 
+  // 0. Selbst-lieferndes Tool (Fireflies/Otter transkribiert selbst) → seine Quelle/Trigger,
+  //    NIE ein KI-Transkriptions-Node.
+  const cap = matchToolCapability(hay);
+  if (cap?.triggerNode && (type === 'trigger' || cap.selfProduces)) {
+    const n = find(index, cap.triggerNode);
+    if (n) return makeResult(step.id, n);
+  }
+
+  // 1. Trigger: passend zur echten Quelle.
   if (type === 'trigger') {
-    if (/schedule|cron|täglich|stündlich|zeitplan/.test(label)) {
-      const n = index.find(e => e.name === 'n8n-nodes-base.scheduleTrigger');
-      if (n) return makeResult(step.id, n);
-    }
-    if (/webhook|api|http/.test(label)) {
-      const n = index.find(e => e.name === 'n8n-nodes-base.webhook');
-      if (n) return makeResult(step.id, n);
-    }
-    const n = index.find(e => e.name === 'n8n-nodes-base.manualTrigger');
+    const n = pickTriggerNode(hay, index);
     if (n) return makeResult(step.id, n);
   }
 
-  if (type === 'ai' || /ki|gpt|openai|generier|analysier|zusammenfass|caption|video|reel|skript/.test(label)) {
-    const n = preferAiNode(index);
+  // 2. KI: AI Agent (offen) vs. Basic LLM Chain / Spezial-Chain (fest).
+  if (type === 'ai' || AI_LABEL_RE.test(hay)) {
+    const n = pickAiNode(step, index);
     if (n) return makeResult(step.id, n);
   }
 
-  if (type === 'decision' || /wenn|if|entscheid|prüf/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.if');
+  // 3. Entscheidung → IF.
+  if (type === 'decision' || /\bwenn\b|\bif\b|entscheid|prüf|verzweig/.test(hay)) {
+    const n = find(index, 'n8n-nodes-base.if');
     if (n) return makeResult(step.id, n);
   }
 
-  if (/gmail|email|mail|e-mail/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.gmail');
+  // 4. Freigabe durch Menschen → Kanal-Node (sendAndWait + IF/Loopback macht expandPatterns).
+  if (type === 'human') {
+    const n = pickApprovalChannel(hay, index);
     if (n) return makeResult(step.id, n);
   }
 
-  if (/slack|chat|nachricht/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.slack');
+  // 5. NODE_MAP-Alias-Treffer (gmail/slack/drive/sheets/airtable/notion/youtube/meta …).
+  const mapType = matchMainNodeType(hay);
+  if (mapType) {
+    const n = find(index, mapType);
     if (n) return makeResult(step.id, n);
   }
 
-  if (/http|api|request|webhook/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.httpRequest');
+  // 6. Generische HTTP-API.
+  if (/http|api|request|rest/.test(hay)) {
+    const n = find(index, 'n8n-nodes-base.httpRequest');
     if (n) return makeResult(step.id, n);
   }
 
-  if (type === 'output' || /speicher|set|feld/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.set');
-    if (n) return makeResult(step.id, n);
-  }
-
-  if (/meta|facebook|instagram|business suite/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.facebookGraphApi')
-      ?? index.find(e => /facebook|instagram|meta/i.test(e.displayName));
-    if (n) return makeResult(step.id, n);
-  }
-
-  if (/youtube|video/.test(label)) {
-    const n = index.find(e => e.name === 'n8n-nodes-base.youTube');
+  // 7. Nur bei EXPLIZITER Feld-Manipulation → Set (keine „Durchreich"-Sets).
+  if (EXPLICIT_SET_RE.test(hay)) {
+    const n = find(index, 'n8n-nodes-base.set');
     if (n) return makeResult(step.id, n);
   }
 
@@ -129,11 +189,12 @@ function makeResult(stepId: string, entry: N8nCatalogIndexEntry): NodeResolverRe
 /** Letzter Ausweg pro Step-Typ — jeder Schritt MUSS einen echten n8n-Node bekommen. */
 const FALLBACK_BY_TYPE: Record<string, string> = {
   trigger: 'n8n-nodes-base.manualTrigger',
-  ai: '@n8n/n8n-nodes-langchain.agent',
+  ai: '@n8n/n8n-nodes-langchain.chainLlm',
   decision: 'n8n-nodes-base.if',
   output: 'n8n-nodes-base.set',
   action: 'n8n-nodes-base.httpRequest',
-  human: 'n8n-nodes-base.set',
+  // Freigabe-Default = Gmail-Kanal (sendAndWait + IF/Loopback ergänzt expandPatterns), nie Set.
+  human: 'n8n-nodes-base.gmail',
 };
 
 /** Garantiert einen konkreten Node — heuristik zuerst, sonst typ-basierter Default. */
@@ -163,11 +224,17 @@ function guaranteedResolveStep(
 function buildResolverPrompt(
   steps: WorkflowStep[],
   candidates: N8nCatalogIndexEntry[],
+  catalog: N8nCatalogSnapshot,
   context?: NodeResolverInput['context'],
 ): { system: string; user: string } {
+  // Node-eigene Beschreibung + Aktionen mitgeben → der Resolver versteht auch unbekannte Nodes.
   const candidateList = candidates
     .slice(0, 50)
-    .map(c => `- ${c.name} (${c.displayName}) [${c.axantiloCategory}]`)
+    .map(c => {
+      const node = getNodeByName(catalog, c.name);
+      const doc = node ? describeNodeForPrompt(node, { maxDescLen: 110, maxOps: 6 }) : '';
+      return `- ${c.name} (${c.displayName}) [${c.axantiloCategory}]${doc ? ` — ${doc}` : ''}`;
+    })
     .join('\n');
 
   const system = `Du bist der NodeResolver in Axantilo — mappe abstrakte Workflow-Schritte auf konkrete n8n-Node-Typen.
@@ -213,7 +280,7 @@ export async function runNodeResolver(
     }
     const uniqueCandidates = Array.from(new Map(candidates.map(c => [c.name, c])).values());
 
-    const { system, user } = buildResolverPrompt(input.steps, uniqueCandidates, input.context);
+    const { system, user } = buildResolverPrompt(input.steps, uniqueCandidates, catalog, input.context);
     try {
       const { content } = await complete({ system, user });
       const parsed = safeParseJson<{ steps?: NodeResolverResult[] }>(content);

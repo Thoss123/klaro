@@ -4,14 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Upload, MoreHorizontal, Plus, Trash2, Check } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { SessionSummary } from '@/lib/supabase-chat';
-
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
-const PHASE_LABELS: Record<string, string> = {
-  diagnose: 'Diagnose',
-  analyse: 'Analyse',
-  plan: 'Plan',
-  umsetzung: 'Umsetzung',
-};
+import { PHASE_ORDER, PHASE_SHORT_LABELS as PHASE_LABELS, phaseIndex } from '@/lib/phases';
 
 interface ProjectHeaderProps {
   currentProject: { id: string; name: string } | null;
@@ -81,16 +74,16 @@ export default function ProjectHeader({
 
   if (!currentProject) return null;
 
-  const currentPhaseIdx = PHASE_ORDER.indexOf(canvasPhase);
+  const currentPhaseIdx = phaseIndex(canvasPhase);
   const totalPhases = PHASE_ORDER.length;
 
   // Determine status of each phase for this project
   const projectSessions = sessions.filter(s => s.project_id === currentProject.id);
   const phaseStatus = (phase: string): 'completed' | 'active' | 'locked' => {
-    const idx = PHASE_ORDER.indexOf(phase);
+    const idx = phaseIndex(phase);
     if (idx < currentPhaseIdx) return 'completed';
     if (idx === currentPhaseIdx) return 'active';
-    const hasSession = projectSessions.some(s => s.phase === phase);
+    const hasSession = projectSessions.some(s => phaseIndex(s.phase) === idx);
     return hasSession ? 'completed' : 'locked';
   };
 

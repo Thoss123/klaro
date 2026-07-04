@@ -39,12 +39,13 @@ import { getAccountDisplayInfo } from '@/lib/account-display';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import type { User } from '@supabase/supabase-js';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Menu, Maximize2, Minimize2, X, Plus, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, Workflow as WorkflowIcon, HelpCircle } from 'lucide-react';
+import { Menu, Maximize2, Minimize2, X, Plus, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, HelpCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { detectCompletedPhase } from '@/lib/detect-phase-transition';
 import { canAdvanceFromPhase } from '@/lib/can-phase-complete';
 import { getHiddenInitMessage } from '@/lib/phase-welcome';
+import { PHASE_LABELS, PHASE_ORDER, normalizePhase, phaseIndex } from '@/lib/phases';
 import {
   shouldAutoKickoffSession,
   getSessionKickoff,
@@ -63,10 +64,6 @@ import { healUmsetzungCanvas, splitPlansForUmsetzung } from '@/lib/workflow-plan
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
 import { titleFromUserMessage } from '@/lib/session-title';
-import {
-  mainChatHistoryForEditor,
-  type WorkflowEditorCoachContext,
-} from '@/lib/workflow-editor-context';
 
 // ---- Agent Actions Feed Component ----
 // Renders inline in the chat flow like a real AI-agent tool call:
@@ -139,21 +136,12 @@ function AgentActionsFeed({ actions, inline = false }: { actions: AgentAction[],
   );
 }
 
-const PHASE_LABELS: Record<string, string> = {
-  diagnose: '1. Diagnose',
-  analyse: '2. Analyse',
-  plan: '3. Plan',
-  umsetzung: '4. Umsetzung',
-};
-
-const PHASE_ORDER = ['diagnose', 'analyse', 'plan', 'umsetzung'];
-
 function getChatBackgroundStatus(
   agentActions: AgentAction[],
   opts: { isPreparingNextPhase: boolean; sessionPhase: string },
 ): string | null {
   const running = agentActions.filter(a => a.status === 'running');
-  const phaseIdx = PHASE_ORDER.indexOf(opts.sessionPhase);
+  const phaseIdx = phaseIndex(opts.sessionPhase);
   const nextPhaseKey =
     phaseIdx >= 0 && phaseIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[phaseIdx + 1] : null;
   const nextLabel = nextPhaseKey ? PHASE_LABELS[nextPhaseKey] : null;
@@ -524,13 +512,32 @@ function ChatPageContent() {
 
   // ---- UI state ----
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // Großer Bildschirm: standardmäßig vergrößert starten (Mobile ignoriert das Flag).
-  const [isMaximized, setIsMaximized] = useState(true);
+  // Unter xl (1280px): schmales Chat-Panel (360px); ab xl standardmäßig breit (600px). Manuell überschreibbar.
+  const [maximizeOverride, setMaximizeOverride] = useState<boolean | null>(null);
   const [isClosed, setIsClosed] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
   // Mobile: only one of chat / canvas is shown at a time, toggled via a bottom-center switch.
   const isMobile = useIsMobile();
+  const isCompactDesktop = useIsMobile(1280);
+  const isMaximized = !isMobile && (maximizeOverride ?? !isCompactDesktop);
   const [mobileView, setMobileView] = useState<'chat' | 'canvas'>('chat');
+
+  useEffect(() => {
+    if (!isHistoryOpen) return;
+    const close = (e: MouseEvent) => {
+      if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node)) {
+        setIsHistoryOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [isHistoryOpen]);
+
+  const openSidebar = useCallback(() => {
+    setIsHistoryOpen(false);
+    setIsSidebarOpen(true);
+  }, []);
 
   // ---- Phase 4 state ----
   const [credentialRequest, setCredentialRequest] = useState<{ tool: string; label: string; type: string } | null>(null);
@@ -577,8 +584,33 @@ function ChatPageContent() {
 
   const withSessionPhase = useCallback((canvas: CanvasData, phase: string): CanvasData => ({
     ...canvas,
-    phase: phase as CanvasData['phase'],
+    phase: normalizePhase(phase),
   }), []);
+
+  // Interne Gesprächsstrategie fortschreiben (fail-open, fire-and-forget).
+  // Canvas-Änderungen werden debounced (~15s), damit nicht jeder Teil-Update
+  // einen LLM-Call auslöst; Phasenwechsel feuern sofort.
+  const strategyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postStrategyUpdate = useCallback(
+    (projectId: string, mode: 'phase_transition' | 'canvas_delta', phase?: string, summary?: string) => {
+      fetch('/api/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, mode, phase, summary }),
+      }).catch(() => { /* fail-open */ });
+    },
+    [],
+  );
+  const scheduleStrategyCanvasUpdate = useCallback(
+    (projectId: string, phase: string) => {
+      if (strategyDebounceRef.current) clearTimeout(strategyDebounceRef.current);
+      strategyDebounceRef.current = setTimeout(() => {
+        strategyDebounceRef.current = null;
+        postStrategyUpdate(projectId, 'canvas_delta', phase);
+      }, 15_000);
+    },
+    [postStrategyUpdate],
+  );
 
   // Bereits deployte n8n-Workflows aus der DB hydrieren (canvas_workflow_id → DB-Workflow-id).
   // Ohne das denkt der Client nach jedem Reload „noch nicht deployt" und erstellt Duplikate.
@@ -622,11 +654,11 @@ function ChatPageContent() {
   }, [currentProject]);
 
   const maxReachedPhase = React.useMemo(() => {
-    let maxIdx = PHASE_ORDER.indexOf(canvasData.phase || 'diagnose');
+    let maxIdx = phaseIndex(canvasData.phase);
     if (currentProject) {
       for (const s of sessions) {
         if (s.project_id !== currentProject.id) continue;
-        const idx = PHASE_ORDER.indexOf(s.phase || 'diagnose');
+        const idx = phaseIndex(s.phase);
         if (idx > maxIdx) maxIdx = idx;
       }
     }
@@ -637,31 +669,6 @@ function ChatPageContent() {
     () => (authUser ? getAccountDisplayInfo(authUser, onboarding) : null),
     [authUser, onboarding],
   );
-
-  const editorCoachContext = useMemo((): WorkflowEditorCoachContext => {
-    const phase =
-      sessions.find(s => s.id === currentSessionId)?.phase
-      || sessionPhase
-      || canvasData.phase
-      || 'diagnose';
-    const memoryParts: string[] = [];
-    if (sessionMemory && sessionMemory !== 'Noch keine.') {
-      memoryParts.push(`--- AKTUELLER SESSION-KONTEXT ---\n${sessionMemory}`);
-    }
-    if (onboarding?.memory?.trim() && onboarding.memory !== 'Bisher keine Historie.') {
-      memoryParts.push(onboarding.memory.trim());
-    }
-    const obWithMemory = onboarding
-      ? { ...onboarding, memory: memoryParts.join('\n\n') || onboarding.memory }
-      : undefined;
-    return {
-      phase,
-      sessionId: currentSessionId,
-      onboarding: obWithMemory,
-      canvas: canvasData,
-      mainChatHistory: mainChatHistoryForEditor(messages),
-    };
-  }, [sessions, currentSessionId, sessionPhase, canvasData, sessionMemory, onboarding, messages]);
 
   const handleLogout = useCallback(async () => {
     const supabase = createSupabaseBrowserClient();
@@ -1032,6 +1039,10 @@ function ChatPageContent() {
       let assistantContent = '';
       const streamCanvasData = withSessionPhase(canvasDataRef.current, chatPhase);
       const shownCanvasActions = new Set<string>();
+      // Diagnose: id der „Canvas wird bearbeitet…"-Action, sobald der öffnende
+      // <canvas_update>-Tag auftaucht — damit der schließende Tag sie nur noch
+      // auf „fertig" kippt, statt eine neue anzulegen.
+      let coachCanvasActionId: string | null = null;
       // Holder object (not a bare `let`) so TS keeps the Promise|null type:
       // the assignment happens inside the startCanvasWorker closure, which a
       // bare local would narrow away to `null` at the await site below.
@@ -1043,14 +1054,23 @@ function ChatPageContent() {
         /trigger_canvas_update/i.test(text);
 
       // Diagnose: the COACH writes the canvas itself via a data tag — no worker LLM
-      // (avoids invented pain points + unreliable numbers). Other phases keep the worker.
+      // (avoids invented pain points + unreliable numbers). Die gemergte Analyse
+      // nutzt BEIDES: direkter Tag (idea_cards/tool_evaluations/rank/Struktur)
+      // UND trigger_canvas_update für die Worker-Extraktion (use_cases/Tools).
       const coachWritesCanvas = chatPhase === 'diagnose';
+      const coachCanvasTagEnabled = chatPhase === 'diagnose' || chatPhase === 'analyse';
 
       // Parse the coach's <canvas_update> JSON and write it straight to the canvas.
-      // Merges by pain-point id onto the current canvas (coach sends the full set;
+      // Merges by id onto the current canvas (coach sends the full set;
       // merge guards against accidental drops). Returns true if anything was written.
       const applyCoachCanvasUpdate = (jsonStr: string): boolean => {
-        let parsed: { company?: Record<string, unknown>; pain_points?: Array<Record<string, unknown>> };
+        let parsed: {
+          company?: Record<string, unknown>;
+          pain_points?: Array<Record<string, unknown>>;
+          idea_cards?: Array<Record<string, unknown>>;
+          tool_evaluations?: Array<Record<string, unknown>>;
+          solution_structures?: Array<Record<string, unknown>>;
+        };
         try {
           parsed = JSON.parse(jsonStr.trim());
         } catch {
@@ -1058,27 +1078,62 @@ function ChatPageContent() {
           return false;
         }
         const cur = canvasDataRef.current;
-        const byId = new Map((cur.pain_points || []).map(p => [p.id, p as Record<string, unknown>]));
-        if (Array.isArray(parsed.pain_points)) {
-          parsed.pain_points.forEach(p => {
-            const id = (typeof p.id === 'string' && p.id) || `pp_${byId.size + 1}`;
-            byId.set(id, { ...byId.get(id), ...p, id });
+        // Kumulativ per id mergen — bestehende Einträge nie verlieren, auch wenn
+        // der Coach einen Teilstand schickt.
+        const mergeById = (
+          existing: Array<Record<string, unknown>> | undefined,
+          incoming: Array<Record<string, unknown>> | undefined,
+          idPrefix: string,
+        ): Array<Record<string, unknown>> => {
+          const byId = new Map((existing || []).map(e => [String(e.id), e]));
+          (incoming || []).forEach(e => {
+            const id = (typeof e.id === 'string' && e.id) || `${idPrefix}_${byId.size + 1}`;
+            byId.set(id, { ...byId.get(id), ...e, id });
           });
-        }
+          return [...byId.values()];
+        };
         const mergedRaw: Record<string, unknown> = {
           company: { ...(cur.company || {}), ...(parsed.company || {}) },
-          pain_points: [...byId.values()],
+          pain_points: mergeById(
+            (cur.pain_points || []) as unknown as Array<Record<string, unknown>>,
+            parsed.pain_points,
+            'pp',
+          ),
         };
-        const normalized = normalizeCanvasData(mergedRaw, cur, 'diagnose');
+        if (parsed.idea_cards) {
+          mergedRaw.idea_cards = mergeById(
+            (cur.idea_cards || []) as unknown as Array<Record<string, unknown>>,
+            parsed.idea_cards,
+            'idea',
+          );
+        }
+        if (parsed.tool_evaluations) {
+          mergedRaw.tool_evaluations = mergeById(
+            (cur.tool_evaluations || []) as unknown as Array<Record<string, unknown>>,
+            parsed.tool_evaluations,
+            'te',
+          );
+        }
+        if (parsed.solution_structures) {
+          mergedRaw.solution_structures = mergeById(
+            (cur.solution_structures || []) as unknown as Array<Record<string, unknown>>,
+            parsed.solution_structures,
+            'ss',
+          );
+        }
+        const normalized = normalizeCanvasData(mergedRaw, cur, chatPhase);
         const withPhase = withSessionPhase(normalized, chatPhase);
         setCanvasData(withPhase);
         if (projId) {
           saveProjectCanvas(projId, withPhase).catch(err =>
             logSync('canvas', 'fail', 'coach canvas save failed', { error: String(err) }),
           );
+          scheduleStrategyCanvasUpdate(projId, chatPhase);
         }
-        logSync('canvas', 'success', 'coach wrote canvas (diagnose)', {
+        logSync('canvas', 'success', `coach wrote canvas (${chatPhase})`, {
           painPoints: (withPhase.pain_points || []).length,
+          ideaCards: (withPhase.idea_cards || []).length,
+          toolEvaluations: (withPhase.tool_evaluations || []).length,
         });
         return true;
       };
@@ -1126,7 +1181,7 @@ function ChatPageContent() {
           projectId: projId,
           phase: chatPhase,
         });
-        const aid = addAction('canvas_update', `Aktualisiere Canvas…`);
+        const aid = addAction('canvas_update', `Canvas wird bearbeitet…`);
         const workerHistory = [
           ...payloadMessages,
           { role: 'assistant', content: stripInternalTags(assistantContent) },
@@ -1159,6 +1214,7 @@ function ChatPageContent() {
               );
               setCanvasData(withSessionPhase(normalized, chatPhase));
               completeAction(aid, 'Canvas aktualisiert');
+              if (projId) scheduleStrategyCanvasUpdate(projId, chatPhase);
             } else if (status === 'skipped') {
               logSync('canvas', 'skip', 'worker returned skipped', { reason, detail: data.detail });
               completeAction(aid, `Canvas: ${canvasSkipUserLabel(reason, data.detail)}`);
@@ -1186,15 +1242,25 @@ function ChatPageContent() {
         assistantContent += chunk;
 
         // Diagnose: coach's own data tag <canvas_update>{…}</canvas_update> — write directly.
-        if (coachWritesCanvas && assistantContent.includes('</canvas_update>') && !shownCanvasActions.has('coach_canvas')) {
+        // LIVE-Status: Sobald der ÖFFNENDE Tag im Stream auftaucht, sofort
+        // „Canvas wird bearbeitet…" zeigen — nicht warten, bis das (ggf. große)
+        // JSON mit </canvas_update> fertig ist.
+        if (coachCanvasTagEnabled && assistantContent.includes('<canvas_update>') && !shownCanvasActions.has('coach_canvas_start')) {
+          shownCanvasActions.add('coach_canvas_start');
+          coachCanvasActionId = addAction('canvas_update', 'Canvas wird bearbeitet…');
+        }
+
+        // Schließender Tag da: JSON anwenden + Status auf „fertig" kippen.
+        if (coachCanvasTagEnabled && assistantContent.includes('</canvas_update>') && !shownCanvasActions.has('coach_canvas')) {
           const m = assistantContent.match(/<canvas_update>([\s\S]*?)<\/canvas_update>/);
           if (m) {
             shownCanvasActions.add('coach_canvas');
-            const aid = addAction('canvas_update', 'Aktualisiere Canvas…');
+            // Start-Trigger hat die Action i.d.R. schon angelegt; falls der Tag in
+            // einem einzigen Chunk komplett ankam, hier nachziehen.
+            const aid = coachCanvasActionId ?? addAction('canvas_update', 'Canvas wird bearbeitet…');
             const ok = applyCoachCanvasUpdate(m[1]);
-            // Das Schreiben ist synchron/instant — kurz den Running-Zustand stehen
-            // lassen (wie beim Memory-Tool-Call), damit „Aktualisiere Canvas…" mit
-            // Spinner/Shimmer sichtbar ist, bevor es auf „Canvas aktualisiert" kippt.
+            // Kurz den Running-Zustand stehen lassen (Spinner/Shimmer sichtbar),
+            // bevor es auf „Canvas aktualisiert" kippt.
             setTimeout(
               () => completeAction(aid, ok ? 'Canvas aktualisiert' : 'Canvas: nichts Neues'),
               900,
@@ -1247,7 +1313,7 @@ function ChatPageContent() {
             if (shownCanvasActions.has(key)) return;
             const planProjId = currentProject?.id;
             if (!planProjId) return;
-            let plan: { title?: string; description?: string; pain_point_id?: string; steps?: unknown };
+            let plan: { title?: string; description?: string; pain_point_id?: string; steps?: unknown; edges?: unknown };
             try {
               plan = JSON.parse(match[1].trim());
             } catch {
@@ -1461,10 +1527,10 @@ function ChatPageContent() {
           } else if (projId) {
             const existingPc = await loadProjectCanvas(projId);
             const progressIdx = Math.max(
-              PHASE_ORDER.indexOf(existingPc?.phase || chatPhase),
-              PHASE_ORDER.indexOf(chatPhase)
+              phaseIndex(existingPc?.phase || chatPhase),
+              phaseIndex(chatPhase)
             );
-            const progressPhase = PHASE_ORDER[progressIdx] || chatPhase;
+            const progressPhase = PHASE_ORDER[progressIdx] || normalizePhase(chatPhase);
             // Falls der Server zwischenzeitlich gebaut hat (build_workflow), hat existingPc
             // mehr Workflows als unser Snapshot → existingPc als Basis, sonst überschreiben
             // wir die gerade gebaute Deploy-Karte mit einem veralteten Stand.
@@ -1476,7 +1542,7 @@ function ChatPageContent() {
             }
             await saveProjectCanvas(projId, {
               ...saveBase,
-              phase: progressPhase as CanvasData['phase'],
+              phase: normalizePhase(progressPhase),
             });
           }
           // Legacy session canvas — only when no project-bound canvas exists
@@ -1514,7 +1580,7 @@ function ChatPageContent() {
       // (won't re-fire anyway since isWelcomeSent DB flag is now true)
       if (isHiddenInit && sessionId) welcomeInProgressRef.current.delete(sessionId);
     }
-  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation]);
+  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation, scheduleStrategyCanvasUpdate]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -1601,7 +1667,8 @@ function ChatPageContent() {
       setSessionMemory(sessionRes.data.memory || '');
       setCurrentSessionId(sessionId);
 
-      const phase = sessionRes.data.phase || 'diagnose';
+      // Legacy-tolerant: alte Sessions können noch phase='plan' tragen.
+      const phase = normalizePhase(sessionRes.data.phase);
       setSessionPhase(phase);
 
       // Load the project directly — no stale closure risk
@@ -1613,11 +1680,11 @@ function ChatPageContent() {
         ]);
         setCurrentProject(proj.data ? { id: proj.data.id, name: proj.data.name } : null);
         if (projectCanvas) {
-          const sessionPhaseIdx = PHASE_ORDER.indexOf(phase as typeof PHASE_ORDER[number]);
-          const projectPhaseIdx = PHASE_ORDER.indexOf(projectCanvas.phase as typeof PHASE_ORDER[number]);
+          const sessionPhaseIdx = phaseIndex(phase);
+          const projectPhaseIdx = phaseIndex(projectCanvas.phase);
           let merged = projectCanvas;
           if (sessionPhaseIdx > projectPhaseIdx) {
-            merged = { ...projectCanvas, phase: phase as CanvasData['phase'] };
+            merged = { ...projectCanvas, phase };
             saveProjectCanvas(projectId, merged).catch(console.error);
           }
           if (phase === 'umsetzung') {
@@ -1641,7 +1708,7 @@ function ChatPageContent() {
       }
 
       setPreparedNextSessionId(null);
-      const phaseIdx = PHASE_ORDER.indexOf(phase);
+      const phaseIdx = phaseIndex(phase);
       if (projectId && phaseIdx >= 0 && phaseIdx < PHASE_ORDER.length - 1) {
         const nextPh = PHASE_ORDER[phaseIdx + 1];
         const { data: nextSess } = await supabase
@@ -1726,9 +1793,10 @@ function ChatPageContent() {
   const prepareNextPhase = useCallback(async (switchAfter = true) => {
     if (!currentSessionId || !userId || !currentProject || isPreparingNextPhase) return;
 
-    const phase =
-      sessions.find(s => s.id === currentSessionId)?.phase || sessionPhase || 'diagnose';
-    const currentIndex = PHASE_ORDER.indexOf(phase);
+    const phase = normalizePhase(
+      sessions.find(s => s.id === currentSessionId)?.phase || sessionPhase,
+    );
+    const currentIndex = phaseIndex(phase);
     if (currentIndex >= PHASE_ORDER.length - 1) return;
 
     const nextPhase = PHASE_ORDER[currentIndex + 1];
@@ -1760,6 +1828,9 @@ function ChatPageContent() {
       const memoryActionId = addAction('memory_save', 'Speichere Projekt-Wissen...');
       await saveProjectMemory(currentProject.id, phase, summary);
       completeAction(memoryActionId, 'Projekt-Wissen gespeichert');
+
+      // Strategie mit der Phasen-Zusammenfassung fortschreiben (fire-and-forget).
+      postStrategyUpdate(currentProject.id, 'phase_transition', phase, summary);
 
       const nextCanvasData =
         nextPhase === 'umsetzung'
@@ -1819,6 +1890,7 @@ function ChatPageContent() {
     failAction,
     refreshSessions,
     withSessionPhase,
+    postStrategyUpdate,
   ]);
 
   useEffect(() => {
@@ -1914,11 +1986,11 @@ function ChatPageContent() {
     try {
       const summary = await summarizeUmsetzungToMemory();
       const hint = `${summary}\n\n--- Neuer Workflow ---\nDie bisherigen Workflows laufen bereits. Jetzt geht es um einen NEUEN Workflow im selben Unternehmen. Nutze das bekannte Firmen-, Tool- und Umsetzer-Wissen, aber frag den Nutzer, welche neue Automatisierung er möchte, und entwirf sie frisch (kein Re-Diagnose von vorn).`;
-      // Frische Plan-Oberfläche: Firma/Tools/Pain Points/gebaute Workflows behalten, nur Plan-Skizzen leeren.
-      const seed: CanvasData = { ...canvasData, workflow_plans: [], phase: 'plan' as CanvasData['phase'] };
+      // Frische Plan-Oberfläche (gemergte Analyse): Firma/Tools/Pain Points/gebaute Workflows behalten, nur Plan-Skizzen leeren.
+      const seed: CanvasData = { ...canvasData, workflow_plans: [], phase: 'analyse' };
       await saveProjectCanvas(currentProject.id, seed);
       const ob = { ...(onboarding || {}), memory: hint } as OnboardingData;
-      const newId = await createSession(ob, userId, 'plan', hint, seed, currentProject.id);
+      const newId = await createSession(ob, userId, 'analyse', hint, seed, currentProject.id);
       await refreshSessions();
       await switchToSession(newId);
     } catch (err) {
@@ -1998,7 +2070,7 @@ function ChatPageContent() {
   };
 
   const handleNextPhase = async () => {
-    const currentIndex = PHASE_ORDER.indexOf(sessionPhase);
+    const currentIndex = phaseIndex(sessionPhase);
     if (currentIndex >= PHASE_ORDER.length - 1 || !currentSessionId || !currentProject) return;
 
     const nextPhase = PHASE_ORDER[currentIndex + 1];
@@ -2114,8 +2186,15 @@ function ChatPageContent() {
     ? sessions.filter(s => s.project_id === currentProject.id)
     : sessions;
 
+  const projectSessionsByRecency = [...projectSessions].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
+  /** Canvas startet rechts neben dem schwebenden Chat (left-6 + Breite); bei geschlossenem Chat volle Breite. */
+  const canvasInsetLeft = !isMobile && !isClosed ? (isMaximized ? 624 : 384) : 0;
+
   const sessionsByPhase = projectSessions.reduce((acc, session) => {
-    const phase = session.phase || 'diagnose';
+    const phase = normalizePhase(session.phase);
     if (!acc[phase]) acc[phase] = [];
     acc[phase].push(session);
     return acc;
@@ -2167,9 +2246,13 @@ function ChatPageContent() {
     <RoadmapCanvas
       data={canvasData}
       isUpdating={isCanvasUpdating}
-      currentPhase={sessions.find(s => s.id === currentSessionId)?.phase || canvasData.phase || 'diagnose'}
+      currentPhase={normalizePhase(sessions.find(s => s.id === currentSessionId)?.phase || canvasData.phase)}
       maxReachedPhase={maxReachedPhase}
       onPhaseClick={handlePhaseCircleClick}
+      onSendMessage={text => {
+        void sendMessage(text);
+        if (isMobile) setMobileView('chat');
+      }}
       projectId={currentProject?.id}
       workflowStepConfigs={workflowStepConfigs}
       onStepConfigSave={handleStepConfigSave}
@@ -2178,7 +2261,6 @@ function ChatPageContent() {
       openDeployWorkflowId={openDeployWorkflowId}
       onDeployModalOpened={(id) => setOpenDeployWorkflowId(prev => (prev === id ? null : prev))}
       onWorkflowPersist={handleWorkflowPersist}
-      editorCoachContext={editorCoachContext}
     />
   );
 
@@ -2192,8 +2274,8 @@ function ChatPageContent() {
       {((!isMobile && !isClosed) || (isMobile && mobileView === 'chat')) && (
       <div className={
         isMobile
-          ? 'absolute inset-0 z-30 bg-white flex flex-col min-h-0 h-full max-h-full overflow-hidden'
-          : `absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300`
+          ? 'absolute inset-0 z-30 bg-white flex flex-col min-h-0 h-full max-h-full overflow-hidden relative'
+          : `absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300 relative`
       }>
 
         {/* Inner Menu Overlay */}
@@ -2220,9 +2302,6 @@ function ChatPageContent() {
                <button onClick={() => { router.push('/dashboard'); setIsSidebarOpen(false); }} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50`}>
                  <HomeIcon size={18} /> Eingangsbereich
                </button>
-               <button onClick={() => { router.push('/workflows'); setIsSidebarOpen(false); }} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:bg-gray-50`}>
-                 <WorkflowIcon size={18} /> Workflows
-               </button>
 
                <div className="h-px bg-gray-100 my-3"></div>
 
@@ -2245,7 +2324,6 @@ function ChatPageContent() {
                        onDelete={handleDeleteProject}
                        onCreate={handleCreateProject}
                        onNavigate={() => setIsSidebarOpen(false)}
-                       showPhases={isMobile}
                      />
                    </div>
                    <div className="h-px bg-gray-100 my-3"></div>
@@ -2294,32 +2372,54 @@ function ChatPageContent() {
 
         {/* Chat Header */}
         <div className={`flex items-center justify-between border-b border-gray-100 bg-white shrink-0 ${isMobile ? 'px-4 py-3' : 'px-5 py-4'}`}>
-          <div className="flex items-center gap-3 text-gray-400 relative">
-            <button onClick={() => setIsSidebarOpen(true)} className="hover:text-gray-700 transition-colors" title="Menü"><Menu size={18} /></button>
+          <div ref={historyMenuRef} className="flex items-center gap-3 text-gray-400 relative">
+            <button type="button" onClick={openSidebar} className="hover:text-gray-700 transition-colors" title="Menü"><Menu size={18} /></button>
             <button
+              type="button"
               onClick={() => setIsHistoryOpen(o => !o)}
               className={`flex items-center gap-1 transition-colors ${isHistoryOpen ? 'text-indigo-600' : 'hover:text-gray-700'}`}
               title="Chat-Verlauf"
+              aria-expanded={isHistoryOpen}
+              aria-haspopup="listbox"
             >
               <History size={17} />
               <ChevronDown size={13} className={`transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`} />
             </button>
             {isHistoryOpen && (
-               <div className="absolute top-8 left-6 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-2 z-50">
-                  <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2" onClick={() => { handleNewChat(); setIsHistoryOpen(false); }}>
-                    <Plus size={16} /> Neuer Chat
-                  </button>
-                  <div className="h-px bg-gray-100 my-1"></div>
-                  <div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Chat Historie</div>
-                  {projectSessions.slice(0, 5).map(s => (
+               <div className="absolute top-8 left-0 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 flex flex-col overflow-hidden">
+                  <div className="shrink-0 py-2">
                     <button
-                      key={s.id}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 truncate ${s.id === currentSessionId ? 'text-indigo-600 font-medium' : 'text-gray-600'}`}
-                      onClick={() => { switchToSession(s.id); setIsHistoryOpen(false); }}
+                      type="button"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      onClick={() => { handleNewChat(); setIsHistoryOpen(false); }}
                     >
-                      {s.title || 'Neuer Chat'}
+                      <Plus size={16} /> Neuer Chat
                     </button>
-                  ))}
+                    <div className="h-px bg-gray-100 my-1" />
+                    <div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Chat Historie</div>
+                  </div>
+                  <div
+                    className="overflow-y-auto overscroll-contain max-h-[min(16rem,40vh)] pb-2"
+                    role="listbox"
+                    aria-label="Chat Historie"
+                  >
+                    {projectSessionsByRecency.length === 0 ? (
+                      <p className="px-4 py-2 text-sm text-gray-400">Noch keine Chats</p>
+                    ) : (
+                      projectSessionsByRecency.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          role="option"
+                          aria-selected={s.id === currentSessionId}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 truncate ${s.id === currentSessionId ? 'text-indigo-600 font-medium' : 'text-gray-600'}`}
+                          onClick={() => { switchToSession(s.id); setIsHistoryOpen(false); }}
+                        >
+                          {s.title || 'Neuer Chat'}
+                        </button>
+                      ))
+                    )}
+                  </div>
                </div>
             )}
           </div>
@@ -2328,13 +2428,7 @@ function ChatPageContent() {
           </span>
           <div className="flex items-center gap-3 text-gray-400">
             <button
-               onClick={() => setIsSupportOpen(true)}
-               className="hover:text-indigo-600 transition-colors"
-               title="Hilfe / Problem melden"
-            >
-               <HelpCircle size={18} />
-            </button>
-            <button
+               type="button"
                onClick={() => setIsDevModalOpen(true)}
                className="hover:text-indigo-600 transition-colors flex items-center gap-1 bg-indigo-50 text-indigo-500 px-2 py-0.5 rounded text-[10px] font-bold"
                title="Dev Context"
@@ -2344,10 +2438,14 @@ function ChatPageContent() {
             </button>
             {!isMobile && (
               <>
-                <button onClick={() => setIsMaximized(!isMaximized)} className="hover:text-gray-700 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setMaximizeOverride(v => !(v ?? !isCompactDesktop))}
+                  className="hover:text-gray-700 transition-colors"
+                >
                    {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 </button>
-                <button onClick={() => setIsClosed(true)} className="hover:text-gray-700 transition-colors"><X size={18} /></button>
+                <button type="button" onClick={() => setIsClosed(true)} className="hover:text-gray-700 transition-colors"><X size={18} /></button>
               </>
             )}
           </div>
@@ -2359,13 +2457,13 @@ function ChatPageContent() {
         {process.env.NODE_ENV === 'development' && !isLoadingSession && currentProject && (
           <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] font-medium text-amber-700 shrink-0 flex-wrap">
             <span className="opacity-60">⚡ dev</span>
-            {PHASE_ORDER.filter((_, i) => i !== PHASE_ORDER.indexOf(sessionPhase)).map(ph => (
+            {PHASE_ORDER.filter((_, i) => i !== phaseIndex(sessionPhase)).map(ph => (
               <button
                 key={ph}
                 onClick={() => handleDevSkipToPhase(ph)}
                 className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 transition-colors"
               >
-                {ph === sessionPhase ? '↺' : PHASE_ORDER.indexOf(ph) > PHASE_ORDER.indexOf(sessionPhase) ? '→' : '←'} {PHASE_LABELS[ph]}
+                {ph === sessionPhase ? '↺' : phaseIndex(ph) > phaseIndex(sessionPhase) ? '→' : '←'} {PHASE_LABELS[ph]}
               </button>
             ))}
             <span className="opacity-40">|</span>
@@ -2408,7 +2506,7 @@ function ChatPageContent() {
 
             {!isLoadingSession && currentSessionId && currentProject && (() => {
               const sPhase = sessionPhase;
-              const sPhaseIndex = PHASE_ORDER.indexOf(sPhase);
+              const sPhaseIndex = phaseIndex(sPhase);
               if (sPhaseIndex >= PHASE_ORDER.length - 1) return null;
 
               const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
@@ -2576,6 +2674,19 @@ function ChatPageContent() {
         </div>
 
         {isMobile && mobileViewSwitch}
+
+        {/* Hilfe — schwebende Bubble unten rechts im Chat-Panel */}
+        <button
+          type="button"
+          onClick={() => setIsSupportOpen(true)}
+          className={`absolute z-20 flex items-center justify-center rounded-full border border-gray-200 bg-white text-indigo-600 shadow-lg transition-colors hover:border-indigo-200 hover:bg-indigo-50 ${
+            isMobile ? 'bottom-[max(5.5rem,calc(5rem+env(safe-area-inset-bottom)))] right-4 w-11 h-11' : 'bottom-24 right-4 w-11 h-11'
+          }`}
+          title="Hilfe / Problem melden"
+          aria-label="Hilfe / Problem melden"
+        >
+          <HelpCircle size={20} />
+        </button>
       </div>
       )}
 
@@ -2598,11 +2709,11 @@ function ChatPageContent() {
         </button>
       )}
 
-      {/* Canvas — desktop: main area; mobile: separate tab */}
+      {/* Canvas — füllt exakt den Bereich rechts vom Chat (absolute inset), nicht padding auf voller Breite */}
       {!isMobile && (
       <div
-        className="flex-1 w-full h-full overflow-y-auto overflow-x-hidden transition-all duration-300 relative pt-6 pb-6 pr-6"
-        style={{ paddingLeft: isMaximized ? '624px' : '384px' }}
+        className="absolute top-0 right-0 bottom-0 z-0 min-w-0 overflow-y-auto overflow-x-hidden transition-[left] duration-300 pt-6 pb-6 pl-6 pr-6"
+        style={{ left: canvasInsetLeft }}
       >
         {roadmapCanvasEl}
       </div>

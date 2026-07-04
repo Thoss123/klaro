@@ -18,14 +18,25 @@ describe('canAdvanceFromPhase', () => {
       },
     ],
     documents: [],
-    phase: 'plan',
+    phase: 'analyse',
   };
 
-  it('blocks plan when pain point missing workflow', () => {
-    expect(canAdvanceFromPhase('plan', canvas).ok).toBe(false);
+  it('blocks analyse (merged) when pain point missing workflow', () => {
+    expect(canAdvanceFromPhase('analyse', canvas).ok).toBe(false);
   });
 
-  it('allows plan when coach signaled complete with at least one workflow', () => {
-    expect(canAdvanceFromPhase('plan', canvas, { coachSignaledComplete: true }).ok).toBe(true);
+  it('allows analyse when coach signaled complete with at least one workflow', () => {
+    expect(canAdvanceFromPhase('analyse', canvas, { coachSignaledComplete: true }).ok).toBe(true);
+  });
+
+  it('blocks diagnose without any pain point (Türsteher)', () => {
+    const empty: CanvasData = { ...canvas, pain_points: [] };
+    const gate = canAdvanceFromPhase('diagnose', empty);
+    expect(gate.ok).toBe(false);
+    expect(gate.reason).toBe('no_pain_points');
+  });
+
+  it('allows diagnose with at least one titled pain point', () => {
+    expect(canAdvanceFromPhase('diagnose', canvas).ok).toBe(true);
   });
 });

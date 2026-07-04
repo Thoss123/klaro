@@ -1,4 +1,5 @@
-import type { CanvasData, CanvasDocument, CompanyProfile, DataLayer, DocumentTemplate, PainPoint, Phase, TemplatePlaceholder, UseCase, Workflow, WorkflowStep } from '@/lib/types';
+import type { CanvasData, CanvasDocument, CompanyProfile, DataLayer, DocumentTemplate, IdeaCard, PainPoint, Phase, SolutionStructure, TemplatePlaceholder, ToolEvaluation, UseCase, Workflow, WorkflowStep } from '@/lib/types';
+import { normalizePhase } from '@/lib/phases';
 
 /** Coerce LLM JSON values to safe display/save strings. */
 export function toDisplayText(value: unknown): string {
@@ -152,13 +153,14 @@ function normalizeUseCase(
 }
 
 export function inferDocumentPhase(doc: Pick<CanvasDocument, 'title' | 'content' | 'phase'>): Phase {
-  if (doc.phase && ['diagnose', 'analyse', 'plan', 'umsetzung'].includes(doc.phase)) {
+  // Legacy: Dokumente mit phase='plan' gehören seit dem Merge zu 'analyse'.
+  if ((doc.phase as string) === 'plan') return 'analyse';
+  if (doc.phase && ['diagnose', 'analyse', 'umsetzung'].includes(doc.phase)) {
     return doc.phase;
   }
   const blob = `${doc.title} ${doc.content}`.toLowerCase();
   if (/umsetzung|deploy|credential|go-live|phase\s*4/.test(blob)) return 'umsetzung';
-  if (/workflow|automatisierung|blaupause|schritt-für-schritt|phase\s*3/.test(blob)) return 'plan';
-  if (/tool|software|stack|marketing|projektmanagement|canva|airtable|ist-tool/.test(blob)) {
+  if (/workflow|automatisierung|blaupause|schritt-für-schritt|tool|software|stack|marketing|projektmanagement|canva|airtable|ist-tool|phase\s*[23]/.test(blob)) {
     return 'analyse';
   }
   return 'diagnose';
@@ -172,9 +174,11 @@ function normalizeDocument(raw: unknown, index: number): CanvasDocument | null {
   if (!title || !content || content.length < 20) return null;
   const phaseRaw = toDisplayText(d.phase).toLowerCase();
   const phase =
-    phaseRaw === 'analyse' || phaseRaw === 'plan' || phaseRaw === 'umsetzung' || phaseRaw === 'diagnose'
-      ? (phaseRaw as Phase)
-      : undefined;
+    phaseRaw === 'plan' // Legacy-Alias der gemergten Phase 2
+      ? 'analyse'
+      : phaseRaw === 'analyse' || phaseRaw === 'umsetzung' || phaseRaw === 'diagnose'
+        ? (phaseRaw as Phase)
+        : undefined;
   const doc: CanvasDocument = {
     id: toDisplayText(d.id) || `doc_${index + 1}`,
     title,
@@ -344,6 +348,75 @@ function normalizeDataLayer(raw: unknown, current?: DataLayer): DataLayer | unde
   return { source_type, source_name, auto_provisioned, notes };
 }
 
+/** Ideen-Karte (Phase 1) — Titel Pflicht, status auf bekannte Werte begrenzt. */
+function normalizeIdeaCard(raw: unknown, index: number): IdeaCard | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as Record<string, unknown>;
+  const title = toDisplayText(c.title);
+  if (!title) return null;
+  const statusRaw = toDisplayText(c.status);
+  const status: IdeaCard['status'] =
+    statusRaw === 'interested' || statusRaw === 'dismissed' ? statusRaw : 'proposed';
+  return {
+    id: toDisplayText(c.id) || `idea_${index + 1}`,
+    area: toDisplayText(c.area) || 'Weitere Ideen',
+    title,
+    description: toDisplayText(c.description),
+    flow: toDisplayText(c.flow) || undefined,
+    status,
+  };
+}
+
+/** Tool-Bewertung (Phase 2) — Name Pflicht, Sterne auf 1–5 geklemmt. */
+function normalizeToolEvaluation(raw: unknown, index: number): ToolEvaluation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  const tool_name = toDisplayText(t.tool_name) || toDisplayText(t.name);
+  if (!tool_name) return null;
+  const ratingNum = Number(t.rating);
+  const rating = Number.isFinite(ratingNum)
+    ? Math.min(5, Math.max(1, Math.round(ratingNum)))
+    : undefined;
+  const toList = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.map(x => toDisplayText(x)).filter(Boolean)
+      : parseToolList(toDisplayText(v));
+  const logo_domain = toDisplayText(t.logo_domain)
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0] || undefined;
+  return {
+    id: toDisplayText(t.id) || `te_${index + 1}`,
+    tool_name,
+    logo_domain,
+    rating,
+    pros: toList(t.pros),
+    cons: toList(t.cons),
+    cost_monthly: toDisplayText(t.cost_monthly) || undefined,
+    verdict: toDisplayText(t.verdict) || undefined,
+    linked_pain_point: toDisplayText(t.linked_pain_point) || undefined,
+    linked_use_case: toDisplayText(t.linked_use_case) || undefined,
+  };
+}
+
+/** Struktur-Plan (Lösung aus mehreren Workflows) — Titel Pflicht. */
+function normalizeSolutionStructure(raw: unknown, index: number): SolutionStructure | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Record<string, unknown>;
+  const title = toDisplayText(s.title);
+  if (!title) return null;
+  const workflow_ids = Array.isArray(s.workflow_ids)
+    ? s.workflow_ids.map(x => toDisplayText(x)).filter(Boolean)
+    : [];
+  return {
+    id: toDisplayText(s.id) || `ss_${index + 1}`,
+    title,
+    linked_pain_point: toDisplayText(s.linked_pain_point) || '',
+    workflow_ids,
+    notes: toDisplayText(s.notes) || undefined,
+  };
+}
+
 /** Sanitize full canvas payload from Mistral before DB + React. */
 export function normalizeCanvasData(
   raw: Record<string, unknown>,
@@ -371,7 +444,9 @@ export function normalizeCanvasData(
     .map((d, i) => normalizeDocument(d, i))
     .filter((d): d is CanvasDocument => d !== null);
 
-  const canExtractWorkflows = phase === 'plan' || phase === 'umsetzung';
+  // Workflows entstehen in der gemergten Analyse (per workflow_plan-Tag/Tools)
+  // und in der Umsetzung; 'plan' als Legacy-Alias.
+  const canExtractWorkflows = phase === 'analyse' || phase === 'plan' || phase === 'umsetzung';
   const wfFromRaw = canExtractWorkflows && Array.isArray(raw.workflows)
     ? raw.workflows
         .map((w, i) => normalizeWorkflow(w, i))
@@ -395,6 +470,22 @@ export function normalizeCanvasData(
     .map((t, i) => normalizeDocumentTemplate(t, i))
     .filter((t): t is DocumentTemplate => t !== null);
 
+  // Neue Blöcke: raw gewinnt (kumulativer Stand vom Coach), sonst current erhalten.
+  const ideaRaw = Array.isArray(raw.idea_cards) ? raw.idea_cards : current?.idea_cards;
+  const idea_cards = (Array.isArray(ideaRaw) ? ideaRaw : [])
+    .map((c, i) => normalizeIdeaCard(c, i))
+    .filter((c): c is IdeaCard => c !== null);
+
+  const teRaw = Array.isArray(raw.tool_evaluations) ? raw.tool_evaluations : current?.tool_evaluations;
+  const tool_evaluations = (Array.isArray(teRaw) ? teRaw : [])
+    .map((t, i) => normalizeToolEvaluation(t, i))
+    .filter((t): t is ToolEvaluation => t !== null);
+
+  const ssRaw = Array.isArray(raw.solution_structures) ? raw.solution_structures : current?.solution_structures;
+  const solution_structures = (Array.isArray(ssRaw) ? ssRaw : [])
+    .map((s, i) => normalizeSolutionStructure(s, i))
+    .filter((s): s is SolutionStructure => s !== null);
+
   return {
     pain_points: pain_points.length > 0 ? pain_points : (current?.pain_points ?? []),
     use_cases: use_cases.length > 0 ? use_cases : (current?.use_cases ?? []),
@@ -402,8 +493,11 @@ export function normalizeCanvasData(
     workflow_plans: Array.isArray(current?.workflow_plans) ? current.workflow_plans : undefined,
     documents: documents.length > 0 ? documents : (current?.documents ?? []).map((d, i) => normalizeDocument(d, i)).filter((d): d is CanvasDocument => d !== null),
     company,
-    phase: (phase as CanvasData['phase']) || current?.phase || 'diagnose',
+    phase: normalizePhase(phase || current?.phase),
     data_layer,
     document_templates: document_templates.length > 0 ? document_templates : undefined,
+    idea_cards: idea_cards.length > 0 ? idea_cards : undefined,
+    tool_evaluations: tool_evaluations.length > 0 ? tool_evaluations : undefined,
+    solution_structures: solution_structures.length > 0 ? solution_structures : undefined,
   };
 }

@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AxantiloCoachState",
+  "description": "Das State-Objekt ist die einzige Wahrheit des Coach-Gesprächs. Es wird pro Request voll in den System-Prompt injiziert und nach jedem Turn per State-Extraktion (util_state_extraction.md) als Delta aktualisiert. Der Orchestrator merged Deltas; Arrays werden über ihre Schlüsselfelder (id, tool, typ, text) gemerged, nie blind ersetzt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_id", "phase", "mode"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Supabase-Session-ID"
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["0", "1a", "1b", "2", "3", "4", "5", "exit_warteliste"],
+      "description": "Aktive Phase — wird NUR vom Orchestrator geschrieben, nie vom Modell"
+    },
+    "mode": {
+      "type": ["string", "null"],
+      "enum": ["fuehren", "ausfuehren", null],
+      "description": "Gesprächsmodus; null nur vor dem ersten Turn in Phase 0"
+    },
+    "intent_history": {
+      "type": "array",
+      "description": "Erkannte Intents/Typen im Verlauf (auch Wechsel, z. B. Skeptiker wird Typ A)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typ"],
+        "properties": {
+          "typ": { "type": "string", "enum": ["A", "B", "C"] },
+          "notiz": { "type": ["string", "null"] },
+          "zeitpunkt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      }
+    },
+    "company": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "groesse": { "type": ["string", "null"], "description": "z. B. 'allein', '2-5', '6-15'" },
+        "objekte_aktiv": { "type": ["integer", "null"], "minimum": 0 },
+        "anfragen_pro_woche": { "type": ["integer", "null"], "minimum": 0 },
+        "team_notizen": { "type": ["string", "null"], "description": "Freitext: wer macht was, Assistenz, Zuständigkeiten" }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "crm": { "type": ["string", "null"] },
+        "portale": { "type": "array", "items": { "type": "string" } },
+        "postfach": { "type": ["string", "null"] },
+        "kalender": { "type": ["string", "null"] },
+        "fehlend": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tools, die ein gewählter Workflow braucht, der Kunde aber nicht hat → tool_provision_guide"
+        }
+      }
+    },
+    "pains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "quelle"],
+        "properties": {
+          "text": { "type": "string" },
+          "quelle": { "type": "string", "enum": ["user", "coach"], "description": "user = wörtlich vom Kunden, coach = vom Coach erkannt und vom Kunden bestätigt" },
+          "prio": { "type": ["integer", "null"], "minimum": 1, "maximum": 3, "description": "1 = größter Schmerz" }
+        }
+      }
+    },
+    "einwaende": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typ", "status"],
+        "properties": {
+          "typ": { "type": "string", "enum": ["kontrollverlust", "datenschutz", "zu_technisch", "kosten", "sonstig"] },
+          "status": { "type": "string", "enum": ["offen", "geloest", "wiederholt"] },
+          "loesung": { "type": ["string", "null"], "description": "Was hat den Einwand gelöst (z. B. 'Entwurfsmodus angeboten')" }
+        }
+      }
+    },
+    "selected_workflows": {
+      "type": "array",
+      "maxItems": 10,
+      "description": "Alle je gewählten Workflows über alle Durchläufe; pro Mini-Durchlauf max. 2 neue (Gate in phases.json)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "description": "wf_id aus workflows_index.json" },
+          "status": { "type": "string", "enum": ["vorgeschlagen", "ausgewaehlt", "konfiguriert", "deployed", "pausiert"] }
+        }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "description": "Pro Workflow-ID ein Objekt, validiert gegen coach/templates/{wf_id}.schema.json",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool", "status"],
+        "properties": {
+          "tool": { "type": "string" },
+          "status": { "type": "string", "enum": ["ausstehend", "verbunden", "verified", "fehlgeschlagen"] },
+          "test_ergebnis": { "type": ["string", "null"], "description": "Menschenlesbares Testergebnis, z. B. '14 aktive Objekte sichtbar'" }
+        }
+      }
+    },
+    "deploys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workflow_id", "testlauf"],
+        "properties": {
+          "workflow_id": { "type": "string" },
+          "n8n_workflow_id": { "type": ["string", "null"] },
+          "zeitpunkt": { "type": ["string", "null"], "format": "date-time" },
+          "testlauf": { "type": "string", "enum": ["ausstehend", "erfolgreich", "fehlgeschlagen"] }
+        }
+      }
+    },
+    "credits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kontingent": { "type": ["integer", "null"], "minimum": 0 },
+        "verbraucht": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "zusammenfassung_bestaetigt": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hartes Gate für Deploy (Phase 3 → 4). Wird vom Orchestrator beim Wiedereintritt in 1b auf false zurückgesetzt — gilt pro Durchlauf."
+    },
+    "kunde_bereit": {
+      "type": "boolean",
+      "default": false,
+      "description": "Gate 1a → 1b: Kunde signalisiert Bereitschaft für die Auswahl"
+    },
+    "readiness": {
+      "type": "boolean",
+      "default": false,
+      "description": "Gate 1b → 2: Zugangsdaten griffbereit. Wird beim Wiedereintritt in 1b zurückgesetzt."
+    },
+    "offene_todos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "wer": { "type": ["string", "null"], "enum": ["kunde", "coach", null] },
+          "erledigt": { "type": "boolean", "default": false }
+        }
+      }
+    }
+  }
+}
