@@ -11,6 +11,14 @@ export async function POST(req: NextRequest) {
     if (!auth.user) {
       return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
     }
+    const { canAfford } = await import('@/lib/billing/credits');
+    const affordability = await canAfford(auth.user.id, 1);
+    if (!affordability.ok) {
+      return NextResponse.json(
+        { code: 'INSUFFICIENT_CREDITS', balance: affordability.balance, required: affordability.required },
+        { status: 402 },
+      );
+    }
 
     const apiKey = process.env.MISTRAL_API_KEY?.trim();
     if (!apiKey) {
@@ -59,6 +67,15 @@ export async function POST(req: NextRequest) {
     if (!text) {
       return NextResponse.json({ error: 'Keine Sprache erkannt — bitte erneut versuchen' }, { status: 422 });
     }
+
+    const { debitFromUsage } = await import('@/lib/billing/credits');
+    await debitFromUsage({
+      userId: auth.user.id,
+      usage: { totalTokens: Math.max(1, Math.ceil(file.size / 1024)) },
+      model: VOXTRAL_MODEL,
+      action: 'transcribe',
+      metadata: { fileSize: file.size, language: data.language ?? 'de' },
+    }).catch(e => console.warn('[billing] transcribe debit failed:', e instanceof Error ? e.message : String(e)));
 
     return NextResponse.json({ text, language: data.language ?? 'de' });
   } catch (e: unknown) {

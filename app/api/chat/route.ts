@@ -1,6 +1,6 @@
 import { getSystemPrompt } from '@/lib/claude'
 import { getCoachSystemPrompt, isCoachV2Enabled } from '@/lib/coach/assemble'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { stripInternalTags } from '@/lib/strip-internal-tags'
 import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels'
 import { resolveDiagnosePath } from '@/lib/onboarding-multi'
@@ -16,7 +16,25 @@ const argStr = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, onboarding, phase, canvas, attachments, project_id } = await req.json()
+    const { messages, onboarding, phase, canvas, attachments, project_id, session_id, strategie: strategieOverride } = await req.json()
+    const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
+    }
+    const { canAfford } = await import('@/lib/billing/credits');
+    const affordability = await canAfford(user.id, 1);
+    if (!affordability.ok) {
+      return NextResponse.json(
+        {
+          code: 'INSUFFICIENT_CREDITS',
+          balance: affordability.balance,
+          required: affordability.required,
+        },
+        { status: 402 },
+      );
+    }
 
     const currentPhase = phase || 'diagnose'
     let systemPrompt = getSystemPrompt(currentPhase)
@@ -157,10 +175,11 @@ export async function POST(req: NextRequest) {
     // Projektweit (jede Phase = eigene Session-Zeile); fail-open — ohne Strategie
     // läuft der Coach einfach ohne Hypothesen los.
     let strategieText = 'Noch keine Strategie vorhanden.';
-    if (project_id && systemPrompt.includes('{{strategie}}')) {
+    // Direkte Übergabe (z.B. Simulations-Harness ohne DB-Projekt) hat Vorrang.
+    if (typeof strategieOverride === 'string' && strategieOverride.trim()) {
+      strategieText = strategieOverride.trim();
+    } else if (project_id && systemPrompt.includes('{{strategie}}')) {
       try {
-        const { createSupabaseServerClient } = await import('@/lib/supabase-server');
-        const supabase = await createSupabaseServerClient();
         const { data: projRow } = await supabase
           .from('projects')
           .select('strategy')
@@ -267,7 +286,7 @@ export async function POST(req: NextRequest) {
     const readableStream = new ReadableStream({
       async start(controller) {
         try {
-          await provider.streamMessage(
+          const usageResult = await provider.streamMessage(
             systemPrompt,
             history,
             lastMessage,
@@ -481,6 +500,20 @@ export async function POST(req: NextRequest) {
             Array.isArray(attachments) ? attachments : undefined,
             currentPhase
           );
+          try {
+            const { debitFromUsage } = await import('@/lib/billing/credits');
+            await debitFromUsage({
+              userId: user.id,
+              usage: usageResult.usage,
+              model: usageResult.model,
+              action: 'chat',
+              projectId: typeof project_id === 'string' ? project_id : null,
+              sessionId: typeof session_id === 'string' ? session_id : null,
+              metadata: { phase: currentPhase },
+            });
+          } catch (debitError: unknown) {
+            console.warn('[billing] chat debit failed:', debitError instanceof Error ? debitError.message : String(debitError));
+          }
         } catch (err: unknown) {
            console.error('Provider Stream Error:', err);
            controller.enqueue(new TextEncoder().encode('\n\n[System Error: KI antwortet nicht richtig. Fallback oder Retry erforderlich.]'));

@@ -3,117 +3,111 @@
  * exactly as it would be sent to the model, plus a token estimate.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getSystemPrompt } from '@/lib/claude';
-import { getCoachSystemPrompt, isCoachV2Enabled } from '@/lib/coach/assemble';
-import { formatTeamSize, isSoloTeam } from '@/lib/onboarding-labels';
-import { resolveDiagnosePath } from '@/lib/onboarding-multi';
+import { buildInjectedSystemPrompt, estimatePromptTokens } from '@/lib/dev/build-injected-prompt';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-
-// Rough token estimate: German text averages ~3.5 chars/token for Mistral tokenizer
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3.5);
-}
+import type { CanvasData, OnboardingData } from '@/lib/types';
 
 // Mistral large context window
 const MODEL_CONTEXT_LIMIT = 128_000;
+
+export type DevContextProject = {
+  id: string;
+  name: string;
+  strategy: string | null;
+  strategy_updated_at: string | null;
+};
+
+export type DevContextSession = {
+  id: string;
+  memory: string | null;
+  firmen_recherche: string | null;
+  firmen_website: string | null;
+  strategy_prep_progress: unknown;
+};
+
+export type DevContextProjectMemory = {
+  phase: string;
+  summary: string;
+  created_at: string | null;
+};
 
 export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {
     return NextResponse.json({ error: 'Dev only' }, { status: 403 });
   }
 
-  const { messages, onboarding, phase, canvas, project_id } = await req.json();
+  const { messages, onboarding, phase, canvas, project_id, session_id } = await req.json();
 
   const currentPhase = phase || 'diagnose';
-  let systemPrompt = getSystemPrompt(currentPhase);
-  // Gleiche Prompt-Wahl wie /api/chat: Coach v2 (base + Phasenmodul) wenn aktiv.
-  if (isCoachV2Enabled()) {
-    const v2Prompt = getCoachSystemPrompt(currentPhase);
-    if (v2Prompt) systemPrompt = v2Prompt;
-  }
+  const supabase = await createSupabaseServerClient();
 
-  // Interne Gesprächsstrategie (projects.strategy) — wie im Chat-Route injiziert.
-  let strategieText = 'Noch keine Strategie vorhanden.';
+  let strategieText: string | null = null;
+  let project: DevContextProject | null = null;
+  let session: DevContextSession | null = null;
+  let projectMemory: DevContextProjectMemory[] = [];
+  let canvasFromDb: CanvasData | null = null;
+
   if (project_id && typeof project_id === 'string') {
     try {
-      const supabase = await createSupabaseServerClient();
       const { data: projRow } = await supabase
         .from('projects')
-        .select('strategy')
+        .select('id, name, strategy, strategy_updated_at')
         .eq('id', project_id)
         .maybeSingle();
-      if (projRow?.strategy?.trim()) strategieText = projRow.strategy.trim();
+      if (projRow) {
+        project = {
+          id: projRow.id,
+          name: projRow.name,
+          strategy: projRow.strategy ?? null,
+          strategy_updated_at: projRow.strategy_updated_at ?? null,
+        };
+        if (projRow.strategy?.trim()) strategieText = projRow.strategy.trim();
+      }
+
+      const { data: pcRow } = await supabase
+        .from('project_canvas')
+        .select('data')
+        .eq('project_id', project_id)
+        .maybeSingle();
+      if (pcRow?.data) canvasFromDb = pcRow.data as CanvasData;
+
+      const { data: memRows } = await supabase
+        .from('project_memory')
+        .select('phase, summary, created_at')
+        .eq('project_id', project_id)
+        .order('created_at', { ascending: true });
+      projectMemory = (memRows ?? []) as DevContextProjectMemory[];
     } catch { /* dev only — fail open */ }
   }
-  systemPrompt = systemPrompt.replace(/{{strategie}}/g, strategieText);
 
-  // Inject onboarding
-  if (onboarding) {
-    const isSolo = isSoloTeam(onboarding.unternehmensgroesse);
-    const ugVal = formatTeamSize(onboarding.unternehmensgroesse);
-    const vorname = (onboarding.vorname || onboarding.username || '').trim() || 'Nutzer';
-    const firmenname = onboarding.firmenname?.trim() || 'Nicht angegeben';
-    const rolle = onboarding.rolle_im_unternehmen?.trim() || 'Nicht angegeben';
-    const anredeText = isSolo
-      ? `Sprich den Nutzer mit dem Vornamen "${vorname}" an (Du-Form).`
-      : `Sprich die Gruppe mit "ihr" an; Ansprechpartner: ${vorname}.`;
-    const rechercheVal = onboarding.firmen_recherche?.trim();
-    const firmenKontext =
-      firmenname !== 'Nicht angegeben'
-        ? `Unternehmen: ${firmenname}. Rolle: ${rolle}.${rechercheVal ? ` Automatisch recherchiert: ${rechercheVal}` : ''}`
-        : `Rolle: ${rolle}.`;
-
-    systemPrompt = systemPrompt
-      .replace(/{{vorname}}/g, vorname)
-      .replace(/{{firmenname}}/g, firmenname)
-      .replace(/{{rolle}}/g, rolle)
-      .replace(/{{firmen_kontext}}/g, firmenKontext)
-      .replace(/{{branche}}/g, onboarding.branche?.trim() || 'Nicht angegeben')
-      .replace(/{{ziel}}/g, onboarding.ziel || 'Nicht angegeben')
-      .replace(/{{ki_erfahrung}}/g, onboarding.ki_erfahrung || 'Nicht angegeben')
-      .replace(/{{wer_setzt_um}}/g, onboarding.wer_setzt_um || 'Nicht angegeben')
-      .replace(/{{hindernis}}/g, onboarding.hindernis || 'Nicht angegeben')
-      .replace(/{{tempo}}/g, onboarding.tempo || 'Nicht angegeben')
-      .replace(/{{unternehmensgroesse}}/g, ugVal)
-      .replace(/{{anrede}}/g, anredeText)
-      .replace(/{{memory}}/g, onboarding.memory || 'Bisher keine Historie.');
-
-    // Adaptive Path Logic
-    let pfadLogik = 'Keine besondere Pfad-Anweisung. Führe eine klassische, offene Diagnose durch.';
-    if (currentPhase === 'diagnose' && onboarding.ziel) {
-      const path = resolveDiagnosePath(onboarding.ziel);
-      if (path === 'B') {
-        pfadLogik = 'Pfad B: Der Nutzer hat gesagt, er hat schon konkrete Ideen. Überspringe die offene Diagnose von null auf. Frage direkt: "Du hast gesagt, du hast schon konkrete Ideen — erzähl mir, was dir vorschwebt." Höre zu, validiere ob die Idee realistisch und rentabel ist (frage nach konkreten Zahlen/Zeitverlust), UND ergänze das Gespräch mit offenen Fragen (z.B. "Gibt es neben dieser Idee noch ganz andere Bereiche, in denen viel Zeit verloren geht?").';
-      } else if (path === 'C') {
-        pfadLogik = 'Pfad C: Der Nutzer will erst einmal evaluieren, ob KI überhaupt sinnvoll ist. Analysiere Prozesse und filtere eiskalt heraus, welche Ideen keinen Sinn machen. WICHTIG: Der Grundton deines Gesprächs muss trotzdem überzeugend PRO-KI sein! Wir wollen unser eigenes Automatisierungs-Tool nicht wegrationalisieren. Zeige ihm, dass KI an den *richtigen* Stellen massive Hebelwirkung hat.';
-      } else if (path === 'D') {
-        pfadLogik = 'Pfad D: Der Nutzer will am Ende ein Briefing für seine IT-Abteilung. Führe die Diagnose ganz normal durch, um die besten Hebel zu finden. Denke aber im Hinterkopf mit: Am Ende bauen wir kein technisches n8n Tool für ihn, sondern ein klares architektonisches Konzept/Briefing für die IT.';
-      } else {
-        pfadLogik = 'Pfad A: Der Nutzer weiß noch nicht, wo er anfangen soll (Klassischer Flow). Führe die Diagnose ganz klassisch durch: Starte breit, suche Ineffizienzen und bohre tief, um konkrete Zeitfresser zu identifizieren.';
+  if (session_id && typeof session_id === 'string') {
+    try {
+      const { data: sessRow } = await supabase
+        .from('sessions')
+        .select('id, memory, firmen_recherche, firmen_website, strategy_prep_progress')
+        .eq('id', session_id)
+        .maybeSingle();
+      if (sessRow) {
+        session = {
+          id: sessRow.id,
+          memory: sessRow.memory ?? null,
+          firmen_recherche: sessRow.firmen_recherche ?? null,
+          firmen_website: sessRow.firmen_website ?? null,
+          strategy_prep_progress: sessRow.strategy_prep_progress ?? null,
+        };
       }
-    }
-    systemPrompt = systemPrompt.replace(/{{pfad_logik}}/g, pfadLogik);
+    } catch { /* dev only */ }
   }
 
-  const painPointsJson =
-    canvas?.pain_points?.length ? JSON.stringify(canvas.pain_points, null, 2) : '[]';
-  const companyJson = canvas?.company ? JSON.stringify(canvas.company, null, 2) : '{}';
-  systemPrompt = systemPrompt
-    .replace(/{{pain_points}}/g, painPointsJson)
-    .replace(/{{company}}/g, companyJson)
-    .replace(
-      /{{heute}}/g,
-      new Date().toLocaleDateString('de-DE', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      }),
-    );
+  const systemPrompt = buildInjectedSystemPrompt({
+    phase: currentPhase,
+    onboarding: onboarding as Partial<OnboardingData> | null,
+    canvas: canvas as CanvasData | null,
+    strategie: strategieText,
+    memoryText: (onboarding as Partial<OnboardingData> | null)?.memory ?? null,
+  });
 
-  if (canvas?.use_cases) {
-    systemPrompt = systemPrompt.replace(/{{use_cases}}/g, JSON.stringify(canvas.use_cases, null, 2));
-  }
-
-  // Build history (same stripping as chat route)
-  const history = ((messages || []) as Array<{ role: string; content?: string }>).map((m) => {
+  const historyStripped = ((messages || []) as Array<{ role: string; content?: string }>).map((m) => {
     let text = m.content || ' ';
     if (m.role === 'assistant') {
       text = text
@@ -129,9 +123,14 @@ export async function POST(req: NextRequest) {
     return { role: m.role, content: text };
   });
 
-  // Token estimates
-  const systemTokens = estimateTokens(systemPrompt);
-  const historyTokens = history.reduce((sum: number, m) => sum + estimateTokens(m.content), 0);
+  const historyRaw = ((messages || []) as Array<{ role: string; content?: string; id?: string }>).map(m => ({
+    id: m.id ?? null,
+    role: m.role,
+    content: m.content || '',
+  }));
+
+  const systemTokens = estimatePromptTokens(systemPrompt);
+  const historyTokens = historyStripped.reduce((sum: number, m) => sum + estimatePromptTokens(m.content), 0);
   const totalTokens = systemTokens + historyTokens;
   const pct = Math.round((totalTokens / MODEL_CONTEXT_LIMIT) * 100);
 
@@ -147,6 +146,13 @@ export async function POST(req: NextRequest) {
       remaining: MODEL_CONTEXT_LIMIT - totalTokens,
     },
     systemPrompt,
-    history,
+    history: historyStripped,
+    historyRaw,
+    project,
+    session,
+    projectMemory,
+    canvasClient: canvas ?? null,
+    canvasDb: canvasFromDb,
+    onboarding: onboarding ?? null,
   });
 }

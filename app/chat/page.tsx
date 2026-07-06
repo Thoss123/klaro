@@ -35,11 +35,15 @@ import SupportModal from '@/components/chat/SupportModal';
 import PhaseFeedbackModal, { type PhaseFeedbackData } from '@/components/chat/PhaseFeedbackModal';
 import CanvasInfoPanel from '@/components/chat/CanvasInfoPanel';
 import SidebarAccountOverview from '@/components/chat/SidebarAccountOverview';
+import UpgradeCard from '@/components/billing/UpgradeCard';
+import UpgradeModal from '@/components/billing/UpgradeModal';
+import AccountSettingsModal from '@/components/billing/AccountSettingsModal';
+import { useBillingStatus } from '@/components/billing/useBillingStatus';
 import { getAccountDisplayInfo } from '@/lib/account-display';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import type { User } from '@supabase/supabase-js';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Menu, Maximize2, Minimize2, X, Plus, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, HelpCircle } from 'lucide-react';
+import { Menu, Maximize2, Minimize2, X, Plus, Home as HomeIcon, MessageCircle, ChevronRight, ChevronDown, Check, Loader2, Sparkles, Brain, FileText, Zap, Key, Rocket, Activity, Database, Search, RotateCcw, History, HelpCircle, Download } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { detectCompletedPhase } from '@/lib/detect-phase-transition';
@@ -51,6 +55,10 @@ import {
   getSessionKickoff,
   pickLatestSessionForPhase,
 } from '@/lib/session-kickoff';
+import StrategyPrepScreen from '@/components/onboarding/StrategyPrepScreen';
+import { runStrategyPrepStream } from '@/lib/run-strategy-prep';
+import type { StrategyPrepProgress } from '@/lib/strategy-prep';
+import { shouldRecoverCoachCanvas, userRequestedCanvasBuild } from '@/lib/coach-canvas-sync';
 import {
   type ChatAttachment,
   embedUserAttachments,
@@ -160,6 +168,10 @@ function getChatBackgroundStatus(
   }
 
   if (running.length > 0) {
+    const canvasRunning = running.some(a => a.type === 'canvas_update');
+    if (canvasRunning) {
+      return 'Ich aktualisiere gerade das Canvas — gleich siehst du rechts die Änderung. Du kannst schon weiterschreiben.';
+    }
     const researching = running.some(a => a.type === 'research_solutions');
     if (researching) {
       return 'Axantilo recherchiert Lösungsansätze — du kannst schon weiterschreiben.';
@@ -192,6 +204,15 @@ const emptyCanvas: CanvasData = {
 };
 
 // ---- DEV: Context Inspector ----
+type DevContextTab =
+  | 'tokens'
+  | 'system'
+  | 'history'
+  | 'strategy'
+  | 'recherche'
+  | 'memory'
+  | 'canvas';
+
 type DevContextData = {
   model: string;
   phase: string;
@@ -199,31 +220,69 @@ type DevContextData = {
   systemPrompt: string;
   tokens: { total: number; remaining: number; system: number; history: number; pct: number };
   history: Array<{ role: string; content: string }>;
+  historyRaw?: Array<{ id: string | null; role: string; content: string }>;
+  project?: {
+    id: string;
+    name: string;
+    strategy: string | null;
+    strategy_updated_at: string | null;
+  } | null;
+  session?: {
+    id: string;
+    memory: string | null;
+    firmen_recherche: string | null;
+    firmen_website: string | null;
+    strategy_prep_progress: unknown;
+  } | null;
+  projectMemory?: Array<{ phase: string; summary: string; created_at: string | null }>;
+  canvasClient?: CanvasData | null;
+  canvasDb?: CanvasData | null;
+  onboarding?: Partial<OnboardingData> | null;
+};
+
+const DEV_TAB_LABELS: Record<DevContextTab, string> = {
+  tokens: '📊 Tokens',
+  system: '🧠 Prompt',
+  history: '💬 History',
+  strategy: '📋 Strategy',
+  recherche: '🔍 Recherche',
+  memory: '🧠 Memory',
+  canvas: '🗺️ Canvas',
 };
 
 function DevContextModal({
-  messages, onboarding, phase, canvas, onClose,
+  messages, onboarding, phase, canvas, projectId, sessionId, onClose,
 }: {
   messages: Message[];
   onboarding: Partial<OnboardingData> | null;
   phase: string;
   canvas: CanvasData;
+  projectId?: string | null;
+  sessionId?: string | null;
   onClose: () => void;
 }) {
   const [data, setData] = React.useState<DevContextData | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [tab, setTab] = React.useState<'tokens' | 'system' | 'history'>('tokens');
+  const [tab, setTab] = React.useState<DevContextTab>('tokens');
+  const [historyRaw, setHistoryRaw] = React.useState(false);
 
   React.useEffect(() => {
     fetch('/api/dev/context', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, onboarding, phase, canvas }),
+      body: JSON.stringify({
+        messages,
+        onboarding,
+        phase,
+        canvas,
+        project_id: projectId,
+        session_id: sessionId,
+      }),
     })
       .then(r => r.json())
       .then(setData)
       .finally(() => setLoading(false));
-  }, []);
+  }, [canvas, messages, onboarding, phase, projectId, sessionId]);
 
   const pct = data?.tokens?.pct ?? 0;
   const barColor = pct < 50 ? 'bg-emerald-400' : pct < 75 ? 'bg-amber-400' : pct < 90 ? 'bg-orange-500' : 'bg-red-500';
@@ -247,14 +306,15 @@ function DevContextModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-5 pt-3 pb-0 shrink-0">
-          {(['tokens', 'system', 'history'] as const).map(t => (
+        <div className="flex gap-1 px-5 pt-3 pb-0 shrink-0 overflow-x-auto">
+          {(Object.keys(DEV_TAB_LABELS) as DevContextTab[]).map(t => (
             <button
               key={t}
+              type="button"
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-[11px] font-semibold rounded-md transition-colors ${tab === t ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+              className={`px-3 py-1.5 text-[11px] font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${tab === t ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
             >
-              {t === 'tokens' ? '📊 Tokens' : t === 'system' ? '🧠 System Prompt' : '💬 History'}
+              {DEV_TAB_LABELS[t]}
             </button>
           ))}
         </div>
@@ -328,11 +388,26 @@ function DevContextModal({
 
           {!loading && data && tab === 'history' && (
             <div className="space-y-3">
-              {data.history.length === 0 && (
+              <div className="flex items-center justify-end gap-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setHistoryRaw(v => !v)}
+                  className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-colors ${historyRaw ? 'bg-amber-500/20 border-amber-400/40 text-amber-300' : 'border-white/10 text-white/40 hover:text-white/70'}`}
+                >
+                  {historyRaw ? 'Raw (Tags)' : 'Stripped (API)'}
+                </button>
+              </div>
+              {(historyRaw ? (data.historyRaw ?? messages.map(m => ({ id: m.id, role: m.role, content: m.content }))) : data.history).length === 0 && (
                 <div className="text-white/30 text-sm text-center py-8">Keine Nachrichten</div>
               )}
-              {data.history.map((m, i: number) => (
-                <div key={i} className={`rounded-xl p-3 border ${m.role === 'user' ? 'bg-indigo-950/50 border-indigo-500/20' : 'bg-white/5 border-white/10'}`}>
+              {(historyRaw
+                ? (data.historyRaw ?? messages.map(m => ({ id: m.id, role: m.role, content: m.content })))
+                : data.history
+              ).map((m, i: number) => {
+                const rowKey =
+                  historyRaw && 'id' in m && typeof m.id === 'string' ? m.id : `hist-${i}`;
+                return (
+                <div key={rowKey} className={`rounded-xl p-3 border ${m.role === 'user' ? 'bg-indigo-950/50 border-indigo-500/20' : 'bg-white/5 border-white/10'}`}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${m.role === 'user' ? 'text-indigo-400' : 'text-white/50'}`}>
                       {m.role === 'user' ? '👤 User' : '🤖 Assistant'}
@@ -343,7 +418,93 @@ function DevContextModal({
                     {m.content}
                   </pre>
                 </div>
-              ))}
+                );
+              })}
+            </div>
+          )}
+
+          {!loading && data && tab === 'strategy' && (
+            <div className="space-y-3">
+              {data.project?.strategy_updated_at && (
+                <p className="text-[10px] font-mono text-white/30">
+                  Aktualisiert: {new Date(data.project.strategy_updated_at).toLocaleString('de-DE')}
+                </p>
+              )}
+              {data.project?.strategy?.trim() ? (
+                <pre className="text-[12px] font-mono text-amber-200/90 whitespace-pre-wrap leading-relaxed">
+                  {data.project.strategy}
+                </pre>
+              ) : (
+                <p className="text-white/30 text-sm text-center py-8">Noch keine Strategy (projects.strategy leer)</p>
+              )}
+            </div>
+          )}
+
+          {!loading && data && tab === 'recherche' && (
+            <div className="space-y-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Firmen-Website</div>
+                <pre className="text-[12px] font-mono text-white/70">{data.session?.firmen_website || onboarding?.firmen_website || '—'}</pre>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">firmen_recherche (Session)</div>
+                {data.session?.firmen_recherche?.trim() ? (
+                  <pre className="text-[12px] font-mono text-sky-200/90 whitespace-pre-wrap leading-relaxed">{data.session.firmen_recherche}</pre>
+                ) : (
+                  <p className="text-white/30 text-sm">Noch keine Recherche gespeichert</p>
+                )}
+              </div>
+              {data.session?.strategy_prep_progress != null && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Strategy-Prep-Fortschritt</div>
+                  <pre className="text-[11px] font-mono text-white/50 whitespace-pre-wrap">{JSON.stringify(data.session.strategy_prep_progress, null, 2)}</pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && data && tab === 'memory' && (
+            <div className="space-y-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Session-Memory</div>
+                <pre className="text-[12px] font-mono text-emerald-200/80 whitespace-pre-wrap leading-relaxed">
+                  {data.session?.memory || '—'}
+                </pre>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Onboarding-Memory (injiziert)</div>
+                <pre className="text-[12px] font-mono text-white/50 whitespace-pre-wrap leading-relaxed">
+                  {data.onboarding?.memory || onboarding?.memory || '—'}
+                </pre>
+              </div>
+              {(data.projectMemory?.length ?? 0) > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Projekt-Memory (Phasen)</div>
+                  {data.projectMemory!.map((row, i) => (
+                    <div key={i} className="mb-3 rounded-lg border border-white/10 p-3 bg-white/5">
+                      <div className="text-[10px] font-mono text-white/30 mb-1">Phase: {row.phase}</div>
+                      <pre className="text-[11px] font-mono text-white/60 whitespace-pre-wrap">{row.summary}</pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && data && tab === 'canvas' && (
+            <div className="space-y-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">Client-State (aktuell)</div>
+                <pre className="text-[11px] font-mono text-violet-200/80 whitespace-pre-wrap overflow-x-auto">
+                  {JSON.stringify(data.canvasClient ?? canvas, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2">DB (project_canvas)</div>
+                <pre className="text-[11px] font-mono text-white/50 whitespace-pre-wrap overflow-x-auto">
+                  {data.canvasDb ? JSON.stringify(data.canvasDb, null, 2) : '—'}
+                </pre>
+              </div>
             </div>
           )}
         </div>
@@ -466,6 +627,7 @@ function ChatPageContent() {
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
+  const [isExportingChat, setIsExportingChat] = useState(false);
   const [isResettingPhase, setIsResettingPhase] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [phaseFeedback, setPhaseFeedback] = useState<{ phase: string; isFinal: boolean } | null>(null);
@@ -493,6 +655,8 @@ function ChatPageContent() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [isPreparingStrategy, setIsPreparingStrategy] = useState(false);
+  const [strategyPrepProgress, setStrategyPrepProgress] = useState<StrategyPrepProgress | null>(null);
   const [isPreparingNextPhase, setIsPreparingNextPhase] = useState(false);
   const [preparedNextSessionId, setPreparedNextSessionId] = useState<string | null>(null);
   // Phase-4-Abschluss: „Was kommt als Nächstes?" (weiterer Workflow / neuer Bereich) läuft.
@@ -516,6 +680,8 @@ function ChatPageContent() {
   const [maximizeOverride, setMaximizeOverride] = useState<boolean | null>(null);
   const [isClosed, setIsClosed] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   // Mobile: only one of chat / canvas is shown at a time, toggled via a bottom-center switch.
   const isMobile = useIsMobile();
@@ -669,6 +835,32 @@ function ChatPageContent() {
     () => (authUser ? getAccountDisplayInfo(authUser, onboarding) : null),
     [authUser, onboarding],
   );
+  const billing = useBillingStatus(!!authUser);
+  const {
+    status: billingStatus,
+    loading: billingLoading,
+    checkoutLoading: billingCheckoutLoading,
+    error: billingError,
+    refresh: refreshBilling,
+    startCheckout: startBillingCheckout,
+  } = billing;
+
+  useEffect(() => {
+    const result = searchParams.get('billing');
+    if (!result) return;
+
+    if (result === 'topup_success') {
+      refreshBilling();
+      setTimeout(() => setNetToast('Credits wurden aufgeladen.'), 0);
+    } else if (result === 'topup_cancelled') {
+      setTimeout(() => setNetToast('Aufladung abgebrochen.'), 0);
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('billing');
+    const nextQuery = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [refreshBilling, searchParams]);
 
   const handleLogout = useCallback(async () => {
     const supabase = createSupabaseBrowserClient();
@@ -814,7 +1006,7 @@ function ChatPageContent() {
     }
   }, []);
 
-  /** Coach erklärt im Chat, warum die Roadmap (noch) nicht aktualisiert wurde. */
+  /** Canvas-Sync-Hinweise nicht als zweite Chat-Antwort anzeigen. */
   const appendCoachStatusExplanation = useCallback(
     async (
       sessionId: string,
@@ -827,21 +1019,20 @@ function ChatPageContent() {
       const key = `${sessionId}:${reason ?? 'unknown'}:${text.slice(0, 48)}`;
       if (lastCoachStatusKeyRef.current === key) return;
       lastCoachStatusKeyRef.current = key;
-
-      const statusMsg: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: text,
-      };
-      setMessages(prev => [...prev, statusMsg]);
-      try {
-        await saveMessage(sessionId, 'assistant', text);
-      } catch (e) {
-        console.error('Coach-Status speichern fehlgeschlagen:', e);
-      }
     },
     [],
   );
+
+  // Hält die URL (?id=) mit der aktiven Session synchron, damit ein Reload immer
+  // denselben Chat wiederherstellt — statt auf die neueste Session zu fallen.
+  // replaceState statt router.replace: kein Next-Re-Render, keine History-Einträge.
+  const syncSessionUrl = useCallback((sessionId: string) => {
+    if (typeof window === 'undefined') return;
+    const url = `/chat?id=${sessionId}`;
+    if (window.location.pathname + window.location.search !== url) {
+      window.history.replaceState(null, '', url);
+    }
+  }, []);
 
   // ---- Send message (Hoisted for use in useEffect) ----
   const sendMessage = useCallback(async (
@@ -863,6 +1054,7 @@ function ChatPageContent() {
       try {
         sessionId = await createSession(ob, userId);
         setCurrentSessionId(sessionId);
+        syncSessionUrl(sessionId);
         await refreshSessions();
       } catch (err) {
         console.error('Error creating session:', err);
@@ -1022,6 +1214,22 @@ function ChatPageContent() {
       });
 
       if (!response.ok) {
+        if (response.status === 402) {
+          let payload: { code?: string; balance?: number } = {};
+          try {
+            payload = await response.json();
+          } catch {
+            payload = {};
+          }
+          if (payload.code === 'INSUFFICIENT_CREDITS') {
+            const text = 'Deine Test-Credits sind aufgebraucht. Du kannst im Account 6.000 Credits für 49€ aufladen und danach direkt weiterbauen.';
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: text } : m));
+            await saveMessage(sessionId, 'assistant', text);
+            refreshBilling();
+            setIsUpgradeOpen(true);
+            return;
+          }
+        }
         const errPreview = (await response.text()).slice(0, 200);
         const looksLikeHtml = /<!DOCTYPE|<html/i.test(errPreview);
         throw new Error(
@@ -1048,16 +1256,15 @@ function ChatPageContent() {
       // bare local would narrow away to `null` at the await site below.
       const canvasWorker: { current: Promise<void> | null } = { current: null };
 
-      // Worker trigger (phases 2–4 only). Distinct from the coach's own data tag
-      // <canvas_update>{…}</canvas_update> used in diagnose (handled separately below).
+      // Legacy worker trigger. The main coach is now the canvas authority in every
+      // phase; this tag is tolerated in old prompts but must not start a worker.
       const hasCanvasTrigger = (text: string) =>
         /trigger_canvas_update/i.test(text);
 
-      // Diagnose: the COACH writes the canvas itself via a data tag — no worker LLM
-      // (avoids invented pain points + unreliable numbers). Die gemergte Analyse
-      // nutzt BEIDES: direkter Tag (idea_cards/tool_evaluations/rank/Struktur)
-      // UND trigger_canvas_update für die Worker-Extraktion (use_cases/Tools).
-      const coachWritesCanvas = chatPhase === 'diagnose';
+      // The COACH writes/builds the canvas itself in all phases. The old generic
+      // canvas-worker extraction path stays disabled to avoid second-pass updates
+      // and extra chat/status messages.
+      const coachWritesCanvas = true;
       const coachCanvasTagEnabled = chatPhase === 'diagnose' || chatPhase === 'analyse';
 
       // Parse the coach's <canvas_update> JSON and write it straight to the canvas.
@@ -1067,9 +1274,11 @@ function ChatPageContent() {
         let parsed: {
           company?: Record<string, unknown>;
           pain_points?: Array<Record<string, unknown>>;
+          use_cases?: Array<Record<string, unknown>>;
           idea_cards?: Array<Record<string, unknown>>;
           tool_evaluations?: Array<Record<string, unknown>>;
           solution_structures?: Array<Record<string, unknown>>;
+          data_layer?: Record<string, unknown>;
         };
         try {
           parsed = JSON.parse(jsonStr.trim());
@@ -1100,6 +1309,16 @@ function ChatPageContent() {
             'pp',
           ),
         };
+        if (parsed.use_cases) {
+          mergedRaw.use_cases = mergeById(
+            (cur.use_cases || []) as unknown as Array<Record<string, unknown>>,
+            parsed.use_cases,
+            'uc',
+          );
+        }
+        if (parsed.data_layer) {
+          mergedRaw.data_layer = { ...(cur.data_layer || {}), ...parsed.data_layer };
+        }
         if (parsed.idea_cards) {
           mergedRaw.idea_cards = mergeById(
             (cur.idea_cards || []) as unknown as Array<Record<string, unknown>>,
@@ -1197,10 +1416,18 @@ function ChatPageContent() {
             onboarding: obWithMemory,
             phase: streamCanvasData.phase,
             projectId: projId,
+            sessionId,
           }),
         })
           .then(async res => {
             const data = await res.json().catch(() => ({}));
+            if (res.status === 402 && data?.code === 'INSUFFICIENT_CREDITS') {
+              completeAction(aid, 'Credits aufgebraucht');
+              refreshBilling();
+              setIsUpgradeOpen(true);
+              setNetToast('Deine Credits sind aufgebraucht — du kannst im Account aufladen.');
+              return;
+            }
             const status = data.status || (res.ok ? 'unknown' : 'error');
             const reason = data.reason || data.error || data.detail;
             const diff = data.diff;
@@ -1247,7 +1474,7 @@ function ChatPageContent() {
         // JSON mit </canvas_update> fertig ist.
         if (coachCanvasTagEnabled && assistantContent.includes('<canvas_update>') && !shownCanvasActions.has('coach_canvas_start')) {
           shownCanvasActions.add('coach_canvas_start');
-          coachCanvasActionId = addAction('canvas_update', 'Canvas wird bearbeitet…');
+          coachCanvasActionId = addAction('canvas_update', 'Ich aktualisiere das Canvas…');
         }
 
         // Schließender Tag da: JSON anwenden + Status auf „fertig" kippen.
@@ -1255,14 +1482,10 @@ function ChatPageContent() {
           const m = assistantContent.match(/<canvas_update>([\s\S]*?)<\/canvas_update>/);
           if (m) {
             shownCanvasActions.add('coach_canvas');
-            // Start-Trigger hat die Action i.d.R. schon angelegt; falls der Tag in
-            // einem einzigen Chunk komplett ankam, hier nachziehen.
-            const aid = coachCanvasActionId ?? addAction('canvas_update', 'Canvas wird bearbeitet…');
+            const aid = coachCanvasActionId ?? addAction('canvas_update', 'Ich aktualisiere das Canvas…');
             const ok = applyCoachCanvasUpdate(m[1]);
-            // Kurz den Running-Zustand stehen lassen (Spinner/Shimmer sichtbar),
-            // bevor es auf „Canvas aktualisiert" kippt.
             setTimeout(
-              () => completeAction(aid, ok ? 'Canvas aktualisiert' : 'Canvas: nichts Neues'),
+              () => completeAction(aid, ok ? 'Canvas fertig — schau rechts nach' : 'Canvas: nichts Neues'),
               900,
             );
           }
@@ -1352,9 +1575,6 @@ function ChatPageContent() {
                 } else if (toolCall.type === 'test_workflow') {
                   const aid = addAction('test_workflow', `Teste Workflow-Execution...`);
                   setTimeout(() => completeAction(aid, `Test erfolgreich durchgelaufen`), 2500);
-                } else if (toolCall.type === 'request_credential') {
-                  const aid = addAction('request_credential', `Fordere Anmeldedaten an...`);
-                  setTimeout(() => completeAction(aid, `Credential-Aufforderung an Nutzer gesendet`), 800);
                 } else if (toolCall.type === 'research_solutions') {
                   const aid = addAction('research_solutions', `Recherchiere Lösungsansätze…`);
                   setTimeout(() => completeAction(aid, `Recherche abgeschlossen`), 4000);
@@ -1392,6 +1612,7 @@ function ChatPageContent() {
         if (assistantContent.includes('</stream_reset>')) {
           assistantContent = assistantContent.replace(/[\s\S]*<\/stream_reset>/, '');
           shownCanvasActions.delete('coach_canvas');
+          shownCanvasActions.delete('coach_canvas_start');
           shownCanvasActions.delete('trigger_canvas');
         }
 
@@ -1407,8 +1628,11 @@ function ChatPageContent() {
       setMessages(prev =>
         prev.map(m => m.id === assistantId ? { ...m, content: rawAssistantContent } : m)
       );
+      void refreshBilling();
       if (strippedAssistantContent.trim()) {
-        await saveMessage(sessionId, 'assistant', strippedAssistantContent);
+        const assistantToPersist =
+          process.env.NODE_ENV === 'development' ? rawAssistantContent : strippedAssistantContent;
+        await saveMessage(sessionId, 'assistant', assistantToPersist);
       } else if (aborted) {
         setMessages(prev => prev.filter(m => m.id !== assistantId));
       }
@@ -1428,8 +1652,65 @@ function ChatPageContent() {
       const runPostTurnSync = async () => {
         let canvasSnapshot = streamCanvasData;
         try {
+          // Fallback: Coach behauptet Canvas-Update, sendet aber keinen Tag (häufiger Mistral-Fehler).
+          if (
+            coachCanvasTagEnabled &&
+            !shownCanvasActions.has('coach_canvas') &&
+            shouldRecoverCoachCanvas({
+              phase: chatPhase,
+              rawAssistant: rawAssistantContent,
+              userMessage: content || '',
+              canvasApplied: false,
+            })
+          ) {
+            const aid = coachCanvasActionId ?? addAction('canvas_update', 'Ich aktualisiere das Canvas…');
+            try {
+              const recoveryHistory = [
+                ...payloadMessages.map(m => ({ role: m.role, content: m.content })),
+                { role: 'assistant' as const, content: rawAssistantContent },
+              ];
+              const res = await fetch('/api/canvas-worker/coach-canvas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                signal: abortControllerRef.current?.signal,
+                body: JSON.stringify({
+                  phase: chatPhase,
+                  history: recoveryHistory,
+                  currentCanvas: canvasDataRef.current,
+                  onboarding: obWithMemory,
+                  lastUserMessage: content || '',
+                  lastAssistantMessage: rawAssistantContent,
+                  canvasApplied: false,
+                  projectId: projId,
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (data.status === 'success' && data.canvasUpdate) {
+                shownCanvasActions.add('coach_canvas');
+                const ok = applyCoachCanvasUpdate(JSON.stringify(data.canvasUpdate));
+                completeAction(
+                  aid,
+                  ok
+                    ? userRequestedCanvasBuild(content || '')
+                      ? 'Canvas fertig — rechts siehst du die Einträge'
+                      : 'Canvas fertig — schau rechts nach'
+                    : 'Canvas: nichts Neues',
+                );
+                logSync('canvas', 'success', 'coach-canvas recovery applied');
+                canvasSnapshot = canvasDataRef.current;
+              } else {
+                completeAction(aid, 'Canvas konnte nicht ergänzt werden');
+                logSync('canvas', 'skip', 'coach-canvas recovery', { reason: data.reason });
+              }
+            } catch (err) {
+              failAction(aid, 'Canvas-Fehler (Recovery)');
+              logSync('canvas', 'fail', 'coach-canvas recovery error', { error: String(err) });
+            }
+          }
+
           if (coachWritesCanvas) {
-            logSync('canvas', 'evaluate', 'auto_sync skipped — coach writes canvas (diagnose)');
+            logSync('canvas', 'evaluate', 'auto_sync skipped — coach writes canvas');
           } else if (!shownCanvasActions.has('trigger_canvas')) {
             if (canvasEval.eligible && !canvasWorker.current) {
               logSync('canvas', 'invoke', 'auto_sync (no tag in stream)');
@@ -1580,7 +1861,7 @@ function ChatPageContent() {
       // (won't re-fire anyway since isWelcomeSent DB flag is now true)
       if (isHiddenInit && sessionId) welcomeInProgressRef.current.delete(sessionId);
     }
-  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation, scheduleStrategyCanvasUpdate]);
+  }, [messages, isStreaming, onboarding, currentSessionId, userId, refreshSessions, canvasData, sessionPhase, sessions, currentProject, addAction, completeAction, failAction, clearActions, processPhase4Tags, withSessionPhase, pendingAttachments, appendCoachStatusExplanation, scheduleStrategyCanvasUpdate, refreshBilling]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -1666,6 +1947,7 @@ function ChatPageContent() {
       if (ob) setOnboarding(ob);
       setSessionMemory(sessionRes.data.memory || '');
       setCurrentSessionId(sessionId);
+      syncSessionUrl(sessionId);
 
       // Legacy-tolerant: alte Sessions können noch phase='plan' tragen.
       const phase = normalizePhase(sessionRes.data.phase);
@@ -1673,11 +1955,13 @@ function ChatPageContent() {
 
       // Load the project directly — no stale closure risk
       const projectId = sessionRes.data?.project_id;
+      let projectHasStrategy = false;
       if (projectId) {
         const [proj, projectCanvas] = await Promise.all([
-          supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
+          supabase.from('projects').select('id, name, strategy').eq('id', projectId).maybeSingle(),
           loadProjectCanvas(projectId),
         ]);
+        projectHasStrategy = !!proj.data?.strategy?.trim();
         setCurrentProject(proj.data ? { id: proj.data.id, name: proj.data.name } : null);
         if (projectCanvas) {
           const sessionPhaseIdx = phaseIndex(phase);
@@ -1723,6 +2007,33 @@ function ChatPageContent() {
       }
 
       if (shouldAutoKickoffSession(msgs, welcomeSent)) {
+        const needsStrategy =
+          phase === 'diagnose' &&
+          !!projectId &&
+          !projectHasStrategy;
+        if (needsStrategy && projectId) {
+          setIsPreparingStrategy(true);
+          setStrategyPrepProgress(null);
+          try {
+            await runStrategyPrepStream(
+              sessionId,
+              projectId,
+              setStrategyPrepProgress,
+              AbortSignal.timeout(120_000),
+            );
+            const freshOb = await loadSessionOnboarding(sessionId);
+            if (freshOb) setOnboarding(freshOb);
+          } catch (e) {
+            console.warn('[chat] Strategie-Vorbereitung fehlgeschlagen:', e);
+            void fetch('/api/strategy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'initial', sessionId, projectId }),
+            });
+          } finally {
+            setIsPreparingStrategy(false);
+          }
+        }
         setTimeout(() => {
           const kick = getSessionKickoff(phase, ob?.intro_message);
           sendMessage(kick.content, kick.hidden, [], sessionId, ob || undefined);
@@ -2168,6 +2479,42 @@ function ChatPageContent() {
     }
   };
 
+  const handleExportChat = async () => {
+    if (!currentSessionId || isExportingChat) return;
+
+    setIsExportingChat(true);
+    try {
+      const res = await fetch('/api/dev/export-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: currentSessionId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = typeof err.error === 'string' ? err.error : `HTTP ${res.status}`;
+        throw new Error(detail || 'Export fehlgeschlagen');
+      }
+
+      const payload = await res.json();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const phaseSlug = sessionPhase || 'chat';
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `axantilo-${phaseSlug}-${currentSessionId.slice(0, 8)}-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[dev] chat export failed:', err);
+      setNetToast(err instanceof Error ? err.message : 'Export fehlgeschlagen');
+    } finally {
+      setIsExportingChat(false);
+    }
+  };
+
   const handlePhaseCircleClick = async (clickedPhase: string) => {
      if (!currentProject) return;
      const projectSessions = sessions.filter(s => s.project_id === currentProject.id);
@@ -2199,6 +2546,16 @@ function ChatPageContent() {
     acc[phase].push(session);
     return acc;
   }, {} as Record<string, SessionSummary[]>);
+
+  if (isPreparingStrategy && currentSessionId) {
+      return (
+        <StrategyPrepScreen
+          vorname={onboarding?.vorname}
+          progress={strategyPrepProgress}
+          sessionId={strategyPrepProgress ? undefined : currentSessionId}
+        />
+      );
+  }
 
   if (isLoadingSession && !currentSessionId && sessions.length === 0) {
       return <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-gray-500">Lade Arbeitsbereich...</div>;
@@ -2356,16 +2713,26 @@ function ChatPageContent() {
                })}
              </div>
 
-             {accountDisplay && (
-               <SidebarAccountOverview
-                 account={accountDisplay}
-                 onSettings={() => {
-                   router.push('/dashboard');
-                   setIsSidebarOpen(false);
-                 }}
-                 onLogout={handleLogout}
-               />
-             )}
+            {accountDisplay && (
+              <>
+                <div className="shrink-0 border-t border-gray-100 px-3 pt-3">
+                  <UpgradeCard
+                    variant="sidebar"
+                    status={billingStatus}
+                    loading={billingLoading}
+                    onOpen={() => setIsUpgradeOpen(true)}
+                  />
+                </div>
+                <SidebarAccountOverview
+                  account={accountDisplay}
+                  onSettings={() => {
+                    setIsSidebarOpen(false);
+                    setIsAccountSettingsOpen(true);
+                  }}
+                  onLogout={handleLogout}
+                />
+              </>
+            )}
            </motion.div>
          )}
         </AnimatePresence>
@@ -2467,6 +2834,16 @@ function ChatPageContent() {
               </button>
             ))}
             <span className="opacity-40">|</span>
+            <button
+              type="button"
+              onClick={() => void handleExportChat()}
+              disabled={!currentSessionId || isExportingChat || isStreaming}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Vollständigen Chat als JSON exportieren (Strategy, Recherche, Tool-Calls, Canvas)"
+            >
+              {isExportingChat ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+              Chat exportieren
+            </button>
             <button
               type="button"
               onClick={handleResetCurrentPhase}
@@ -2656,6 +3033,12 @@ function ChatPageContent() {
                     />
                   </div>
                 )}
+                <UpgradeCard
+                  variant="chat"
+                  status={billingStatus}
+                  loading={billingLoading}
+                  onOpen={() => setIsUpgradeOpen(true)}
+                />
                 <ChatInput
                   value={input}
                   onChange={setInput}
@@ -2760,6 +3143,8 @@ function ChatPageContent() {
         }}
         phase={sessionPhase}
         canvas={canvasData}
+        projectId={currentProject?.id ?? null}
+        sessionId={currentSessionId}
         onClose={() => setIsDevModalOpen(false)}
       />
     )}
@@ -2772,6 +3157,27 @@ function ChatPageContent() {
         onClose={() => setIsSupportOpen(false)}
       />
     )}
+
+    <UpgradeModal
+      open={isUpgradeOpen}
+      status={billingStatus}
+      checkoutLoading={billingCheckoutLoading}
+      error={billingError}
+      onClose={() => setIsUpgradeOpen(false)}
+      onCheckout={startBillingCheckout}
+    />
+
+    <AccountSettingsModal
+      open={isAccountSettingsOpen}
+      account={accountDisplay}
+      status={billingStatus}
+      loading={billingLoading}
+      checkoutLoading={billingCheckoutLoading}
+      error={billingError}
+      onClose={() => setIsAccountSettingsOpen(false)}
+      onCheckout={startBillingCheckout}
+      onLogout={handleLogout}
+    />
 
     {phaseFeedback && (
       <PhaseFeedbackModal

@@ -70,6 +70,8 @@ export interface PhaseCheckpoint {
   messages: SimMessage[];
   canvas: CanvasData;
   onboarding: Record<string, unknown>;
+  /** Interne Strategie dieses Laufs (damit ein Resume ohne Neugenerierung fortsetzt). */
+  strategie?: string | null;
 }
 
 /** One turn of the driven conversation, captured for transcript + judging. */
@@ -174,4 +176,6 @@ export interface DriverOptions {
   onTurn?: (turn: TranscriptTurn) => Promise<void> | void;
   /** Called when a phase checkpoint is snapshotted. */
   onCheckpoint?: (checkpoint: PhaseCheckpoint) => Promise<void> | void;
+  /** Called once after the internal strategy is generated (null = ran without one). */
+  onStrategy?: (strategie: string | null) => Promise<void> | void;
 }

@@ -17,14 +17,16 @@
       "prompt_gates": [
         "Einwände zuerst systematisch geklärt (Nutzer bestätigt), dann Diagnose",
         "Je Punkt: Tätigkeit inkl. WIE, Volumen pro Monat, Zeit, Wer",
-        "Ideen-Karten gezeigt (idea_cards) und Nutzer über Möglichkeiten informiert",
+        "Pro aktivem Schmerzpunkt nur passende Idee-Karte(n); voller Ideen-Katalog erst nach ‚noch etwas?'",
+        "Ideen-Katalog durchlaufen + Nachfrage ob noch eine Karte interessant ist, bevor Übergang",
+        "Reihenfolge kurz besprochen; bei Ja: prepare_phase(analyse) + phase_complete",
         "Keine Lösungen/Tools vorgeschlagen (Nutzer-Ideen erfassen ist erlaubt)"
       ]
     },
     "analyse": {
       "modul": "coach/prompts/phase_analyse.md",
-      "tools": ["search_knowledge", "web_search", "prepare_phase", "request_credential", "deploy_workflow", "test_workflow", "edit_workflow", "research_solutions", "create_document_template"],
-      "tags": ["canvas_update", "trigger_canvas_update", "workflow_plan", "options", "phase_complete"],
+      "tools": ["search_knowledge", "web_search", "prepare_phase", "research_solutions", "create_document_template"],
+      "tags": ["canvas_update", "workflow_plan", "options", "phase_complete"],
       "rag_auto_inject": { "types": ["wissen"], "phase_filter": "2|3 (alte Zählung — gemergte Phase deckt beide ab)" },
       "exit_to": ["umsetzung"],
       "code_gate": "canAdvanceFromPhase('analyse'): mindestens 1 valider Workflow-Plan; ohne coachSignaledComplete zusätzlich: jeder Punkt hat einen verlinkten Plan (reason: no_workflows | pain_points_without_workflow)",

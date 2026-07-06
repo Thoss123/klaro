@@ -10,6 +10,30 @@ export interface OptionChoice {
 export interface ActiveOptions {
   question: string;
   choices: OptionChoice[];
+  questions?: OptionQuestion[];
+}
+
+export interface OptionQuestion {
+  id: string;
+  question: string;
+  choices: OptionChoice[];
+  placeholder?: string;
+}
+
+function normalizeChoices(raw: unknown): OptionChoice[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c: { id?: unknown; label?: unknown; detail?: unknown } | string, i: number) => {
+      if (typeof c === 'string') {
+        return { id: String(i + 1), label: c.trim() };
+      }
+      return {
+        id: String(c?.id ?? i + 1),
+        label: typeof c?.label === 'string' ? c.label.trim() : '',
+        detail: typeof c?.detail === 'string' ? c.detail.trim() : undefined,
+      };
+    })
+    .filter((c: OptionChoice) => c.label);
 }
 
 /**
@@ -18,19 +42,31 @@ export interface ActiveOptions {
  */
 export function parseOptionsTag(content: string): ActiveOptions | null {
   if (!content) return null;
-  const match = content.match(/<options>([\s\S]*?)<\/options>/i);
+  const matches = Array.from(content.matchAll(/<options>([\s\S]*?)<\/options>/gi));
+  const match = matches[matches.length - 1];
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[1].trim());
-    const choices = Array.isArray(parsed?.choices)
-      ? parsed.choices
-          .map((c: { id?: unknown; label?: unknown; detail?: unknown }, i: number) => ({
-            id: String(c?.id ?? i + 1),
-            label: typeof c?.label === 'string' ? c.label.trim() : '',
-            detail: typeof c?.detail === 'string' ? c.detail.trim() : undefined,
+
+    const questions = Array.isArray(parsed?.questions)
+      ? parsed.questions
+          .map((q: { id?: unknown; question?: unknown; choices?: unknown; placeholder?: unknown }, i: number) => ({
+            id: String(q?.id ?? `q${i + 1}`),
+            question: typeof q?.question === 'string' ? q.question.trim() : '',
+            choices: normalizeChoices(q?.choices),
+            placeholder: typeof q?.placeholder === 'string' ? q.placeholder.trim() : undefined,
           }))
-          .filter((c: OptionChoice) => c.label)
+          .filter((q: OptionQuestion) => q.question)
       : [];
+    if (questions.length) {
+      return {
+        question: typeof parsed?.title === 'string' ? parsed.title.trim() : '',
+        choices: [],
+        questions,
+      };
+    }
+
+    const choices = normalizeChoices(parsed?.choices);
     if (!choices.length) return null;
     return {
       question: typeof parsed?.question === 'string' ? parsed.question.trim() : '',
@@ -60,6 +96,9 @@ export default function OptionsCard({
 }) {
   const [page, setPage] = useState(0);
   const [custom, setCustom] = useState('');
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [otherDraft, setOtherDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset to the first page when a new set of options arrives — adjust during render
@@ -68,8 +107,14 @@ export default function OptionsCard({
   if (options !== syncedOptions) {
     setSyncedOptions(options);
     setPage(0);
+    setAnswers({});
+    setCustom('');
+    setQuestionIndex(0);
+    setOtherDraft('');
   }
 
+  const questions = options.questions ?? [];
+  const isMulti = questions.length > 0;
   const total = options.choices.length;
   const pageCount = Math.ceil(total / PAGE_SIZE);
   const start = page * PAGE_SIZE;
@@ -82,6 +127,188 @@ export default function OptionsCard({
     setCustom('');
     onCustomSubmit(text);
   };
+
+  const buildMultiAnswer = (nextAnswers: Record<string, string>) => {
+    const lines = questions
+      .map(q => {
+        const answer = (nextAnswers[q.id] || '').trim();
+        return answer ? `${q.question}: ${answer}` : null;
+      })
+      .filter((line): line is string => !!line);
+    return lines.join('\n');
+  };
+
+  const finishMulti = (nextAnswers: Record<string, string>) => {
+    const text = buildMultiAnswer(nextAnswers);
+    if (!text) return;
+    setAnswers({});
+    setOtherDraft('');
+    onCustomSubmit(text);
+  };
+
+  const advanceMulti = (nextAnswers: Record<string, string>) => {
+    setOtherDraft('');
+    if (questionIndex >= questions.length - 1) {
+      finishMulti(nextAnswers);
+      return;
+    }
+    setQuestionIndex(i => Math.min(questions.length - 1, i + 1));
+  };
+
+  const answerCurrentQuestion = (answer: string) => {
+    const question = questions[questionIndex];
+    if (!question) return;
+    const nextAnswers = { ...answers, [question.id]: answer };
+    setAnswers(nextAnswers);
+    advanceMulti(nextAnswers);
+  };
+
+  const submitMultiOther = (e: FormEvent) => {
+    e.preventDefault();
+    const text = otherDraft.trim();
+    if (!text) return;
+    answerCurrentQuestion(text);
+  };
+
+  const skipCurrentQuestion = () => {
+    const question = questions[questionIndex];
+    if (!question) return;
+    const nextAnswers = { ...answers };
+    delete nextAnswers[question.id];
+    setAnswers(nextAnswers);
+    advanceMulti(nextAnswers);
+  };
+
+  const submitMultiNow = () => {
+    const text = buildMultiAnswer(answers);
+    if (!text) return;
+    finishMulti(answers);
+  };
+
+  if (isMulti) {
+    const currentQuestion = questions[Math.min(questionIndex, questions.length - 1)];
+    const currentAnswer = currentQuestion ? answers[currentQuestion.id] : '';
+    const hasAnyAnswer = Object.values(answers).some(value => value.trim());
+    return (
+      <div className="mb-2 rounded-2xl border border-gray-200 bg-white text-gray-800 shadow-md overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+          <span className="text-sm font-medium text-gray-800 truncate">
+            {currentQuestion?.question || options.question || 'Kurz gefragt'}
+          </span>
+          <div className="flex shrink-0 items-center gap-1 text-xs text-gray-400">
+            <button
+              type="button"
+              onClick={() => {
+                setOtherDraft('');
+                setQuestionIndex(i => Math.max(0, i - 1));
+              }}
+              disabled={questionIndex === 0}
+              className="p-1 hover:text-gray-700 disabled:opacity-30 transition-colors"
+              aria-label="Vorherige Frage"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="tabular-nums">
+              {questionIndex + 1} von {questions.length}
+            </span>
+            <button
+              type="button"
+              onClick={skipCurrentQuestion}
+              className="p-1 hover:text-gray-700 transition-colors"
+              aria-label="Nächste Frage"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="ml-1 p-1 text-gray-400 hover:text-gray-700 transition-colors"
+              aria-label="Schließen"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {currentQuestion ? (
+          <>
+            {currentQuestion.choices.length > 0 ? (
+              <ul className="divide-y divide-gray-100">
+                {currentQuestion.choices.map((choice, i) => (
+                  <li key={choice.id}>
+                    <button
+                      type="button"
+                      onClick={() => answerCurrentQuestion(choice.label)}
+                      className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                        currentAnswer === choice.label ? 'bg-indigo-50/70' : 'hover:bg-indigo-50/60'
+                      }`}
+                    >
+                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm tabular-nums transition-colors ${
+                        currentAnswer === choice.label
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-100 text-gray-500 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                      }`}>
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm text-gray-800 truncate">{choice.label}</span>
+                        {choice.detail && (
+                          <span className="block text-xs text-gray-400 truncate">{choice.detail}</span>
+                        )}
+                      </span>
+                      <ArrowUp
+                        size={14}
+                        className="shrink-0 rotate-90 text-gray-300 group-hover:text-indigo-500 transition-colors"
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <form onSubmit={submitMultiOther} className="flex items-center gap-2 border-t border-gray-100 bg-gray-50/70 px-4 py-2.5">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gray-900 text-white">
+                <Pencil size={14} />
+              </span>
+              <input
+                value={otherDraft}
+                onChange={e => setOtherDraft(e.target.value)}
+                placeholder={currentQuestion.placeholder || (currentQuestion.choices.length ? 'Andere Antwort...' : 'Kurz antworten...')}
+                className="min-w-0 flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!otherDraft.trim()}
+                className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-30"
+              >
+                Weiter
+              </button>
+              <button
+                type="button"
+                onClick={skipCurrentQuestion}
+                className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-white hover:text-gray-800"
+              >
+                Skip
+              </button>
+            </form>
+          </>
+        ) : null}
+
+        {questionIndex >= questions.length - 1 && hasAnyAnswer ? (
+          <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
+            <button
+              type="button"
+              onClick={submitMultiNow}
+              className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+            >
+              Antworten senden
+              <ArrowUp size={14} strokeWidth={2.5} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="mb-2 rounded-2xl border border-gray-200 bg-white text-gray-800 shadow-md overflow-hidden">

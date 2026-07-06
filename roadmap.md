@@ -2,6 +2,8 @@
 
 Dieses Dokument ist die **Single Source of Truth** für alle anstehenden Entwicklungs-, Test- und Business-Schritte bis zum offiziellen Launch der v1.0.
 
+> **Pricing:** Produkt-Tiers & Credits → `docs/pricing-draft.md` · Technische Umsetzung → `docs/pricing-implementation-plan.md`
+
 > [!IMPORTANT]
 > Jeder Sprint endet mit einem internen QA-Test. Sprint 2 (n8n API) ist Voraussetzung für Sprint 3 (Agent-Orchestrierung), weil Playbook und spätere Tool-Runs über n8n laufen.
 
@@ -373,12 +375,40 @@ MOCK_N8N=false
 
 ---
 
-## Sprint 8: Billing & Go-Live
+## Sprint 8: Billing & Credits (Testphase → Go-Live)
 
-- `[ ]` **Stripe:** Checkout + Webhook.
-- `[ ]` **Paywall:** Vor Phase-4-Deploy.
+**SSOT:** `docs/pricing-draft.md` · Umsetzung: `docs/pricing-implementation-plan.md`
+
+### 8A — Testphase (jetzt)
+
+**Modell:** 2.000 Start-Credits · **tokenbasierte** Abbuchung (€5 API = 2.000 Credits) · Projekte **unbegrenzt** · Einmal-Top-up **€49 → +6.000 Credits** (~€15 API-Budget).
+
+- `[ ]` **Migration** `user_billing` + `credit_ledger` — `credits_balance` default 2000, Ledger mit `api_cost_eur` + Token-Feldern.
+- `[ ]` **`lib/billing/token-cost.ts`:** Provider-Usage → € → Credits (`× 400`); Modell-Preistabelle Anthropic + Mistral.
+- `[ ]` **`lib/billing/credits.ts`:** `debitFromUsage`, `grantCredits`, atomares Debit.
+- `[ ]` **Provider Usage:** `lib/ai-provider.ts` — Token-Usage pro Tool-Round aggregieren und zurückgeben.
+- `[ ]` **API-Debit:** `/api/chat`, `/api/strategy`, `/api/canvas-worker`, `/api/transcribe` — nach Erfolg, nicht pauschal.
+- `[ ]` **Keine Gates:** Projekte, Deploys, Pläne unbegrenzt (nur Credit-Balance).
+- `[x]` **Stripe One-Time:** €49 → +6.000 Credits (`/api/billing/checkout` + webhook) — Checkout Session + signierter Webhook, idempotent via `stripe_event_id`.
+- `[x]` **Account-UI:** Credits im Sidebar-Account-Bereich + dezenter Aufladen-Button; kein prominenter Paywall-Block im Coach.
+- `[ ]` **Dev-Bypass:** `BILLING_DISABLED=true` lokal.
+- `[ ]` **Tests:** `tests/billing/token-cost.test.ts`, Debit-Race, 402.
+- `[ ]` **Makler-LP:** Testphase-Text (2.000 Start, €49 Aufladung).
+
+### 8B — Launch-Tiers (nach Testphase)
+
+- `[ ]` Abo-Tiers: Starter €19 · Pro €59 · Business €199 (monatliche Credits).
+- `[ ]` Projekt-/Workflow-Gates, `/preise`, Stripe Subscriptions.
+- `[ ]` Siehe Launch-Abschnitt in `docs/pricing-draft.md`.
+
+### 8C — Legal & Go-Live
+
 - `[ ]` **Legal:** Impressum, AGB, DSGVO.
-- `[ ]` **Go-Live.**
+- `[ ]` **Go-Live** (17. Aug.) — Testphase-Credits für Warteliste live.
+
+### 8D — Post-Launch (Backlog)
+
+- `[ ]` Wissensmanagement / Firmen-Wiki · MCP-Setup-Agent · SSO · AVV Enterprise.
 
 ---
 

@@ -40,8 +40,18 @@ export interface SimulateRunInput {
   maxTurnsPerPhase?: number;
 }
 
+/** Live progress events for the streaming endpoint (keeps the HTTP connection warm). */
+export type SimProgressEvent =
+  | { kind: 'run'; runId: string }
+  | { kind: 'strategy'; hasStrategy: boolean }
+  | { kind: 'turn'; phase: string; role: string; turn: number }
+  | { kind: 'checkpoint'; phase: string };
+
 /** Step 1 — Mistral simulates + mechanical judging. Returns the packet for Claude. */
-export async function simulateRun(input: SimulateRunInput): Promise<JudgePacket> {
+export async function simulateRun(
+  input: SimulateRunInput,
+  onProgress?: (evt: SimProgressEvent) => void,
+): Promise<JudgePacket> {
   const persona = getPersona(input.personaSlug);
   if (!persona) throw new Error(`Unknown persona "${input.personaSlug}"`);
 
@@ -53,6 +63,9 @@ export async function simulateRun(input: SimulateRunInput): Promise<JudgePacket>
     coachModel: 'mistral (via /api/chat)',
     judgeModel: `Claude Code / Opus (persona: ${PERSONA_MODEL})`,
   });
+  // Emit the runId first so the caller can surface the viewer link immediately,
+  // even if the run later fails or times out.
+  onProgress?.({ kind: 'run', runId });
 
   try {
     const seed = input.resume
@@ -71,8 +84,15 @@ export async function simulateRun(input: SimulateRunInput): Promise<JudgePacket>
         phases: input.phases,
         baseUrl: input.baseUrl,
         maxTurnsPerPhase: input.maxTurnsPerPhase,
-        onTurn: (turn) => saveTranscript(runId, [turn]),
-        onCheckpoint: (cp) => saveCheckpoints(runId, [cp]),
+        onTurn: async (turn) => {
+          await saveTranscript(runId, [turn]);
+          onProgress?.({ kind: 'turn', phase: turn.phase, role: turn.role, turn: turn.turn });
+        },
+        onCheckpoint: async (cp) => {
+          await saveCheckpoints(runId, [cp]);
+          onProgress?.({ kind: 'checkpoint', phase: cp.phase });
+        },
+        onStrategy: (strategie) => onProgress?.({ kind: 'strategy', hasStrategy: !!strategie }),
       },
       seed ?? undefined,
     );

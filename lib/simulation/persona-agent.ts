@@ -48,7 +48,7 @@ WICHTIGE REGELN:
 - Erfinde keine Tools/Zahlen, die deinem Profil widersprechen. Bleib konsistent.
 - Wenn der Coach vorschlägt, in die nächste Phase zu wechseln oder um Bestätigung bittet, stimme normalerweise zu („ja, passt" / „ja, weiter"), außer du hast eine offene, ernste Rückfrage.
 - Halte Antworten kurz (1–4 Sätze). Kein Markdown, keine Aufzählungen außer es ist natürlich.
-- Aktuelle Phase des Coaches: ${phase}. Verhalte dich phasengerecht (Phase 1 Probleme schildern, Phase 2 Tools nennen, Phase 3 Lösungen bewerten).`;
+- Aktuelle Phase des Coaches: ${phase}. Verhalte dich phasengerecht: in „diagnose" schilderst du Probleme/Zeitfresser (und ggf. Bedenken), in „analyse" nennst du deine genutzten Tools und bewertest die vorgeschlagenen Lösungen/Reihenfolge, in „umsetzung" bestätigst du das Bauen und stellst höchstens Rückfragen zum Ablauf.`;
 }
 
 /** Map the shared dialogue to the persona's POV (coach = user, customer = assistant). */

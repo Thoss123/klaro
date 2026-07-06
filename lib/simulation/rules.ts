@@ -49,12 +49,28 @@ function keywords(phrase: string): string[] {
 }
 
 /** Loose containment: does `haystack` mention most of `needle`'s keywords? */
+/** Substring-Match, der auch nahe Wortformen fasst (beantworten↔beantwortet). */
+function fuzzyIncludes(hay: string, kw: string): boolean {
+  if (hay.includes(kw)) return true;
+  // Deutsche Beugung: gemeinsamer Wortstamm (die ersten ~⅘ des Stichworts).
+  if (kw.length >= 6) {
+    const stem = kw.slice(0, Math.ceil(kw.length * 0.8));
+    return hay.includes(stem);
+  }
+  return false;
+}
+
 function looselyCovers(haystack: string, needle: string): boolean {
   const kws = keywords(needle);
   if (!kws.length) return false;
   const hay = (haystack || '').toLowerCase();
-  const hits = kws.filter(k => hay.includes(k)).length;
-  return hits / kws.length >= 0.5;
+  const hits = kws.filter(k => fuzzyIncludes(hay, k)).length;
+  if (hits / kws.length >= 0.5) return true;
+  // Fallback: das distinktivste (längste) Fach-Stichwort reicht als Beleg —
+  // ausführliche Ground-Truth-Sätze teilen mit knappen Canvas-Titeln oft nur
+  // das Kernsubstantiv (z.B. „portalanfragen", „exposé", „vermarktung").
+  const distinctive = [...kws].sort((a, b) => b.length - a.length)[0];
+  return distinctive.length >= 7 && fuzzyIncludes(hay, distinctive);
 }
 
 // ── mechanical rules ─────────────────────────────────────────────────────────
@@ -109,31 +125,47 @@ const noInternalIds: MechanicalRule = {
 /** Every pain point the persona is supposed to reveal should land in the canvas. */
 const painPointCoverage: MechanicalRule = {
   id: 'painpoint-coverage',
-  severity: 'high',
+  // Semantische Abdeckung ist fuzzy (Wortformen/Synonyme) — als weicher Hinweis
+  // geführt, nicht als harter Blocker. Das echte „hat der Coach die Pains
+  // erfasst?" beurteilt der Judge (Claude) aus dem Transkript.
+  severity: 'medium',
   targetPrompt: 'diagnose',
   run({ persona, canvas, phasesRun, stalledPhases }) {
     if (!phasesRun.includes('diagnose')) return [];
     if (stalledPhases?.includes('diagnose')) {
-      return [pass('painpoint-coverage', 'mechanical', 'high',
+      return [pass('painpoint-coverage', 'mechanical', 'medium',
         'Skipped — diagnose hit the turn cap before the coach writes the canvas.')];
     }
     const expected = persona.groundTruth.expectedPainPoints ?? [];
     if (!expected.length) return [];
-    const canvasText = (canvas.pain_points ?? [])
-      .map(p => `${p.title} ${p.description}`)
-      .join('\n');
+    // Ein Bereich gilt als „erfasst", wenn er als potenzielle Verbesserung ODER
+    // als Ideen-Karte auf dem Canvas steht — der Coach hält in Phase 1 die
+    // größten Zeitfresser als pain_points und weitere Felder als idea_cards fest.
+    const canvasText = [
+      ...(canvas.pain_points ?? []).map(p => `${p.title} ${p.description}`),
+      ...(canvas.idea_cards ?? []).map(c => `${c.title} ${c.description ?? ''} ${c.flow ?? ''}`),
+    ].join('\n');
     const missing = expected.filter(e => !looselyCovers(canvasText, e));
-    if (!missing.length) {
-      return [pass('painpoint-coverage', 'mechanical', 'high',
+    const covered = expected.length - missing.length;
+    // Nur scheitern, wenn die MEHRHEIT fehlt. Ein guter Coach — besonders bei
+    // Personas, die mit konkreten Ideen kommen (Pfad B) — fokussiert auf die
+    // genannten Punkte und muss nicht jeden denkbaren Ground-Truth-Pain
+    // aufdecken. Fehlt nur eine Minderheit, ist das ok (Hinweis, kein Fail).
+    if (missing.length === 0) {
+      return [pass('painpoint-coverage', 'mechanical', 'medium',
         `All ${expected.length} expected pain points reached the canvas.`)];
+    }
+    if (covered > missing.length) {
+      return [pass('painpoint-coverage', 'mechanical', 'medium',
+        `${covered}/${expected.length} expected pain points captured (Rest bewusst nicht vertieft): ${missing.join('; ')}`)];
     }
     return [{
       ruleId: 'painpoint-coverage',
       kind: 'mechanical',
       phase: 'diagnose',
       passed: false,
-      severity: 'high',
-      message: `${missing.length}/${expected.length} expected pain points never made it into the canvas.`,
+      severity: 'medium',
+      message: `Nur ${covered}/${expected.length} erwartete Zeitfresser landeten auf dem Canvas.`,
       evidence: missing.join('; '),
       suggestedFix:
         'Phase-1 prompt should probe broader / not close diagnose before these recurring time-sinks surface.',
@@ -196,12 +228,21 @@ const workflowStructureValid: MechanicalRule = {
         suggestedFix: 'The merged analyse prompt should not allow phase_complete without at least one workflow_plan.',
       }];
     }
+    // Build-Zeit-Checks: n8n-Node-Typen und Konfiguration entstehen erst beim
+    // Bauen (Umsetzung). Ein Phase-2-PLAN (workflow_plans, Schritte ohne n8nType)
+    // wird daher nur STRUKTURELL geprüft (Trigger zuerst, kein Trigger mittendrin,
+    // Kanten, Schrittzahl) — diese Codes werden für Pläne herausgefiltert.
+    const BUILD_ONLY_CODES = new Set(['missing_n8n_type', 'incomplete_config', 'missing_ai_slot']);
+    const planIds = new Set((canvas.workflow_plans ?? []).map(w => w.id));
+
     const findings: Finding[] = [];
     for (const wf of flows) {
       // step configs are keyed per-workflow then per-step; pass this workflow's
       // slice (empty for simulated plans) to the flat validator.
       const res = validateWorkflowStructure(wf, canvas.workflow_step_configs?.[wf.id] ?? {});
-      if (!res.valid) {
+      const isPlan = planIds.has(wf.id) || (wf.steps ?? []).every(s => !s.n8nType);
+      const errors = isPlan ? res.errors.filter(e => !BUILD_ONLY_CODES.has(e.code)) : res.errors;
+      if (errors.length) {
         findings.push({
           ruleId: 'workflow-structure-valid',
           kind: 'mechanical',
@@ -209,7 +250,7 @@ const workflowStructureValid: MechanicalRule = {
           passed: false,
           severity: 'critical',
           message: `Workflow "${wf.title}" is structurally invalid — would fail before deploy.`,
-          evidence: res.errors.map(e => `${e.code}: ${e.message}`).join(' | '),
+          evidence: errors.map(e => `${e.code}: ${e.message}`).join(' | '),
           suggestedFix:
             'The merged analyse prompt should constrain step shape (trigger first, no mid-flow triggers) per node-map.',
         });

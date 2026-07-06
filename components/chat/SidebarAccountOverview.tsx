@@ -48,8 +48,8 @@ export default function SidebarAccountOverview({
               type="button"
               onClick={onSettings}
               className="p-2 text-gray-400 rounded-lg hover:text-gray-700 hover:bg-gray-100 transition-colors"
-              title="Eingangsbereich"
-              aria-label="Eingangsbereich öffnen"
+              title="Einstellungen"
+              aria-label="Einstellungen öffnen"
             >
               <Settings size={16} />
             </button>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { simulateRun } from '@/lib/simulation/run';
-import { listRuns, listPersonas, seedPersonas } from '@/lib/simulation/store';
+import { simulateRun, type SimProgressEvent } from '@/lib/simulation/run';
+import { listRuns, listPersonas, seedPersonas, getRun } from '@/lib/simulation/store';
 import { PHASE_ORDER } from '@/lib/simulation/types';
 import type { Phase } from '@/lib/types';
 
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     phases?: string[];
     resume?: { runId: string; afterPhase: string };
     maxTurnsPerPhase?: number;
+    stream?: boolean;
   };
   try {
     body = await req.json();
@@ -49,7 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, seeded: count });
     }
 
-    if (!body.persona) {
+    // Beim Resume darf der Persona-Slug fehlen — er wird aus dem Ursprungslauf
+    // abgeleitet (so wie es die CLI-Doku „--resume <runId> --after <phase>" meint).
+    let personaSlug = body.persona;
+    if (!personaSlug && body.resume?.runId) {
+      const original = await getRun(body.resume.runId);
+      personaSlug = original?.persona_slug;
+    }
+    if (!personaSlug) {
       return NextResponse.json({ error: 'missing "persona" slug' }, { status: 400 });
     }
 
@@ -60,16 +68,51 @@ export async function POST(req: NextRequest) {
       ? { runId: body.resume.runId, afterPhase: body.resume.afterPhase as Phase }
       : undefined;
 
-    // Step 1 only: Mistral simulates + mechanical judging. The returned packet
-    // is judged by Claude Code, which then POSTs to /[runId]/judge.
-    const packet = await simulateRun({
-      personaSlug: body.persona,
+    const input = {
+      personaSlug,
       label: body.label,
       phases: phases.length ? phases : undefined,
       resume,
       baseUrl: req.nextUrl.origin,
       maxTurnsPerPhase: body.maxTurnsPerPhase,
-    });
+    };
+
+    // Streaming mode (NDJSON): flush headers immediately and emit one line per
+    // progress event, so the client's fetch never hits the headers/body timeout
+    // during the (multi-minute) run. Each line is a SimProgressEvent; the final
+    // line is { kind:'packet', packet } or { kind:'error', error, runId? }.
+    if (body.stream) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          let lastRunId: string | undefined;
+          const write = (obj: unknown) =>
+            controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+          try {
+            const packet = await simulateRun(input, (evt: SimProgressEvent) => {
+              if (evt.kind === 'run') lastRunId = evt.runId;
+              write(evt);
+            });
+            write({ kind: 'packet', packet });
+          } catch (e) {
+            write({ kind: 'error', error: e instanceof Error ? e.message : String(e), runId: lastRunId });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
+    // Step 1 only: Mistral simulates + mechanical judging. The returned packet
+    // is judged by Claude Code, which then POSTs to /[runId]/judge.
+    const packet = await simulateRun(input);
     return NextResponse.json({ ok: true, packet });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

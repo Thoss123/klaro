@@ -10,6 +10,9 @@ import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { ensureDefaultProject, createProject, createSession } from '@/lib/supabase-chat';
 import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
+import StrategyPrepScreen from '@/components/onboarding/StrategyPrepScreen';
+import { runStrategyPrepStream } from '@/lib/run-strategy-prep';
+import type { StrategyPrepProgress } from '@/lib/strategy-prep';
 
 type WizardOption = { label: string; value: string };
 
@@ -231,14 +234,40 @@ export default function OnboardingWizard() {
   const triggerStrategy = async (sessionId: string, projectId: string, payload: OnboardingData) => {
     if (!payload.firmenname?.trim()) return;
     try {
-      await fetch('/api/strategy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'initial', sessionId, projectId }),
-        signal: AbortSignal.timeout(15_000),
-      });
+      await runStrategyPrepStream(
+        sessionId,
+        projectId,
+        setPrepProgress,
+        AbortSignal.timeout(120_000),
+      );
     } catch (e) {
       console.warn('Strategie-Erstellung fehlgeschlagen, Onboarding läuft ohne weiter:', e);
+    }
+  };
+
+  const [isPreparingChat, setIsPreparingChat] = useState(false);
+  const [prepVorname, setPrepVorname] = useState<string | undefined>();
+  const [prepProgress, setPrepProgress] = useState<StrategyPrepProgress | null>(null);
+
+  const finishOnboardingAndGoToChat = async (
+    payload: OnboardingData,
+    userId: string,
+    projectId: string,
+  ) => {
+    setPrepVorname(payload.vorname?.trim() || undefined);
+    setPrepProgress(null);
+    setIsPreparingChat(true);
+    try {
+      const sessionId = await createSession(payload, userId, 'diagnose', undefined, undefined, projectId);
+      await triggerStrategy(sessionId, projectId, payload);
+      clearOnboardingStorage();
+      router.push(`/chat?id=${sessionId}`);
+    } catch (e) {
+      console.error('Onboarding-Persistierung fehlgeschlagen:', e);
+      localStorage.setItem('pending_onboarding', JSON.stringify(payload));
+      router.push('/chat?new=true');
+    } finally {
+      setIsPreparingChat(false);
     }
   };
 
@@ -255,10 +284,7 @@ export default function OnboardingWizard() {
     try {
       const userId = session.user.id;
       const projectId = await ensureDefaultProject(userId);
-      const sessionId = await createSession(payload, userId, 'diagnose', undefined, undefined, projectId);
-      await triggerStrategy(sessionId, projectId, payload);
-      clearOnboardingStorage();
-      router.push(`/chat?id=${sessionId}`);
+      await finishOnboardingAndGoToChat(payload, userId, projectId);
     } catch (e) {
       console.error('Onboarding-Persistierung in die DB fehlgeschlagen:', e);
       localStorage.setItem('pending_onboarding', JSON.stringify(payload));
@@ -284,17 +310,7 @@ export default function OnboardingWizard() {
       const payload = buildPayload();
       const projectName = payload.firmenname?.trim() || 'Neues Projekt';
       const projectId = await createProject(session.user.id, projectName);
-      const sessionId = await createSession(
-        payload,
-        session.user.id,
-        'diagnose',
-        undefined,
-        undefined,
-        projectId,
-      );
-      await triggerStrategy(sessionId, projectId, payload);
-      clearOnboardingStorage();
-      router.push(`/chat?id=${sessionId}`);
+      await finishOnboardingAndGoToChat(payload, session.user.id, projectId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen.';
       setExistingAccountError(msg);
@@ -496,7 +512,9 @@ export default function OnboardingWizard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <>
+      {isPreparingChat && <StrategyPrepScreen vorname={prepVorname} progress={prepProgress} />}
+      <div className={`min-h-screen bg-slate-50 flex flex-col ${isPreparingChat ? 'hidden' : ''}`}>
       <div className="w-full p-6 flex items-center justify-center relative">
         <div className="flex gap-1.5">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map(i => (
@@ -537,6 +555,7 @@ export default function OnboardingWizard() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

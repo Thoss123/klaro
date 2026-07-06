@@ -2,9 +2,10 @@ import React, { useCallback, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { clsx } from 'clsx';
-import { User, Copy, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
+import { User, Copy, ThumbsUp, ThumbsDown, Check, Code2 } from 'lucide-react';
 import { Message } from '@/lib/types';
 import { stripInternalTags, cleanupBotFormatting } from '@/lib/strip-internal-tags';
+import { stripStreamingCanvasTail } from '@/lib/coach-canvas-sync';
 import { parseUserAttachments } from '@/lib/chat-attachments';
 import MessageFeedbackSurvey from './MessageFeedbackSurvey';
 import {
@@ -60,9 +61,22 @@ const markdownComponents: Components = {
   h3: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
 };
 
-export default function MessageBubble({ message, feedback }: { message: Message, onEdit?: (id: string, newContent: string) => void, feedback?: MessageFeedbackContext }) {
+const isDev = process.env.NODE_ENV === 'development';
+
+export default function MessageBubble({
+  message,
+  feedback,
+  isStreamingPartial = false,
+}: {
+  message: Message;
+  onEdit?: (id: string, newContent: string) => void;
+  feedback?: MessageFeedbackContext;
+  /** Letzte Assistant-Nachricht während Stream: Text vor <canvas_update> anzeigen. */
+  isStreamingPartial?: boolean;
+}) {
   const { role, content, id } = message;
   const [isCopied, setIsCopied] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
   const [surveyOpen, setSurveyOpen] = useState(false);
   // Insert läuft async — Survey-Updates warten auf die Row-ID, damit ein
@@ -104,10 +118,15 @@ export default function MessageBubble({ message, feedback }: { message: Message,
 
   const { text: userText, attachments: userAttachments } =
     role === 'user' ? parseUserAttachments(content) : { text: content, attachments: [] };
-  let visibleContent = stripInternalTags(role === 'user' ? userText : content);
-  if (role === 'assistant') {
+  const assistantRaw = isStreamingPartial && role === 'assistant' && !showRaw
+    ? stripStreamingCanvasTail(content)
+    : content;
+  let visibleContent = stripInternalTags(role === 'user' ? userText : assistantRaw);
+  if (role === 'assistant' && !showRaw) {
     visibleContent = cleanupBotFormatting(visibleContent);
   }
+
+  const rawDisplayContent = role === 'user' ? content : content;
 
   const isPhase4Only = content.includes('<request_credential>') || content.includes('<deploy_workflow>') || content.includes('<test_workflow>') || content.includes('<activate_workflow>');
 
@@ -119,7 +138,7 @@ export default function MessageBubble({ message, feedback }: { message: Message,
       /<prepare_phase/i.test(content) ||
       /<tool_call/i.test(content));
 
-  if (hasInternalOnly && role === 'assistant' && !isPhase4Only) {
+  if (hasInternalOnly && role === 'assistant' && !isPhase4Only && !(isDev && showRaw)) {
     return null;
   }
 
@@ -127,27 +146,51 @@ export default function MessageBubble({ message, feedback }: { message: Message,
     .filter(a => a.type === 'image' && (a.url || a.preview))
     .map(a => a.url || a.preview!);
 
-  if (!visibleContent && !imagePreviews.length) return null;
+  if (!visibleContent && !imagePreviews.length && !(isDev && showRaw && rawDisplayContent.trim())) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(visibleContent);
+    navigator.clipboard.writeText(showRaw && isDev ? rawDisplayContent : visibleContent);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const devRawToggle = isDev ? (
+    <button
+      type="button"
+      onClick={() => setShowRaw(v => !v)}
+      className={clsx(
+        'p-1 transition-colors rounded-md hover:bg-gray-100/80',
+        showRaw ? 'text-amber-600 bg-amber-50' : 'hover:text-gray-700 text-gray-400',
+      )}
+      title={showRaw ? 'Normale Ansicht' : 'Raw (Tags, ungestrippt)'}
+    >
+      <Code2 size={14} />
+    </button>
+  ) : null;
+
   if (role === 'assistant') {
     return (
       <div className="mb-8 group max-w-[92%]">
-        <div
-          className="prose prose-sm prose-slate max-w-none text-gray-800 leading-relaxed"
-          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-        >
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{visibleContent}</ReactMarkdown>
-        </div>
+        {showRaw && isDev ? (
+          <pre
+            className="text-[11px] font-mono text-gray-700 bg-amber-50/80 border border-amber-200/60 rounded-xl p-3 whitespace-pre-wrap leading-relaxed"
+            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+          >
+            {rawDisplayContent}
+          </pre>
+        ) : (
+          <div
+            className="prose prose-sm prose-slate max-w-none text-gray-800 leading-relaxed"
+            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{visibleContent}</ReactMarkdown>
+          </div>
+        )}
         <div className="flex items-center gap-2 mt-2 text-gray-400">
           <button onClick={handleCopy} className="p-1 hover:text-gray-700 transition-colors rounded-md hover:bg-gray-100/80" title="Kopieren">
             {isCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
           </button>
+          {devRawToggle}
           <button
             onClick={() => handleThumb('up')}
             className={clsx('p-1 transition-colors rounded-md hover:bg-gray-100/80', thumbState === 'up' ? 'text-gray-600' : 'hover:text-gray-700')}
@@ -195,7 +238,7 @@ export default function MessageBubble({ message, feedback }: { message: Message,
               ))}
             </div>
           )}
-          {visibleContent && (
+          {visibleContent && !showRaw && (
             <div
               className="prose prose-sm max-w-none prose-invert"
               style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
@@ -203,7 +246,28 @@ export default function MessageBubble({ message, feedback }: { message: Message,
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{visibleContent}</ReactMarkdown>
             </div>
           )}
+          {showRaw && isDev && (
+            <pre
+              className="text-[11px] font-mono text-white/95 whitespace-pre-wrap leading-relaxed"
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+            >
+              {rawDisplayContent}
+            </pre>
+          )}
         </div>
+        {isDev && (
+          <div className="flex items-center gap-2 mt-1.5 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="p-1 hover:text-white transition-colors rounded-md"
+              title="Kopieren"
+            >
+              {isCopied ? <Check size={14} className="text-green-300" /> : <Copy size={14} />}
+            </button>
+            {devRawToggle}
+          </div>
+        )}
       </div>
     </div>
   );

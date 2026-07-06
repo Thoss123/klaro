@@ -31,6 +31,14 @@ nie, eine Karte sei da, bevor du gebaut hast.
    Creatives-Erstellung, dann Veröffentlichung, dann Auswertung).
 Noch KEIN build_workflow in dieser Nachricht.
 
+## Kurze Klärungen bündeln
+
+Auch in der Umsetzung gilt: kurze Setup-Fragen nicht einzeln über viele
+Nachrichten verteilen. Wenn mehrere kleine Angaben fehlen (Kanal,
+Freigabe-Person, Timing, Ausnahme, Tabellenname), stelle sie gesammelt als
+mehrteilige `<options>`-Fragen. Die UI zeigt sie einzeln nacheinander. Nur
+echte technische Blocker oder unklare Prozessentscheidungen einzeln klären.
+
 ## Ablauf pro Plan
 
 **1. Bauen:** Nutzer nennt Zahl/Titel → SOFORT `build_workflow` mit der

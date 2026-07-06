@@ -279,7 +279,14 @@ export const AXANTILO_TOOLS: AITool[] = [
 export function getToolsForPhase(phase: string): AITool[] {
   // Gemergte Phase 2 (Analyse & Plan); 'plan' als Legacy-Alias.
   if (phase === 'analyse' || phase === 'plan') {
-    return AXANTILO_TOOLS.filter(t => t.name !== 'build_workflow');
+    return AXANTILO_TOOLS.filter(
+      t =>
+        t.name !== 'build_workflow' &&
+        t.name !== 'request_credential' &&
+        t.name !== 'deploy_workflow' &&
+        t.name !== 'test_workflow' &&
+        t.name !== 'edit_workflow',
+    );
   }
   if (phase === 'umsetzung') {
     return AXANTILO_TOOLS.filter(t => t.name !== 'research_solutions');
@@ -355,5 +362,18 @@ export function toMistralTools(tools: AITool[]) {
       description: tool.description,
       parameters: tool.schema
     }
+  }));
+}
+
+// Helper for Anthropic (Claude)
+export function toAnthropicTools(tools: AITool[]) {
+  return tools.map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    input_schema: {
+      type: 'object' as const,
+      properties: tool.schema.properties,
+      required: tool.schema.required,
+    },
   }));
 }

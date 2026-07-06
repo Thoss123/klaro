@@ -13,7 +13,10 @@
 
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
-import type { CanvasData, Phase, Workflow } from '@/lib/types';
+import type { CanvasData, OnboardingData, Phase, Workflow } from '@/lib/types';
+import { generateInitialStrategy } from '@/lib/strategy';
+import { getHiddenInitMessage } from '@/lib/phase-welcome';
+import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { personaReply } from './persona-agent';
 import { parseTurnSignals, parseCoachCanvasUpdate, parseWorkflowPlans } from './tags';
 import { PHASE_ORDER } from './types';
@@ -27,6 +30,15 @@ import type {
 
 const STREAM_RESET = '<stream_reset></stream_reset>';
 const DEFAULT_MAX_TURNS = 12;
+// Die gemergte Analyse macht die Arbeit der alten Phasen 2 + 3 (Ist-Tools,
+// Tool-Bewertung, Priorisierung, Ablauf-Entwurf mit Ja-Gate pro Punkt) und
+// braucht bei mehreren Punkten mehr Züge als eine reine Diagnose.
+const ANALYSE_MAX_TURNS = 20;
+
+function turnCapFor(phase: Phase, override?: number): number {
+  if (typeof override === 'number') return override;
+  return phase === 'analyse' ? ANALYSE_MAX_TURNS : DEFAULT_MAX_TURNS;
+}
 
 export interface SimulationOutput {
   transcript: TranscriptTurn[];
@@ -79,11 +91,14 @@ async function callCoachOnce(
   onboarding: Record<string, unknown>,
   phase: Phase,
   canvas: CanvasData,
+  strategie: string | null,
 ): Promise<string> {
   const res = await fetch(`${baseUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, onboarding, phase, canvas: { ...canvas, phase } }),
+    // strategie wird direkt mitgegeben (kein DB-Projekt im Harness), damit der
+    // Coach — wie in der echten App — strategie-geleitet startet.
+    body: JSON.stringify({ messages, onboarding, phase, canvas: { ...canvas, phase }, strategie }),
   });
   if (!res.ok || !res.body) {
     const detail = await res.text().catch(() => '');
@@ -103,13 +118,14 @@ async function callCoach(
   onboarding: Record<string, unknown>,
   phase: Phase,
   canvas: CanvasData,
+  strategie: string | null,
 ): Promise<string> {
   try {
-    return await callCoachOnce(baseUrl, messages, onboarding, phase, canvas);
+    return await callCoachOnce(baseUrl, messages, onboarding, phase, canvas, strategie);
   } catch (e) {
     await new Promise(r => setTimeout(r, 8000));
     try {
-      return await callCoachOnce(baseUrl, messages, onboarding, phase, canvas);
+      return await callCoachOnce(baseUrl, messages, onboarding, phase, canvas, strategie);
     } catch {
       throw e instanceof Error ? e : new Error(String(e));
     }
@@ -151,15 +167,14 @@ async function applyCanvasEffects(
   phase: Phase,
 ): Promise<CanvasData> {
   let next = canvas;
-  // Diagnose: coach writes the canvas directly via <canvas_update>.
+  // Direkter Coach-Canvas-Schreibvorgang via <canvas_update> — wie im echten
+  // app/chat applyCoachCanvasUpdate: das VOLLSTÄNDIGE JSON falten (company,
+  // pain_points UND idea_cards / tool_evaluations / solution_structures), unter
+  // der jeweiligen Phase (diagnose: idea_cards; analyse: Tool-Bewertungen etc.).
   if (signals.coachCanvasWrite) {
     const parsed = parseCoachCanvasUpdate(raw);
     if (parsed) {
-      next = normalizeCanvasData(
-        { company: parsed.company, pain_points: parsed.pain_points },
-        next,
-        'diagnose',
-      );
+      next = normalizeCanvasData(parsed, next, phase);
     }
   }
   // Phases 2–4: worker LLM extracts the canvas.
@@ -188,7 +203,6 @@ export async function runSimulation(
   opts: DriverOptions,
   seed?: PhaseCheckpoint,
 ): Promise<SimulationOutput> {
-  const maxTurns = opts.maxTurnsPerPhase ?? DEFAULT_MAX_TURNS;
   const onboarding: Record<string, unknown> = seed?.onboarding ?? { ...opts.persona.onboarding };
 
   let allPhases = opts.phases ?? PHASE_ORDER;
@@ -206,14 +220,57 @@ export async function runSimulation(
   let canvas: CanvasData = seed ? seed.canvas : emptyCanvas(allPhases[0] ?? 'diagnose');
   let turnCounter = transcript.length;
 
+  // Interne Strategie einmal generieren (wie in der echten App nach dem Onboarding)
+  // und bei jedem Coach-Call mitgeben. Bei Resume aus dem Checkpoint übernehmen.
+  // Fail-open: bei Fehler läuft der Coach ohne Strategie.
+  let strategie: string | null = seed?.strategie ?? null;
+  if (!strategie) {
+    try {
+      strategie = await generateInitialStrategy({
+        onboarding: onboarding as Partial<OnboardingData>,
+        recherche: null,
+      });
+    } catch {
+      // Strategie ist best-effort — ein Fehler darf den Lauf nicht abbrechen.
+    }
+  }
+  await opts.onStrategy?.(strategie);
+
+  // Ein Coach-Zug: /api/chat rufen, Zug protokollieren, Canvas-Effekte anwenden.
+  // Gibt zurück, ob der Coach die Phase abgeschlossen hat.
+  const runCoachTurn = async (phase: Phase): Promise<boolean> => {
+    const raw = await callCoach(opts.baseUrl, dialogue, onboarding, phase, canvas, strategie);
+    const visible = visibleCoachText(raw);
+    const signals = parseTurnSignals(raw);
+    dialogue.push({ role: 'assistant', content: visible });
+    const coachTurn: TranscriptTurn = {
+      turn: turnCounter++, phase, role: 'coach', content: visible, raw, signals,
+    };
+    transcript.push(coachTurn);
+    await opts.onTurn?.(coachTurn);
+    canvas = await applyCanvasEffects(signals, raw, opts.baseUrl, dialogue, canvas, onboarding, phase);
+    return !!signals.phaseComplete;
+  };
+
   for (const phase of allPhases) {
     phasesRun.push(phase);
     canvas = { ...canvas, phase };
     let completed = false;
 
-    for (let t = 0; t < maxTurns; t++) {
-      // 1. Customer speaks.
-      const customerMsg = await personaReply({ persona: opts.persona, phase, dialogue });
+    // Phasen-Kickoff wie in der echten App: eine versteckte System-Nachricht
+    // startet die Phase, und der COACH spricht ZUERST (Begrüßung in diagnose,
+    // Phasen-Einleitung sonst). Erst danach antwortet die Persona.
+    dialogue.push({ role: 'user', content: getHiddenInitMessage(phase) });
+    completed = await runCoachTurn(phase);
+
+    const maxTurns = turnCapFor(phase, opts.maxTurnsPerPhase);
+    for (let t = 0; t < maxTurns && !completed; t++) {
+      // 1. Kunde antwortet dem Coach (versteckte Kickoff-Zeilen sieht die Persona nicht).
+      const customerMsg = await personaReply({
+        persona: opts.persona,
+        phase,
+        dialogue: filterCanvasHistory(dialogue),
+      });
       dialogue.push({ role: 'user', content: customerMsg });
       const customerTurn: TranscriptTurn = {
         turn: turnCounter++, phase, role: 'customer', content: customerMsg, signals: {},
@@ -221,25 +278,8 @@ export async function runSimulation(
       transcript.push(customerTurn);
       await opts.onTurn?.(customerTurn);
 
-      // 2. Coach responds (real /api/chat).
-      const raw = await callCoach(opts.baseUrl, dialogue, onboarding, phase, canvas);
-      const visible = visibleCoachText(raw);
-      const signals = parseTurnSignals(raw);
-      dialogue.push({ role: 'assistant', content: visible });
-      const coachTurn: TranscriptTurn = {
-        turn: turnCounter++, phase, role: 'coach', content: visible, raw, signals,
-      };
-      transcript.push(coachTurn);
-      await opts.onTurn?.(coachTurn);
-
-      // 3. Canvas side-effects.
-      canvas = await applyCanvasEffects(signals, raw, opts.baseUrl, dialogue, canvas, onboarding, phase);
-
-      // 4. Phase boundary?
-      if (signals.phaseComplete) {
-        completed = true;
-        break;
-      }
+      // 2. Coach antwortet (echtes /api/chat).
+      completed = await runCoachTurn(phase);
     }
 
     if (!completed) stalledPhases.push(phase);
@@ -249,6 +289,7 @@ export async function runSimulation(
       messages: [...dialogue],
       canvas: { ...canvas, phase },
       onboarding,
+      strategie,
     };
     checkpoints.push(checkpoint);
     await opts.onCheckpoint?.(checkpoint);

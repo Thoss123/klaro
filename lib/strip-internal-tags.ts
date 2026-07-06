@@ -72,6 +72,22 @@ export function stripInternalTags(content: string): string {
   );
   text = stripLeakedToolFragments(text);
 
+  // Geleakte interne Notiz-Pseudotags: Der Coach erfindet manchmal Klammern wie
+  // "<Text für dich: …>", "<Hinweis: …>", "<System: …>" statt (oder neben) des
+  // echten canvas_update. Solche Notizen dürfen NIE sichtbar werden.
+  const NOTE_OPENERS =
+    'text f[üu]r dich|hinweis|notiz|anmerkung|intern(?:e notiz)?|system|f[üu]r dich|nur f[üu]r dich|kontext|info f[üu]r dich|f[üu]r mich|zur info';
+  // vollständige Klammer "<opener …>"
+  text = text.replace(new RegExp(`<\\s*(?:${NOTE_OPENERS})\\b[^>]*>`, 'gi'), '');
+  // während des Streamens angebrochen: "<opener …" ohne schließendes ">"
+  text = text.replace(new RegExp(`<\\s*(?:${NOTE_OPENERS})\\b[^>]*$`, 'gi'), '');
+  // Allgemeine Pseudo-Notiz-Form "<Wort …: …>" (Buchstaben-Start, ": " im Inneren,
+  // kein "="): fängt neu erfundene Varianten, ohne a<b oder <mail@…> zu treffen.
+  text = text.replace(/<[A-Za-zÄÖÜäöüß][^>\n=]{0,60}:\s[^>\n]{0,400}>/g, '');
+  // Doppelte Leerzeichen mitten im Satz (z.B. wo ein Tag herausgeschnitten wurde)
+  // → eins; Einrückungen am Zeilenanfang bleiben unangetastet.
+  text = text.replace(/(\S) {2,}(?=\S)/g, '$1 ');
+
   // Leading "---" renders as horizontal rule in ReactMarkdown
   text = text.replace(/^(\s*---\s*\n?)+/, '');
   text = text.replace(/(\n\s*---\s*)+$/, '');

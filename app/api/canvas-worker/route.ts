@@ -6,19 +6,34 @@ import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { runCanvasPipeline } from '@/lib/agent-orchestration';
 import { mistralCompleteJson, withRateLimitRetry } from '@/lib/agents/llm';
+import type { TokenUsage } from '@/lib/billing/token-cost';
 
 export async function POST(req: NextRequest) {
   try {
-    const { history, currentCanvas, phase, projectId } = await req.json();
+    const { history, currentCanvas, phase, projectId, sessionId } = await req.json();
     type ChatMsg = { role: string; content: string };
+    const supabase = projectId ? await createSupabaseServerClient() : null;
+    const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
+    if (projectId && !user) {
+      return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
+    }
+    if (projectId && user) {
+      const { canAfford } = await import('@/lib/billing/credits');
+      const affordability = await canAfford(user.id, 1);
+      if (!affordability.ok) {
+        return NextResponse.json(
+          { code: 'INSUFFICIENT_CREDITS', balance: affordability.balance, required: affordability.required },
+          { status: 402 },
+        );
+      }
+    }
 
     // Gemergte Phase 2: Legacy-Wert 'plan' läuft als 'analyse' weiter.
     const workerPhase = (phase || 'diagnose') === 'plan' ? 'analyse' : (phase || 'diagnose');
 
-    if (!projectId) {
-      logSync('canvas', 'skip', 'missing projectId');
-      return NextResponse.json({ status: 'skipped', reason: 'missing_project_id' });
-    }
+    // Ohne projectId (z.B. Simulations-Harness) extrahieren wir trotzdem und
+    // geben das Canvas zurück — nur die DB-Persistenz entfällt weiter unten.
+    // So bildet die Simulation die echte Phase-2-Extraktion (Tools/Use-Cases) ab.
 
     const hist = filterCanvasHistory(history || []);
     const histCheck = evaluateHistoryForCanvas(workerPhase, hist);
@@ -146,6 +161,11 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
       ],
       responseFormat: { type: 'json_object' }
     }));
+    const usage = response.usage as TokenUsage | undefined;
+    const billableUsage: TokenUsage = {
+      inputTokens: (usage?.inputTokens ?? usage?.input_tokens ?? usage?.promptTokens ?? usage?.prompt_tokens ?? 0) + (pipeline.totalTokens ?? 0),
+      outputTokens: usage?.outputTokens ?? usage?.output_tokens ?? usage?.completionTokens ?? usage?.completion_tokens ?? 0,
+    };
 
     const raw = response.choices?.[0]?.message?.content;
     const newCanvasRaw = typeof raw === 'string' ? raw : '';
@@ -193,18 +213,32 @@ Gib AUSSCHLIESSLICH das neue Canvas JSON zurück. Kein Markdown, keine Erklärun
     );
     logSync('canvas', 'success', `saved project=${projectId}`, { diff, phase });
 
-    // Save to Supabase (this will trigger Realtime updates in the client!)
-    const supabase = await createSupabaseServerClient();
-    
-    const { error: upsertError } = await supabase.from('project_canvas').upsert({
-      project_id: projectId,
-      data: updatedCanvas,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'project_id' });
+    // Save to Supabase (this will trigger Realtime updates in the client!).
+    // Ohne projectId (Simulations-Harness) überspringen wir die Persistenz und
+    // geben nur das extrahierte Canvas zurück.
+    if (projectId) {
+      const { error: upsertError } = await supabase!.from('project_canvas').upsert({
+        project_id: projectId,
+        data: updatedCanvas,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'project_id' });
 
-    if (upsertError) {
-      logSync('canvas', 'fail', 'Supabase upsert failed', { error: upsertError.message });
-      return NextResponse.json({ status: 'error', reason: 'db_save_failed', error: upsertError.message }, { status: 500 });
+      if (upsertError) {
+        logSync('canvas', 'fail', 'Supabase upsert failed', { error: upsertError.message });
+        return NextResponse.json({ status: 'error', reason: 'db_save_failed', error: upsertError.message }, { status: 500 });
+      }
+      if (user) {
+        const { debitFromUsage } = await import('@/lib/billing/credits');
+        await debitFromUsage({
+          userId: user.id,
+          usage: billableUsage,
+          model: 'mistral-small-latest',
+          action: 'canvas_worker',
+          projectId,
+          sessionId: typeof sessionId === 'string' ? sessionId : null,
+          metadata: { phase: workerPhase, orchestrationTokens: pipeline.totalTokens ?? 0 },
+        }).catch(e => console.warn('[billing] canvas-worker debit failed:', e instanceof Error ? e.message : String(e)));
+      }
     }
 
     return NextResponse.json({

@@ -57,6 +57,9 @@ export function useVoiceInput({
 
         const res = await fetch('/api/transcribe', { method: 'POST', body: form, credentials: 'include' });
         const data = await res.json();
+        if (res.status === 402 && data?.code === 'INSUFFICIENT_CREDITS') {
+          throw new Error('Deine Test-Credits sind aufgebraucht. Lade im Account Credits auf und versuche es erneut.');
+        }
         if (!res.ok) throw new Error(data.error || 'Transkription fehlgeschlagen');
 
         const text = typeof data.text === 'string' ? data.text.trim() : '';

@@ -36,6 +36,28 @@ describe('stripInternalTags', () => {
     expect(stripInternalTags('Ganz normaler Satz.')).toBe('Ganz normaler Satz.');
   });
 
+  it('removes leaked internal note pseudo-tags the coach invents', () => {
+    expect(
+      stripInternalTags(
+        '<Text für dich: Nutzerin hat bestätigt, dass Texte schreiben die größten Pain Points sind.>\n\nIch zeichne das mal am Canvas auf.',
+      ),
+    ).toBe('Ich zeichne das mal am Canvas auf.');
+    expect(stripInternalTags('<System: canvas aktualisiert> Rechts siehst du...')).toBe(
+      'Rechts siehst du...',
+    );
+    expect(stripInternalTags('Kurzer Hinweis <Notiz: intern> weiter.')).toBe('Kurzer Hinweis weiter.');
+  });
+
+  it('does NOT strip legitimate angle-bracket content (math, mail, url)', () => {
+    expect(stripInternalTags('Wenn a < b und b > c, dann...')).toBe('Wenn a < b und b > c, dann...');
+    expect(stripInternalTags('Schreib an <info@axantilo.com> zurück.')).toBe(
+      'Schreib an <info@axantilo.com> zurück.',
+    );
+    expect(stripInternalTags('Details unter <https://axantilo.com/preise>.')).toBe(
+      'Details unter <https://axantilo.com/preise>.',
+    );
+  });
+
   it('removes tool_call tags and leaked tool name prefixes', () => {
     const t =
       'build_workflowprilisiert wurde. Ich starte.\n<tool_call>{"type":"build_workflow","args":{"workflow_id":"wf_1"}}</tool_call>\n<canvas_built>{"workflow_id":"wf_1"}</canvas_built>\nFertig.';
@@ -70,7 +92,7 @@ describe('cleanupBotFormatting', () => {
   });
 
   it('removes stream_reset markers (full and dangling)', () => {
-    expect(stripInternalTags('Text <stream_reset></stream_reset> mehr')).toBe('Text  mehr');
+    expect(stripInternalTags('Text <stream_reset></stream_reset> mehr')).toBe('Text mehr');
     expect(stripInternalTags('Finale Antwort <stream_reset')).toBe('Finale Antwort');
   });
 

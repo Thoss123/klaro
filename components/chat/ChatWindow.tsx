@@ -70,6 +70,7 @@ export default function ChatWindow({
           <MessageBubble
             message={m}
             onEdit={onEdit}
+            isStreamingPartial={isStreaming && m.role === 'assistant' && i === lastAssistantIdx}
             feedback={
               m.role === 'assistant'
                 ? {
