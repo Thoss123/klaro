@@ -9,7 +9,7 @@ const nextConfig = {
   },
   // Coach-v2-Prompts werden zur Laufzeit per fs gelesen — beim Deploy mitnehmen.
   outputFileTracingIncludes: {
-    '/api/chat': ['./coach/prompts/**'],
+    '/api/chat': ['./coach/prompts/**', './knowledge/mindset.md'],
   },
 };
 

@@ -192,6 +192,14 @@ export async function POST(req: NextRequest) {
     }
     systemPrompt = systemPrompt.replace(/{{strategie}}/g, strategieText);
 
+    // ── Mindset-Leitlinien (Sprint 4.1) — phaseabhängig, still im Ton ─────────
+    const { formatMindsetBlock } = await import('@/lib/mindset');
+    const mindsetBlock = formatMindsetBlock(currentPhase);
+    if (mindsetBlock) {
+      systemPrompt += mindsetBlock;
+      console.log(`[mindset-inject] phase=${currentPhase} → ${mindsetBlock.length} chars`);
+    }
+
     // Node-Map-Regeln (eine-Node-eine-Aufgabe, Freigabe=sendAndWait+Loopback, Chain-vs-Agent,
     // selbst-liefernde Tools, Trigger-Wahl, Pflichtfelder) — der Coach soll sie IMMER befolgen.
     const { formatNodeMapForPrompt } = await import('@/lib/node-map');
@@ -381,6 +389,41 @@ export async function POST(req: NextRequest) {
                  } catch (e: unknown) {
                    console.error('[create_document_template] fetch failed:', (e instanceof Error ? e.message : String(e)));
                    return { status: 'error', message: 'Vorlage erstellen fehlgeschlagen.' };
+                 }
+               } else if (toolCall.name === 'update_agent_prompt') {
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — update_agent_prompt abgebrochen.' };
+                 }
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { getAgentPromptDef, promptOverridePath } = await import('@/lib/agent-prompts');
+                   const { writeWorkspaceFile } = await import('@/lib/workspace');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const key = argStr(toolCall.args.prompt_key);
+                   if (!getAgentPromptDef(key)) {
+                     return { status: 'error', message: `Unbekannter prompt_key: ${key}` };
+                   }
+                   const content = typeof toolCall.args.content === 'string' ? toolCall.args.content.trim() : '';
+                   const file = await writeWorkspaceFile(supabase, {
+                     userId: user.id,
+                     projectId: project_id,
+                     path: promptOverridePath(key),
+                     content, // leer = Override neutralisiert → Standard greift wieder
+                     updatedBy: 'coach',
+                   });
+                   if (!file) return { status: 'error', message: 'Speichern fehlgeschlagen.' };
+                   return {
+                     status: 'success',
+                     message: content
+                       ? `Agenten-Prompt „${key}" angepasst (Version ${file.version}). Ab der nächsten E-Mail aktiv — kein Neustart nötig. Sag dem Nutzer in Alltagssprache, was sich ändert.`
+                       : `Anpassung entfernt — „${key}" nutzt wieder den Standard.`,
+                   };
+                 } catch (e: unknown) {
+                   console.error('[update_agent_prompt] failed:', e instanceof Error ? e.message : String(e));
+                   return { status: 'error', message: 'Prompt-Anpassung fehlgeschlagen.' };
                  }
                } else if (toolCall.name === 'edit_workflow') {
                  if (currentPhase !== 'umsetzung') {

@@ -15,11 +15,15 @@ Credential ist automatisch gesetzt — Workflow deployed direkt.
 
 ## Für den Agent / Coach
 - **SMS** → `n8n-nodes-base.twilio` (Twilio-Node)
-  - Parameter: `to` (Empfänger +49…), `body` (Nachricht)
+  - Parameter: `to` (Empfänger +49…), `message` (Nachricht)
   - `from` ist die zentrale Axantilo-Twilio-Nummer — wird automatisch gesetzt
-- **WhatsApp via Twilio** → ebenfalls `n8n-nodes-base.twilio`
-  - `to`: `whatsapp:+49XXXXXXXXX` (mit `whatsapp:`-Präfix!)
-  - `from`: `whatsapp:+1XXXXXXXXX` (Axantilo-Sandbox/Produktionsnummer)
+- **WhatsApp via Twilio** → ebenfalls `n8n-nodes-base.twilio` mit `toWhatsapp: true`
+  - `to`: NACKTE Nummer `+49XXXXXXXXX` — KEIN `whatsapp:`-Präfix! Der Node präfixt bei
+    `toWhatsapp: true` selbst; doppeltes Präfix → Twilio-Error 21211 „not a valid phone number".
+  - `from`: muss ein WhatsApp-CHANNEL sein — Sandbox: `+14155238886` (universell).
+    Die eigene SMS-Nummer als `from` → Error 63007 „could not find a Channel".
+  - Inbound-Webhooks: Twilio sendet `From` als `whatsapp:+49…` — dieses Format für
+    Lookups (z.B. `agent_pending_actions.contact`) verwenden.
 - NIEMALS anleiten, einen eigenen Twilio-Account oder WhatsApp-Business-Account anzulegen
 
 ## WhatsApp: Sandbox vs. Produktion

@@ -1,0 +1,449 @@
+{
+  "name": "AXANTILO: WhatsApp Steuerkanal",
+  "nodes": [
+    {
+      "name": "WhatsApp eingehend",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{CONTROL_WEBHOOK_PATH}}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Nachricht lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const b = $json.body || {};\nconst text = String(b.Body || '').trim();\nconst from = String(b.From || '');\nconst is_approval = /^(senden|ok|passt|ja|go|send)[.!\\s]*$/i.test(text);\nreturn [{ json: { text, from, is_approval } }];"
+      }
+    },
+    {
+      "name": "Offene Freigabe suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "url": "={{APP_BASE_URL}}/api/agent/pending?project_id={{PROJECT_ID}}&status=pending&contact={{ encodeURIComponent($json.from) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "name": "Route bestimmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const action = $json.action || null;\nconst msg = $('Nachricht lesen').item.json;\nconst route = !action ? 'adhoc' : (msg.is_approval ? 'send' : 'revise');\nreturn [{ json: { route, action, text: msg.text, from: msg.from } }];"
+      }
+    },
+    {
+      "name": "Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "outputKey": "send",
+              "renameOutput": true,
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "send"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "revise",
+              "renameOutput": true,
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "revise"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "adhoc",
+              "renameOutput": true,
+              "conditions": {
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "adhoc"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      }
+    },
+    {
+      "name": "E-Mail senden",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        80
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Route bestimmen').item.json.action.payload.send_target }}",
+        "subject": "={{ 'Re: ' + ($('Route bestimmen').item.json.action.payload.subject || '') }}",
+        "emailType": "text",
+        "message": "={{ $('Route bestimmen').item.json.action.payload.draft }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe abschließen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Route bestimmen').item.json.action.id, project_id: '{{PROJECT_ID}}', status: 'sent' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Lernen anstoßen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{LEARNING_WEBHOOK_URL}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', persona: $('Route bestimmen').item.json.action.payload.persona || '{{PERSONA_PATH}}', first_draft: $('Route bestimmen').item.json.action.payload.first_draft || '', final_text: $('Route bestimmen').item.json.action.payload.draft || '', feedback_log: $('Route bestimmen').item.json.action.payload.feedback_log || [] }) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "WhatsApp: Gesendet",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        80
+      ],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=✅ Gesendet an {{ $('Route bestimmen').item.json.action.payload.send_target }}.",
+        "options": {}
+      }
+    },
+    {
+      "name": "KI: Entwurf überarbeiten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'email/revise', persona_path: $('Route bestimmen').item.json.action.payload.persona || '{{PERSONA_PATH}}', user: 'URSPRÜNGLICHE KUNDENANFRAGE:\\n' + ($('Route bestimmen').item.json.action.payload.original_email || '') + '\\n\\nAKTUELLER ENTWURF:\\n' + ($('Route bestimmen').item.json.action.payload.draft || '') + '\\n\\nFEEDBACK DES INHABERS:\\n' + $('Route bestimmen').item.json.text }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        300
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Route bestimmen').item.json.action.id, project_id: '{{PROJECT_ID}}', payload: Object.assign({}, $('Route bestimmen').item.json.action.payload, { draft: $json.text, feedback_log: ($('Route bestimmen').item.json.action.payload.feedback_log || []).concat([$('Route bestimmen').item.json.text]) }) }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "WhatsApp: Neuer Entwurf",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        300
+      ],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=✏️ Überarbeiteter Entwurf:\n\n{{ $('KI: Entwurf überarbeiten').item.json.text }}\n\n— Antworte SENDEN zum Abschicken, oder gib weiteres Feedback.",
+        "options": {}
+      }
+    },
+    {
+      "name": "KI: Assistent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'control/adhoc', persona_path: '{{PERSONA_PATH}}', user: $json.text }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "WhatsApp: Antwort",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        520
+      ],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "={{ $('KI: Assistent').item.json.text }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp eingehend": {
+      "main": [
+        [
+          {
+            "node": "Nachricht lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nachricht lesen": {
+      "main": [
+        [
+          {
+            "node": "Offene Freigabe suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offene Freigabe suchen": {
+      "main": [
+        [
+          {
+            "node": "Route bestimmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route bestimmen": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail senden": {
+      "main": [
+        [
+          {
+            "node": "Freigabe abschließen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe abschließen": {
+      "main": [
+        [
+          {
+            "node": "Lernen anstoßen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lernen anstoßen": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Entwurf überarbeiten": {
+      "main": [
+        [
+          {
+            "node": "Freigabe aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Neuer Entwurf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Assistent": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "E-Mail senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "KI: Entwurf überarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "KI: Assistent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -300,9 +300,9 @@ MOCK_N8N=false
 
 - `[x]` **`knowledge/mindset.md`:** 8 Kernhaltungen zu KI/Automatisierung/Kosten, die Nutzer verinnerlichen sollen _(angelegt)_. Besonders: Kosten sind Investition, nicht Ausgabe; Menschen für Strategie, KI für Volumen; kleine vernetzte Workflows schlagen große Einzelne.
 
-- `[ ]` **Mindsets in Chat-Context injizieren** (WICHTIG — Dokumentation allein reicht nicht):
+- `[x]` **Mindsets in Chat-Context injizieren** (WICHTIG — Dokumentation allein reicht nicht):
   - **`app/api/chat/route.ts`:** Vor jedem Coach-Call Phase-abhängige Mindsets aus `knowledge/mindset.md` laden und **in den System-Prompt injizieren** (ähnlich wie RAG-Knowledge).
-  - **Phase-Mapping:** Phase 1 = Mindsets 2+4; Phase 2 = Mindset 7; Phase 3 = Mindsets 1+3+4+6; Phase 4 = Mindsets 5+8.
+  - **`lib/mindset.ts`:** Parser + Phase-Mapping (3-Phasen-Modell: diagnose→2+4, analyse→1+3+4+6+7, umsetzung→5+8).
   - **Format:** Kurzer Block (~200 Tokens) im System-Prompt: „Deine Haltung zu diesem Thema:" + relevanter Mindset-Auszug.
   - **Nicht explizit:** Klaro liest die Mindsets stille, verkauft sie nicht als Lehrpunkte.
 

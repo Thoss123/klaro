@@ -5,38 +5,51 @@ tools_required: [gmail, twilio]
 n8n_json_file: email-triage-draft.json
 ---
 
-# E-Mail Triage & Entwurf (mit WhatsApp-Freigabe)
+# E-Mail-Automation: Triage & Antwort-Entwurf
 
 ## Beschreibung
-Bei jeder eingehenden E-Mail lädt der Workflow das firmen- und personenspezifische Wissen aus
-dem Axantilo-Workspace (`company_base.md` + `persona_<name>.md`), schreibt einen fertigen
-Antwort-Entwurf und schickt ihn dem Verantwortlichen per WhatsApp zur Freigabe. Gesendet wird
-erst nach „SENDEN" — der Inbound-Flow (`whatsapp-control`) übernimmt das Absenden bzw. die
-Revisions-Schleife. Der Entwurf wird als `agent_pending_actions`-Eintrag abgelegt.
+Bei jeder eingehenden E-Mail: kategorisieren (Lead / Termin / Kundenfrage / Rechnung / Spam / Sonstiges),
+für relevante Kategorien einen fertigen Antwort-Entwurf schreiben — mit dem Firmenwissen und dem
+persönlichen Stil aus dem Axantilo-Workspace — und den Entwurf zur Freigabe vorlegen.
+Rechnungen und Spam erzeugen bewusst KEINEN Entwurf (spart Kosten und Unterbrechungen).
+
+**Funktioniert mit jedem Mail-Anbieter**: Gmail / Outlook / IMAP über die Provider-Slots
+(`{{TRIGGER_NODE}}`/`{{SEND_NODE}}`, aufgelöst durch `lib/template-loader.ts`).
+
+## Architektur (wichtig)
+Alle KI-Schritte laufen über `POST {{APP_BASE_URL}}/api/agent/llm` — NICHT über eigene
+Mistral-Nodes. Vorteile: Axantilos zentraler Mistral-Key (Nutzer hinterlegt nichts),
+Credit-Abrechnung pro Aufruf wie im Chat, und die Prompts sind Standard-Prompts
+(`lib/agent-prompts.ts`), die der Nutzer per Coach-Tool `update_agent_prompt` anpassen kann.
+Jede Kategorie hat ihren eigenen System-Prompt (email/draft_lead_inquiry, …_scheduling,
+…_support_faq, …_other); Firmenwissen + Persona werden serverseitig injiziert.
 
 ## Kette
-Neue E-Mail → Firmenwissen laden → Persona laden → System-Prompt bauen → AI-Agent (Entwurf)
-→ Freigabe anlegen (POST /api/agent/pending) → WhatsApp senden
+Neue E-Mail → KI: Kategorisieren (email/classify) → Kategorie parsen → Switch (6 Zweige)
+→ KI: Entwurf schreiben (prompt_key je Kategorie) → Freigabe anlegen (POST /api/agent/pending)
+→ Benachrichtigung (WhatsApp via Twilio)
+
+## Human-in-the-Loop (Freigabe-Kanal)
+Der Entwurf wird als `agent_pending_actions`-Eintrag gespeichert. Die Benachrichtigung/Freigabe
+läuft standardmäßig hier über WhatsApp — der **Steuerkanal ist aber eine EIGENE Funktionalität**
+(siehe whatsapp-control.md) und austauschbar: statt Twilio-Node z.B. Slack/Teams-Node oder
+„Entwurf im Postfach ablegen" (Gmail draft:create). Die E-Mail-Automation funktioniert
+unabhängig davon, welcher Kanal die Freigabe übernimmt.
 
 ## Slots
-- `{{TRIGGER_NODE}}` — Mail-Provider-Trigger (gmail/outlook/imap) via `lib/template-loader.ts`
-- `{{APP_BASE_URL}}` — Basis-URL der Axantilo-App (z.B. `https://app.axantilo.com`)
-- `{{PROJECT_ID}}` — Projekt-/Workspace-ID
+- `{{TRIGGER_NODE}}` / `{{SEND_NODE}}` — Mail-Provider (gmail/outlook/imap)
+- `{{APP_BASE_URL}}` — Axantilo-App (z.B. `https://www.axantilo.com`)
+- `{{PROJECT_ID}}` — Projekt/Workspace des Nutzers
 - `{{PERSONA_PATH}}` — z.B. `rules/persona_thomas.md`
-- `{{OWNER_WHATSAPP}}` — WhatsApp-Nummer des Freigebers (`+49…`)
+- `{{OWNER_WHATSAPP}}` — Nummer des Freigebers, nackt (`+43…`); Twilio-Node präfixt selbst
+- `{{TWILIO_WHATSAPP_FROM}}` — WhatsApp-Sender (Sandbox: `+14155238886`)
 
 ## Voraussetzungen
-- Mail-Provider verbunden (Gmail = 3-Klick-OAuth)
-- HTTP-Header-Auth-Credential in n8n mit `Authorization: Bearer <WORKSPACE_API_TOKEN>`
-- Twilio zentral (Axantilo) — keine Nutzer-Einrichtung
-- Ein Chat Model als Sub-Node am Agent (hier Mistral)
-
-## Bausteine
-Nutzt [rules-loader](../bausteine/rules-loader.md) (Wissen laden) und ist das Gegenstück zur
-Learning Engine (Flow 2), die `rules/*` fortschreibt. WhatsApp-Freigabe/Revision übernimmt der
-separate Inbound-Flow über `agent_pending_actions`.
+- Mail-Provider verbunden (Gmail = zentrale 3-Klick-OAuth)
+- HTTP-Header-Auth-Credential `Authorization: Bearer <WORKSPACE_API_TOKEN>` an allen App-HTTP-Nodes
+- Twilio zentral (Axantilo) — kein Nutzer-Setup
+- Workspace-Regeln existieren (`ensureBaseRules` legt company_base beim Onboarding an)
 
 ## Nach dem Deployment
-- Provider-OAuth + Header-Auth-Credential in n8n bestätigen.
-- `{{APP_BASE_URL}}`, `{{PROJECT_ID}}`, `{{OWNER_WHATSAPP}}`, `{{PERSONA_PATH}}` setzen.
-- Testlauf mit gepinntem Trigger (nur Trigger pinnen), dann aktivieren.
+- Credentials prüfen, Testlauf mit gepinntem Trigger, dann aktivieren.
+- Gegenstücke aktivieren: whatsapp-control (Freigabe/Revision) + email-learning-engine (Lernen).

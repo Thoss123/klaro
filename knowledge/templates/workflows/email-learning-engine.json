@@ -1,0 +1,213 @@
+{
+  "name": "AXANTILO: Learning Engine",
+  "nodes": [
+    {
+      "name": "Lern-Auftrag",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{LEARNING_WEBHOOK_PATH}}",
+        "options": {}
+      }
+    },
+    {
+      "name": "KI: Regeln ableiten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.body.project_id, prompt_key: 'email/learn', persona_path: $json.body.persona, user: 'ERSTER AI-ENTWURF:\\n' + ($json.body.first_draft || '(keiner)') + '\\n\\nFINAL GESENDETE VERSION:\\n' + ($json.body.final_text || '') + '\\n\\nFEEDBACK-VERLAUF DES INHABERS:\\n' + (($json.body.feedback_log || []).join('\\n---\\n') || '(kein Feedback)') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Regeln parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const body = $('Lern-Auftrag').item.json.body || {};\nlet company_md = null, persona_md = null, learned = null;\ntry {\n  const parsed = JSON.parse($json.text);\n  if (typeof parsed.company_md === 'string' && parsed.company_md.trim()) company_md = parsed.company_md;\n  if (typeof parsed.persona_md === 'string' && parsed.persona_md.trim()) persona_md = parsed.persona_md;\n  if (typeof parsed.learned === 'string') learned = parsed.learned;\n} catch (e) { /* ungültiges JSON -> nichts lernen (fail-safe) */ }\nreturn [{ json: { company_md, persona_md, learned, project_id: body.project_id, persona: body.persona } }];"
+      }
+    },
+    {
+      "name": "Firmenwissen ändern?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.company_md }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Firmenwissen aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        120
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "{{APP_BASE_URL}}/api/workspace",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.project_id, path: 'rules/company_base.md', content: $json.company_md, updated_by: 'learning-engine' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Persona ändern?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.persona_md }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Persona aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        420
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "{{APP_BASE_URL}}/api/workspace",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Regeln parsen').item.json.project_id, path: $('Regeln parsen').item.json.persona, content: $('Regeln parsen').item.json.persona_md, updated_by: 'learning-engine' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Lern-Auftrag": {
+      "main": [
+        [
+          {
+            "node": "KI: Regeln ableiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Regeln ableiten": {
+      "main": [
+        [
+          {
+            "node": "Regeln parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regeln parsen": {
+      "main": [
+        [
+          {
+            "node": "Firmenwissen ändern?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Persona ändern?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firmenwissen ändern?": {
+      "main": [
+        [
+          {
+            "node": "Firmenwissen aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Persona ändern?": {
+      "main": [
+        [
+          {
+            "node": "Persona aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

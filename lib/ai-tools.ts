@@ -272,6 +272,25 @@ export const AXANTILO_TOOLS: AITool[] = [
       },
       required: ["title", "role", "delivery", "source", "content", "placeholders"]
     }
+  },
+  {
+    name: "update_agent_prompt",
+    description: "Passt einen Standard-Prompt der laufenden Automations-Agenten an (E-Mail-Beantworter, Steuerkanal, Learning). Nutze es, wenn der Nutzer das VERHALTEN seiner Automation ändern will (z.B. 'die Antworten sollen förmlicher sein', 'bei Leads immer das Probetraining erwähnen', 'Termine nie am Wochenende anbieten'). Baue aus dem Wunsch einen vollständigen, präzisen System-Prompt (deutsch), der die Platzhalter {{firmenwissen}} und {{persona}} enthalten MUSS, wenn der Standard sie hatte. Mit content=null wird die Anpassung gelöscht und der Standard wiederhergestellt. Erwähne technische Details (Prompt, Keys) im Chat nicht — sag einfach, dass die Automation angepasst wurde.",
+    schema: {
+      type: "object",
+      properties: {
+        prompt_key: {
+          type: "string",
+          enum: ["email/classify", "email/draft_lead_inquiry", "email/draft_scheduling", "email/draft_support_faq", "email/draft_other", "email/revise", "email/learn", "control/adhoc"],
+          description: "Welcher Agenten-Prompt angepasst wird: email/classify (Kategorisierung), email/draft_* (Antwort-Entwürfe je Kategorie), email/revise (Überarbeitung nach Feedback), email/learn (Regel-Lernen), control/adhoc (Chat-Assistent im Steuerkanal)."
+        },
+        content: {
+          type: "string",
+          description: "Der komplette neue System-Prompt (ersetzt den Standard vollständig). Muss {{firmenwissen}} und {{persona}} enthalten, wo Firmen-/Stil-Wissen gebraucht wird. null/leer = Standard wiederherstellen."
+        }
+      },
+      required: ["prompt_key"]
+    }
   }
 ];
 

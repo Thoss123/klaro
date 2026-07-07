@@ -1,3 +1,34 @@
+# Workflow-Templates: Katalog & Einbindung
+
+## MVP-Funktionalitäten-Katalog (Ziel: 10–15)
+
+Jede Funktionalität = 1 golden Template (+ MD-Wrapper) nach dem Verfahren unten.
+KI-Schritte laufen IMMER über `POST /api/agent/llm` (zentraler Mistral-Key, Credit-Abrechnung
+wie der Chat, Standard-Prompts per Coach-Tool `update_agent_prompt` anpassbar).
+
+| # | Funktionalität | Template | Status |
+|---|---------------|----------|--------|
+| 1 | **E-Mail-Automation** (Triage + Antwort-Entwurf, jeder Mail-Anbieter) | `email-triage-draft` | ✅ live getestet |
+| 2 | **Steuerkanal WhatsApp/Slack/Teams** (Freigabe, Revision, Ad-hoc-Assistent) — EIGENE Funktionalität, wird Nutzern von #1 zusätzlich vorgeschlagen, funktioniert aber unabhängig | `whatsapp-control` | ✅ live getestet |
+| 3 | **Learning Engine** (Automation lernt aus Korrekturen) | `email-learning-engine` | ✅ live getestet |
+| 4 | Lead-Follow-up nach X Tagen | `lead-followup` | ✅ vorhanden |
+| 5 | Terminvergabe mit Kalender-Anbindung (freie Slots vorschlagen, nie direkt buchen) | `tool_get_free_slots` + Erweiterung #1 | geplant |
+| 6 | CRM-Kontext im Entwurf (Lead/Kunde? Historie? nächster Schritt?) | `tool_lookup_contact` | geplant |
+| 7 | Proaktiver Monitor (offene Leads, fehlgeschlagene Workflows → Push) | `proactive-monitor` | geplant |
+| 8 | Angebot aus Gesprächsnotiz/Transkript generieren | `angebot-aus-notiz` | geplant |
+| 9 | Rechnungs-Eingang erfassen (Anhänge → Ablage + Buchhaltungs-Tabelle) | `rechnungs-eingang` | geplant |
+| 10 | Formular-/Website-Anfragen → CRM + Antwort | `formular-zu-crm` | geplant |
+| 11 | Bewertungs-Management (Google Reviews → Antwort-Entwurf) | `review-antworten` | geplant |
+| 12 | Social-Media-Posting aus Content-Plan | `social-posting` | geplant |
+| 13 | No-Show-Reminder (Termin-Erinnerungen per WhatsApp/SMS) | `termin-reminder` | geplant |
+| 14 | Wochen-Report (KPIs aus CRM/Sheets → Zusammenfassung) | `wochen-report` | geplant |
+| 15 | Dokumenten-Ablage (Anhänge klassifizieren → Drive-Ordner) | `dokumenten-ablage` | geplant |
+
+Branchen-Varianten entstehen NICHT als neue Templates, sondern über Kategorien-Seeds +
+Workspace-Regeln (siehe Variations-Achsen unten).
+
+---
+
 # Neue Workflow-Templates einbinden
 
 So kommt ein neuer Workflow von der Idee bis zum wiederverwendbaren, deploybaren Template.
