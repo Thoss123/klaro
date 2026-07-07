@@ -41,6 +41,9 @@ export function shouldRecoverCoachCanvas(params: {
   const phase = params.phase === 'plan' ? 'analyse' : params.phase;
   if (phase !== 'diagnose' && phase !== 'analyse') return false;
 
+  // Coach hat selbst einen Plan geschrieben — kein generisches canvas_update-Recovery.
+  if (/<\/workflow_plan>/i.test(params.rawAssistant)) return false;
+
   if (claimsCanvasUpdateWithoutTag(params.rawAssistant)) return true;
   if (userRequestedCanvasBuild(params.userMessage)) return true;
 

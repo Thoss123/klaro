@@ -52,6 +52,20 @@ describe('coach v2 prompt assembly', () => {
     expect(prompt).toContain('{{memory}}');
   });
 
+  it('includes the canonical phase-transition mechanism in every assembled prompt', () => {
+    for (const phase of ['diagnose', 'analyse', 'plan', 'umsetzung']) {
+      const prompt = getCoachSystemPrompt(phase)!;
+      expect(prompt).toContain('Phasenwechsel — einziger Weg');
+      expect(prompt).toContain('prepare_phase');
+      expect(prompt).toContain('<phase_complete>');
+    }
+  });
+
+  it('analyse exit requires prepare_phase(umsetzung) before phase_complete', () => {
+    const prompt = getCoachSystemPrompt('analyse')!;
+    expect(prompt).toContain('next_phase: "umsetzung"');
+  });
+
   it('module contract: no hardcoded workflow names or counts in phase modules', () => {
     for (const phase of ['diagnose', 'analyse', 'plan', 'umsetzung']) {
       const prompt = getCoachSystemPrompt(phase)!;

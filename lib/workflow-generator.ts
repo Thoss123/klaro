@@ -10,6 +10,9 @@ import { branchOutputIndex, edgeTargetInput, resolveWorkflowEdges } from './work
 // Maps tool name → n8n credential type key (null = no credential needed)
 export const CREDENTIAL_TYPE: Record<string, string | null> = {
   gmail:       'gmailOAuth2Api',
+  outlook:     'microsoftOutlookOAuth2Api',
+  imap:        'imap',
+  email_send:  'smtp',      // zentral (Resend SMTP) — via central-credentials injiziert
   google_docs: 'googleDocsOAuth2Api',
   google_sheets: 'googleSheetsOAuth2Api',
   slack:       'slackApi',
@@ -27,6 +30,10 @@ export const CREDENTIAL_TYPE: Record<string, string | null> = {
 // Maps tool name → n8n node type
 export const NODE_TYPE: Record<string, { type: string; version: number }> = {
   gmail:          { type: 'n8n-nodes-base.gmail',           version: 2 },
+  outlook:        { type: 'n8n-nodes-base.microsoftOutlook',        version: 2 },
+  outlook_trigger:{ type: 'n8n-nodes-base.microsoftOutlookTrigger', version: 1 },
+  imap:           { type: 'n8n-nodes-base.emailReadImap',           version: 2 },
+  email_send:     { type: 'n8n-nodes-base.emailSend',               version: 2 },
   google_docs:    { type: 'n8n-nodes-base.googleDocs',      version: 2 },
   google_sheets:  { type: 'n8n-nodes-base.googleSheets',    version: 4 },
   slack:          { type: 'n8n-nodes-base.slack',           version: 2 },

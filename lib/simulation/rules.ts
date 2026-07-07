@@ -12,6 +12,7 @@
 
 import type { CanvasData, Phase } from '@/lib/types';
 import { validateWorkflowStructure } from '@/lib/n8n-workflow-validate';
+import { hasPreparePhaseToolCall, hasVerbalPhaseSwitch } from './tags';
 import type {
   Finding,
   FindingSeverity,
@@ -264,11 +265,60 @@ const workflowStructureValid: MechanicalRule = {
   },
 };
 
+/** Phase exit must use prepare_phase + phase_complete — never verbal switch only. */
+const phaseTransitionProtocol: MechanicalRule = {
+  id: 'phase-transition-protocol',
+  severity: 'critical',
+  targetPrompt: 'shared',
+  run({ transcript, phasesRun }) {
+    const findings: Finding[] = [];
+    for (const turn of transcript) {
+      if (turn.role !== 'coach') continue;
+      const text = turn.content || '';
+      const completed = text.match(/<phase_complete>\s*(\w+)\s*<\/phase_complete>/i)?.[1]?.toLowerCase();
+      if (completed && (completed === 'diagnose' || completed === 'analyse')) {
+        if (!hasPreparePhaseToolCall(text)) {
+          findings.push({
+            ruleId: 'phase-transition-protocol',
+            kind: 'mechanical',
+            phase: completed as Phase,
+            passed: false,
+            severity: 'critical',
+            message: `Coach sent phase_complete for ${completed} without prepare_phase in the same turn.`,
+            evidence: text.slice(0, 280),
+            suggestedFix:
+              'Every phase exit must call prepare_phase(next_phase) via Tool-API and phase_complete(current) — see base.md Phasenwechsel.',
+          });
+        }
+      }
+      if (hasVerbalPhaseSwitch(text) && !completed) {
+        findings.push({
+          ruleId: 'phase-transition-protocol',
+          kind: 'mechanical',
+          phase: phasesRun[phasesRun.length - 1],
+          passed: false,
+          severity: 'high',
+          message: 'Coach verbally claimed a phase started without prepare_phase + phase_complete.',
+          evidence: text.slice(0, 280),
+          suggestedFix:
+            'Never say "Phase 3 starts now" without prepare_phase + phase_complete in the same turn.',
+        });
+      }
+    }
+    if (!findings.length) {
+      return [pass('phase-transition-protocol', 'mechanical', 'critical',
+        'Phase transitions use prepare_phase + phase_complete (no verbal-only switches).')];
+    }
+    return findings;
+  },
+};
+
 export const MECHANICAL_RULES: MechanicalRule[] = [
   noInternalIds,
   painPointCoverage,
   toolsCaptured,
   workflowStructureValid,
+  phaseTransitionProtocol,
 ];
 
 // ── rubric rules (judged by the LLM) ─────────────────────────────────────────
@@ -283,6 +333,14 @@ export interface RubricRule {
 }
 
 export const RUBRIC_RULES: RubricRule[] = [
+  {
+    id: 'no-verbal-phase-switch',
+    severity: 'critical',
+    targetPrompt: 'shared',
+    title: 'Kein verbaler Phasenwechsel',
+    guidance:
+      'The coach must NEVER claim a phase has started ("Phase 3 startet jetzt", "wir sind jetzt in der Umsetzung") without calling prepare_phase and sending phase_complete in the same turn. FAIL on any verbal phase activation without the proper tags.',
+  },
   {
     id: 'cost-not-disadvantage',
     severity: 'high',

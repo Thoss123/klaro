@@ -1,10 +1,20 @@
 import type { CanvasData, Workflow } from '@/lib/types';
+import { normalizePhase } from '@/lib/phases';
 
 /** Plan-Skizzen aus der gemergten Phase 2 — not deploy-ready until built in Umsetzung. */
 export function getWorkflowPlans(canvas: CanvasData): Workflow[] {
-  if (canvas.workflow_plans?.length) return canvas.workflow_plans;
-  if (canvas.phase === 'analyse') return canvas.workflows ?? [];
-  return canvas.workflow_plans ?? [];
+  const fromPlans = canvas.workflow_plans ?? [];
+  const fromWorkflows = canvas.workflows ?? [];
+  const phase = normalizePhase(canvas.phase);
+  if (phase === 'analyse') {
+    const byId = new Map<string, Workflow>();
+    for (const w of [...fromPlans, ...fromWorkflows]) {
+      if (w?.id) byId.set(w.id, w);
+    }
+    return [...byId.values()];
+  }
+  if (fromPlans.length) return fromPlans;
+  return fromWorkflows;
 }
 
 /** Phase-4 built workflows — shown as Deploy cards on the Umsetzung node. */

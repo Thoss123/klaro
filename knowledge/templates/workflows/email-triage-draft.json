@@ -1,0 +1,127 @@
+{
+  "name": "AXANTILO: E-Mail Triage & Entwurf",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Neue E-Mail",
+      "type": "{{TRIGGER_NODE}}",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "parameters": {
+        "simple": false,
+        "filters": {}
+      }
+    },
+    {
+      "id": "load_company",
+      "name": "Firmenwissen laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300],
+      "parameters": {
+        "url": "={{APP_BASE_URL}}/api/workspace?project_id={{PROJECT_ID}}&path=rules/company_base.md",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "load_persona",
+      "name": "Persona laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "parameters": {
+        "url": "={{APP_BASE_URL}}/api/workspace?project_id={{PROJECT_ID}}&path={{PERSONA_PATH}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "build_prompt",
+      "name": "System-Prompt bauen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp",
+              "name": "systemPrompt",
+              "type": "string",
+              "value": "=Du beantwortest E-Mails im Namen des Betriebs. Antworte auf Deutsch, freundlich und knapp. Nutze ausschließlich die folgenden Fakten; erfinde nichts.\n\n# Firmenwissen\n{{ $('Firmenwissen laden').item.json.content }}\n\n# Dein Stil (Persona)\n{{ $('Persona laden').item.json.content }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "chat_model",
+      "name": "Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [720, 520],
+      "parameters": {
+        "model": "mistral-large-latest",
+        "options": {}
+      }
+    },
+    {
+      "id": "draft_agent",
+      "name": "Entwurf schreiben",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [960, 300],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Beantworte diese eingehende E-Mail als fertigen Entwurf.\n\nBetreff: {{ $('Neue E-Mail').item.json.subject }}\nVon: {{ $('Neue E-Mail').item.json.from }}\n\n{{ $('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet }}",
+        "options": {
+          "systemMessage": "={{ $json.systemPrompt }}"
+        }
+      }
+    },
+    {
+      "id": "create_pending",
+      "name": "Freigabe anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"project_id\": \"{{PROJECT_ID}}\",\n  \"contact\": \"whatsapp:{{OWNER_WHATSAPP}}\",\n  \"payload\": {\n    \"draft\": {{ JSON.stringify($('Entwurf schreiben').item.json.output) }},\n    \"original_email\": {{ JSON.stringify($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet) }},\n    \"send_target\": {{ JSON.stringify($('Neue E-Mail').item.json.from) }},\n    \"subject\": {{ JSON.stringify($('Neue E-Mail').item.json.subject) }},\n    \"provider\": \"gmail\",\n    \"persona\": \"{{PERSONA_PATH}}\"\n  }\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "notify_whatsapp",
+      "name": "WhatsApp: Entwurf zur Freigabe",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1440, 300],
+      "parameters": {
+        "operation": "send",
+        "to": "whatsapp:{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=📧 Neuer Entwurf für: {{ $('Neue E-Mail').item.json.from }}\nBetreff: {{ $('Neue E-Mail').item.json.subject }}\n\n{{ $('Entwurf schreiben').item.json.output }}\n\n— Antworte SENDEN zum Abschicken, oder schreib, was geändert werden soll."
+      }
+    }
+  ],
+  "connections": {
+    "Neue E-Mail": { "main": [[{ "node": "Firmenwissen laden", "type": "main", "index": 0 }]] },
+    "Firmenwissen laden": { "main": [[{ "node": "Persona laden", "type": "main", "index": 0 }]] },
+    "Persona laden": { "main": [[{ "node": "System-Prompt bauen", "type": "main", "index": 0 }]] },
+    "System-Prompt bauen": { "main": [[{ "node": "Entwurf schreiben", "type": "main", "index": 0 }]] },
+    "Chat Model": { "ai_languageModel": [[{ "node": "Entwurf schreiben", "type": "ai_languageModel", "index": 0 }]] },
+    "Entwurf schreiben": { "main": [[{ "node": "Freigabe anlegen", "type": "main", "index": 0 }]] },
+    "Freigabe anlegen": { "main": [[{ "node": "WhatsApp: Entwurf zur Freigabe", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

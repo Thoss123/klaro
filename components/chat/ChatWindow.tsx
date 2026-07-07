@@ -8,7 +8,7 @@ import { stripInternalTags } from '@/lib/strip-internal-tags';
 export default function ChatWindow({
   messages,
   onEdit,
-  injectBeforeLastAssistant,
+  injectAfterLastAssistant,
   isStreaming,
   className = '',
   sessionId = null,
@@ -16,8 +16,10 @@ export default function ChatWindow({
 }: {
   messages: Message[]
   onEdit?: (id: string, newContent: string) => void
-  /** Rendered directly above the last assistant message (agent tool-call feed) */
-  injectBeforeLastAssistant?: React.ReactNode
+  /** Rendered directly BELOW the last assistant message (live canvas/tool status).
+   *  So the sequence reads: Coach-Nachricht → „Ich aktualisiere das Canvas…" (Loader)
+   *  → „✓ Canvas aktualisiert". */
+  injectAfterLastAssistant?: React.ReactNode
   isStreaming?: boolean
   className?: string
   /** Für Daumen-Feedback: wird mit Phase + letzten 5 Nachrichten gespeichert */
@@ -66,7 +68,6 @@ export default function ChatWindow({
     <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-8 bg-white ${className}`} ref={scrollRef} onScroll={handleScroll}>
       {visibleMessages.map((m, i) => (
         <React.Fragment key={m.id}>
-          {i === lastAssistantIdx && injectBeforeLastAssistant}
           <MessageBubble
             message={m}
             onEdit={onEdit}
@@ -86,6 +87,9 @@ export default function ChatWindow({
                 : undefined
             }
           />
+          {/* Live-Status DIREKT unter der Coach-Nachricht: „Ich aktualisiere das
+              Canvas…" (Loader) → „✓ Canvas aktualisiert". */}
+          {i === lastAssistantIdx && injectAfterLastAssistant}
         </React.Fragment>
       ))}
       {showStreamLoader && <ChatPendingLoader />}

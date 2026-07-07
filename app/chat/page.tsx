@@ -69,6 +69,7 @@ import {
 import { coachStatusMessageForCanvas } from '@/lib/coach-status-messages';
 import { canvasSkipUserLabel, evaluateCanvasEligibility, logSync } from '@/lib/sync-decision';
 import { healUmsetzungCanvas, splitPlansForUmsetzung } from '@/lib/workflow-plans';
+import { mergeWorkflowPlanIntoCanvas } from '@/lib/merge-workflow-plan';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
 import { isHiddenSystemMessage } from '@/lib/hidden-chat';
 import { titleFromUserMessage } from '@/lib/session-title';
@@ -1357,6 +1358,45 @@ function ChatPageContent() {
         return true;
       };
 
+      const applyCoachWorkflowPlan = (jsonStr: string): boolean => {
+        let plan: {
+          title?: string;
+          description?: string;
+          pain_point_id?: string;
+          plan_id?: string;
+          steps?: unknown;
+          edges?: unknown;
+        };
+        try {
+          plan = JSON.parse(jsonStr.trim());
+        } catch {
+          logSync('canvas', 'fail', 'coach workflow_plan: invalid JSON');
+          return false;
+        }
+        if (!plan.pain_point_id || !Array.isArray(plan.steps) || !plan.steps.length) {
+          return false;
+        }
+        const merged = mergeWorkflowPlanIntoCanvas(canvasDataRef.current, {
+          title: plan.title,
+          description: plan.description,
+          pain_point_id: plan.pain_point_id,
+          plan_id: plan.plan_id,
+          steps: plan.steps as Array<{ label?: string; type?: string; tool?: string; description?: string }>,
+          edges: plan.edges,
+        });
+        if (!merged) return false;
+        const withPhase = withSessionPhase(merged.canvas, chatPhase);
+        setCanvasData(withPhase);
+        if (projId) {
+          saveProjectCanvas(projId, withPhase).catch(err =>
+            logSync('canvas', 'fail', 'coach workflow_plan save failed', { error: String(err) }),
+          );
+          scheduleStrategyCanvasUpdate(projId, chatPhase);
+        }
+        logSync('canvas', 'success', `coach wrote workflow_plan (${chatPhase})`, { planId: merged.planId });
+        return true;
+      };
+
       logSync('canvas', 'turn', `msg turn session=${sessionId}`, {
         phase: chatPhase,
         hiddenInit: isHiddenInit,
@@ -1524,9 +1564,8 @@ function ChatPageContent() {
           }
         }
 
-        // <workflow_plan>{…}</workflow_plan> — der Coach legt in Phase 3 selbst einen
-        // Workflow-Plan ins Canvas (kein Tool-Call mehr). Tag parsen, an create-plan-Route
-        // schicken; Supabase Realtime liefert das fertige Canvas zurück.
+        // <workflow_plan>{…}</workflow_plan> — Coach schreibt Plan-Blaupausen direkt
+        // (Phase Analyse), ohne Canvas-Worker. Sofort lokal anwenden + persistieren.
         if (assistantContent.includes('</workflow_plan>')) {
           const planMatches = Array.from(
             assistantContent.matchAll(/<workflow_plan>([\s\S]*?)<\/workflow_plan>/g),
@@ -1534,26 +1573,18 @@ function ChatPageContent() {
           planMatches.forEach(match => {
             const key = `workflow_plan_${match[1]}`;
             if (shownCanvasActions.has(key)) return;
-            const planProjId = currentProject?.id;
-            if (!planProjId) return;
-            let plan: { title?: string; description?: string; pain_point_id?: string; steps?: unknown; edges?: unknown };
-            try {
-              plan = JSON.parse(match[1].trim());
-            } catch {
-              return; // Tag noch unvollständig / kaputtes JSON — beim nächsten Chunk erneut versuchen
-            }
-            if (!plan.pain_point_id || !Array.isArray(plan.steps)) return;
             shownCanvasActions.add(key);
-            const aid = addAction('create_workflow_plan', 'Aktualisiere Canvas…');
-            fetch('/api/canvas-worker/create-plan', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ project_id: planProjId, ...plan }),
-            })
-              .then(res => {
-                completeAction(aid, res.ok ? 'Canvas aktualisiert' : 'Canvas: Plan fehlgeschlagen');
-              })
-              .catch(() => completeAction(aid, 'Canvas: Plan fehlgeschlagen'));
+            shownCanvasActions.add('coach_workflow_plan');
+            const aid = addAction('create_workflow_plan', 'Ich lege den Ablauf auf dem Canvas an…');
+            const ok = applyCoachWorkflowPlan(match[1]);
+            setTimeout(
+              () =>
+                completeAction(
+                  aid,
+                  ok ? 'Ablauf steht rechts auf dem Canvas' : 'Canvas: Plan konnte nicht angelegt werden',
+                ),
+              600,
+            );
           });
         }
 
@@ -1656,6 +1687,7 @@ function ChatPageContent() {
           if (
             coachCanvasTagEnabled &&
             !shownCanvasActions.has('coach_canvas') &&
+            !shownCanvasActions.has('coach_workflow_plan') &&
             shouldRecoverCoachCanvas({
               phase: chatPhase,
               rawAssistant: rawAssistantContent,
@@ -2622,7 +2654,7 @@ function ChatPageContent() {
   );
 
   return (
-    <div className={`flex w-full bg-slate-50 bg-grid overflow-hidden relative font-sans ${isMobile ? 'h-[100dvh] max-h-[100dvh]' : 'h-screen'}`}>
+    <div className="flex w-full bg-slate-50 bg-grid overflow-hidden relative font-sans h-[100dvh] max-h-[100dvh]">
       
       {/* Sidebar background overlay */}
       <div className={`fixed inset-0 bg-transparent z-10 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsSidebarOpen(false)}></div>
@@ -2632,7 +2664,7 @@ function ChatPageContent() {
       <div className={
         isMobile
           ? 'absolute inset-0 z-30 bg-white flex flex-col min-h-0 h-full max-h-full overflow-hidden relative'
-          : `absolute top-6 left-6 bottom-6 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300 relative`
+          : `absolute top-6 left-6 bottom-8 ${isMaximized ? 'w-[600px] z-30' : 'w-[360px] z-20'} bg-white rounded-2xl shadow-xl flex flex-col border border-gray-200 overflow-hidden transition-all duration-300 relative max-h-[calc(100dvh-3.5rem)]`
       }>
 
         {/* Inner Menu Overlay */}
@@ -2857,8 +2889,9 @@ function ChatPageContent() {
           </div>
         )}
 
-        {/* Body — flex-1 + min-h-0 so messages scroll inside the viewport, not past it */}
+        {/* Body — messages scroll; input footer stays pinned and always visible */}
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {isLoadingSession && (
               <div className="flex-1 flex items-center justify-center min-h-0">
                 <div className="text-gray-400 text-sm">Lade Chat...</div>
@@ -2873,7 +2906,7 @@ function ChatPageContent() {
                 sessionId={currentSessionId}
                 phase={sessions.find(s => s.id === currentSessionId)?.phase || sessionPhase || 'diagnose'}
                 className={isMobile ? 'px-4 py-4' : undefined}
-                injectBeforeLastAssistant={
+                injectAfterLastAssistant={
                   agentActions.length > 0
                     ? <AgentActionsFeed actions={agentActions} inline />
                     : undefined
@@ -3000,45 +3033,54 @@ function ChatPageContent() {
               );
             })()}
 
-            {/* Netzwerk-/Offline-Toast */}
-            <AnimatePresence>
-              {netToast && (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 12 }}
-                  className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-xl"
-                  role="alert"
-                >
-                  {netToast}
-                </motion.div>
-              )}
-            </AnimatePresence>
+          </div>
 
-            {!isLoadingSession && (
-              <>
-                {activeOptions && (
-                  <div className={isMobile ? 'px-2' : 'px-4'}>
-                    <OptionsCard
-                      options={activeOptions.options}
-                      onSelect={(label) => {
-                        setDismissedOptionsId(activeOptions.messageId);
-                        sendMessage(label);
-                      }}
-                      onCustomSubmit={(text) => {
-                        setDismissedOptionsId(activeOptions.messageId);
-                        sendMessage(text);
-                      }}
-                      onDismiss={() => setDismissedOptionsId(activeOptions.messageId)}
-                    />
-                  </div>
-                )}
-                <UpgradeCard
-                  variant="chat"
-                  status={billingStatus}
-                  loading={billingLoading}
-                  onOpen={() => setIsUpgradeOpen(true)}
-                />
+          {/* Netzwerk-/Offline-Toast */}
+          <AnimatePresence>
+            {netToast && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-xl"
+                role="alert"
+              >
+                {netToast}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!isLoadingSession && (
+            <div
+              className={`shrink-0 bg-white border-t border-gray-100 w-full min-w-0 ${
+                isMobile ? 'pb-[max(0.5rem,env(safe-area-inset-bottom))]' : ''
+              }`}
+            >
+              {activeOptions && (
+                <div className={isMobile ? 'px-2 pt-2' : 'px-4 pt-3'}>
+                  <OptionsCard
+                    options={activeOptions.options}
+                    onSelect={(label) => {
+                      setDismissedOptionsId(activeOptions.messageId);
+                      sendMessage(label);
+                    }}
+                    onCustomSubmit={(text) => {
+                      setDismissedOptionsId(activeOptions.messageId);
+                      sendMessage(text);
+                    }}
+                    onDismiss={() => setDismissedOptionsId(activeOptions.messageId)}
+                  />
+                </div>
+              )}
+              <UpgradeCard
+                variant="chat"
+                status={billingStatus}
+                loading={billingLoading}
+                onOpen={() => setIsUpgradeOpen(true)}
+              />
+              {/* Solange eine Options-Card offen ist, ist SIE das einzige Eingabefeld
+                  (inkl. eigenem Freitext). Das große Chatfeld blenden wir dann aus. */}
+              {!activeOptions && (
                 <ChatInput
                   value={input}
                   onChange={setInput}
@@ -3052,26 +3094,29 @@ function ChatPageContent() {
                   compact={isMobile}
                   backgroundStatus={chatBackgroundStatus}
                 />
-              </>
-            )}
+              )}
+            </div>
+          )}
         </div>
 
         {isMobile && mobileViewSwitch}
-
-        {/* Hilfe — schwebende Bubble unten rechts im Chat-Panel */}
-        <button
-          type="button"
-          onClick={() => setIsSupportOpen(true)}
-          className={`absolute z-20 flex items-center justify-center rounded-full border border-gray-200 bg-white text-indigo-600 shadow-lg transition-colors hover:border-indigo-200 hover:bg-indigo-50 ${
-            isMobile ? 'bottom-[max(5.5rem,calc(5rem+env(safe-area-inset-bottom)))] right-4 w-11 h-11' : 'bottom-24 right-4 w-11 h-11'
-          }`}
-          title="Hilfe / Problem melden"
-          aria-label="Hilfe / Problem melden"
-        >
-          <HelpCircle size={20} />
-        </button>
       </div>
       )}
+
+      {/* Hilfe — schwebende Bubble unten rechts am Bildschirm */}
+      <button
+        type="button"
+        onClick={() => setIsSupportOpen(true)}
+        className={`fixed z-40 flex items-center justify-center rounded-full border border-gray-200 bg-white text-indigo-600 shadow-lg transition-colors hover:border-indigo-200 hover:bg-indigo-50 w-11 h-11 ${
+          isMobile
+            ? 'bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4'
+            : 'bottom-8 right-8'
+        }`}
+        title="Hilfe / Problem melden"
+        aria-label="Hilfe / Problem melden"
+      >
+        <HelpCircle size={20} />
+      </button>
 
       {isMobile && mobileView === 'canvas' && (
         <div className="absolute inset-0 z-20 flex flex-col min-h-0 h-full max-h-full overflow-hidden bg-slate-50">

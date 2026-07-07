@@ -1,10 +1,12 @@
-import React, { FormEvent, useRef, useState } from 'react';
+import React, { FormEvent, useState } from 'react';
 import { ArrowUp, ChevronLeft, ChevronRight, X, Pencil } from 'lucide-react';
 
 export interface OptionChoice {
   id: string;
   label: string;
   detail?: string;
+  /** Coach markiert die empfohlene Workflow-/Ablauf-Option. */
+  recommended?: boolean;
 }
 
 export interface ActiveOptions {
@@ -23,14 +25,15 @@ export interface OptionQuestion {
 function normalizeChoices(raw: unknown): OptionChoice[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((c: { id?: unknown; label?: unknown; detail?: unknown } | string, i: number) => {
+    .map((c: { id?: unknown; label?: unknown; detail?: unknown; recommended?: unknown } | string, i: number) => {
       if (typeof c === 'string') {
         return { id: String(i + 1), label: c.trim() };
       }
       return {
         id: String(c?.id ?? i + 1),
         label: typeof c?.label === 'string' ? c.label.trim() : '',
-        detail: typeof c?.detail === 'string' ? c.detail.trim() : undefined,
+        ...(typeof c?.detail === 'string' && c.detail.trim() ? { detail: c.detail.trim() } : {}),
+        ...(c?.recommended === true ? { recommended: true as const } : {}),
       };
     })
     .filter((c: OptionChoice) => c.label);
@@ -79,9 +82,15 @@ export function parseOptionsTag(content: string): ActiveOptions | null {
 
 const PAGE_SIZE = 4;
 
+function choiceDisplayLabel(choice: OptionChoice): string {
+  return choice.recommended ? `${choice.label} (empfohlen)` : choice.label;
+}
+
 /**
  * Quick-reply card shown above the chat input. Click a choice to send it
- * immediately; or type a custom answer in the always-present free-text field.
+ * immediately; or type a custom answer in the card's own free-text field.
+ * While this card is visible the main chat input is hidden — the card is the
+ * single answer surface.
  */
 export default function OptionsCard({
   options,
@@ -99,7 +108,6 @@ export default function OptionsCard({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
   const [otherDraft, setOtherDraft] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset to the first page when a new set of options arrives — adjust during render
   // (not in an effect) to avoid the setState-in-effect render cascade.
@@ -107,8 +115,8 @@ export default function OptionsCard({
   if (options !== syncedOptions) {
     setSyncedOptions(options);
     setPage(0);
-    setAnswers({});
     setCustom('');
+    setAnswers({});
     setQuestionIndex(0);
     setOtherDraft('');
   }
@@ -191,8 +199,8 @@ export default function OptionsCard({
     const hasAnyAnswer = Object.values(answers).some(value => value.trim());
     return (
       <div className="mb-2 rounded-2xl border border-gray-200 bg-white text-gray-800 shadow-md overflow-hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
-          <span className="text-sm font-medium text-gray-800 truncate">
+        <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+          <span className="text-sm font-medium text-gray-800 line-clamp-2 leading-snug">
             {currentQuestion?.question || options.question || 'Kurz gefragt'}
           </span>
           <div className="flex shrink-0 items-center gap-1 text-xs text-gray-400">
@@ -240,7 +248,11 @@ export default function OptionsCard({
                       type="button"
                       onClick={() => answerCurrentQuestion(choice.label)}
                       className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                        currentAnswer === choice.label ? 'bg-indigo-50/70' : 'hover:bg-indigo-50/60'
+                        currentAnswer === choice.label
+                          ? 'bg-indigo-50/70'
+                          : choice.recommended
+                            ? 'bg-indigo-50/30 hover:bg-indigo-50/60'
+                            : 'hover:bg-indigo-50/60'
                       }`}
                     >
                       <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm tabular-nums transition-colors ${
@@ -251,9 +263,11 @@ export default function OptionsCard({
                         {i + 1}
                       </span>
                       <span className="flex-1 min-w-0">
-                        <span className="block text-sm text-gray-800 truncate">{choice.label}</span>
+                        <span className="block text-sm text-gray-800 line-clamp-2 leading-snug">
+                          {choiceDisplayLabel(choice)}
+                        </span>
                         {choice.detail && (
-                          <span className="block text-xs text-gray-400 truncate">{choice.detail}</span>
+                          <span className="block text-xs text-gray-400 line-clamp-2">{choice.detail}</span>
                         )}
                       </span>
                       <ArrowUp
@@ -273,7 +287,7 @@ export default function OptionsCard({
               <input
                 value={otherDraft}
                 onChange={e => setOtherDraft(e.target.value)}
-                placeholder={currentQuestion.placeholder || (currentQuestion.choices.length ? 'Andere Antwort...' : 'Kurz antworten...')}
+                placeholder={currentQuestion.placeholder || (currentQuestion.choices.length ? 'Andere Antwort…' : 'Kurz antworten…')}
                 className="min-w-0 flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
               />
               <button
@@ -313,8 +327,8 @@ export default function OptionsCard({
   return (
     <div className="mb-2 rounded-2xl border border-gray-200 bg-white text-gray-800 shadow-md overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
-        <span className="text-sm font-medium text-gray-800 truncate">
+      <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+        <span className="text-sm font-medium text-gray-800 line-clamp-2 leading-snug">
           {options.question || 'Wähle eine Option'}
         </span>
         <div className="flex items-center gap-1 shrink-0">
@@ -361,15 +375,19 @@ export default function OptionsCard({
             <button
               type="button"
               onClick={() => onSelect(choice.label)}
-              className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-indigo-50/60 transition-colors"
+              className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                choice.recommended ? 'bg-indigo-50/30 hover:bg-indigo-50/60' : 'hover:bg-indigo-50/60'
+              }`}
             >
               <span className="shrink-0 w-5 text-sm tabular-nums text-gray-400 group-hover:text-indigo-500">
                 {start + i + 1}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm text-gray-800 truncate">{choice.label}</span>
+                <span className="block text-sm text-gray-800 line-clamp-2 leading-snug">
+                  {choiceDisplayLabel(choice)}
+                </span>
                 {choice.detail && (
-                  <span className="block text-xs text-gray-400 truncate">{choice.detail}</span>
+                  <span className="block text-xs text-gray-400 line-clamp-2">{choice.detail}</span>
                 )}
               </span>
               <ArrowUp
@@ -382,24 +400,24 @@ export default function OptionsCard({
       </ul>
 
       {/* Custom answer */}
-      <form onSubmit={handleCustom} className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100">
-        <Pencil size={14} className="shrink-0 text-gray-400" />
+      <form onSubmit={handleCustom} className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 bg-gray-50/70">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gray-900 text-white">
+          <Pencil size={14} />
+        </span>
         <input
-          ref={inputRef}
           value={custom}
           onChange={e => setCustom(e.target.value)}
           placeholder="Eigene Antwort…"
-          className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
         />
-        {custom.trim() && (
-          <button
-            type="submit"
-            className="shrink-0 w-7 h-7 flex items-center justify-center bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
-            aria-label="Eigene Antwort senden"
-          >
-            <ArrowUp size={14} strokeWidth={2.5} />
-          </button>
-        )}
+        <button
+          type="submit"
+          disabled={!custom.trim()}
+          className="shrink-0 w-7 h-7 flex items-center justify-center bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors disabled:opacity-30"
+          aria-label="Eigene Antwort senden"
+        >
+          <ArrowUp size={14} strokeWidth={2.5} />
+        </button>
       </form>
     </div>
   );

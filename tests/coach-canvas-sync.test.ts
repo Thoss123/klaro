@@ -43,4 +43,16 @@ describe('coach-canvas-sync', () => {
       }),
     ).toBe(false);
   });
+
+  it('skips recovery when coach sent workflow_plan', () => {
+    expect(
+      shouldRecoverCoachCanvas({
+        phase: 'analyse',
+        rawAssistant:
+          'Fertig — der Ablauf steht rechts. <workflow_plan>{"title":"X","pain_point_id":"pp_1","steps":[{"label":"A","type":"trigger","tool":"form"}]}</workflow_plan>',
+        userMessage: 'bau am canvas',
+        canvasApplied: false,
+      }),
+    ).toBe(false);
+  });
 });

@@ -49,13 +49,13 @@ export const AXANTILO_TOOLS: AITool[] = [
   },
   {
     name: "prepare_phase",
-    description: "Bereitet die nächste Projektphase vor, z.B. Erstellung von Zusammenfassungen.",
+    description: "PFLICHT vor jedem Phasenwechsel — in derselben Antwort-Runde wie <phase_complete>. Bereitet die nächste Session vor (Zusammenfassung, Memory, Canvas). diagnose→analyse: next_phase='analyse'. analyse→umsetzung: next_phase='umsetzung'. Nur über Tool-API aufrufen, nie als Text/XML. Ohne prepare_phase + phase_complete passiert kein Übergang.",
     schema: {
       type: "object",
       properties: {
         next_phase: {
           type: "string",
-          description: "Name der nächsten Phase (z.B. 'analyse', 'umsetzung')"
+          description: "Zielphase: 'analyse' (nach Diagnose) oder 'umsetzung' (nach Analyse & Plan)"
         }
       },
       required: ["next_phase"]

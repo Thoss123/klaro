@@ -57,6 +57,17 @@ export function parseCoachCanvasUpdate(text: string): Record<string, unknown> | 
   }
 }
 
+/** True if the coach called prepare_phase via tool_call this turn. */
+export function hasPreparePhaseToolCall(text: string): boolean {
+  return /"type"\s*:\s*"prepare_phase"/.test(text || '');
+}
+
+/** True if the coach verbally claims a phase started without the proper tags. */
+export function hasVerbalPhaseSwitch(text: string): boolean {
+  if (!text) return false;
+  const stripped = text.replace(/<phase_complete>[\s\S]*?<\/phase_complete>/gi, '');
+  return /phase\s*[123]\s*(startet|aktivier|beginnt)|wir\s+sind\s+jetzt\s+in\s+(phase|der)\s*[12334]/i.test(stripped);
+}
 /** Collapse a full coach turn into the structured signals the driver acts on. */
 export function parseTurnSignals(text: string): TurnSignals {
   return {

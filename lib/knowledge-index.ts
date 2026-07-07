@@ -47,7 +47,8 @@ export function getAllKnowledgeFiles(dir: string): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...getAllKnowledgeFiles(full));
-    else if (entry.name.endsWith('.md')) out.push(full);
+    // README/CONTRIBUTING sind Entwickler-Doku, keine RAG-Chunks → nicht indexieren.
+    else if (entry.name.endsWith('.md') && !/^readme\.md$/i.test(entry.name)) out.push(full);
   }
   return out;
 }

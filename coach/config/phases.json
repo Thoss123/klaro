@@ -36,7 +36,8 @@
         "Reihenfolge vorgeschlagen, begründet und vom Nutzer bestätigt (rank)",
         "Je Punkt: Klartext-Zusammenfassung im Wenn-Dann-Format + explizites Ja (hartes Gate — Guardrail 2 in base.md), erst dann workflow_plan",
         "Lösungen dürfen aus mehreren Workflows bestehen (solution_structures)",
-        "Explizite Zustimmung zum Übergang"
+        "Explizite Zustimmung zum Übergang",
+        "Bei Ja: prepare_phase(umsetzung) + phase_complete(analyse) — nie verbal „Phase 3 startet\""
       ]
     },
     "umsetzung": {

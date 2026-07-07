@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { runInitialStrategyPipeline, updateStrategy } from '@/lib/strategy';
+import { ensureBaseRules } from '@/lib/workspace';
 import type { StrategyPrepProgress } from '@/lib/strategy-prep';
 import type { CanvasData, OnboardingData } from '@/lib/types';
 
@@ -47,6 +48,12 @@ async function persistInitialStrategy(
   }
 
   console.log(`[strategy] initial → gespeichert (project=${projectId}, ${strategy.length} chars)`);
+
+  // Workspace-Basiswissen aus der frischen Strategie vorbefüllen (idempotent, fail-open):
+  // rules/company_base.md, das der E-Mail-Agent später liest und Flow 2 fortschreibt.
+  await ensureBaseRules(supabase, { userId, projectId, strategy: strategy.trim() })
+    .catch(e => console.warn('[workspace] ensureBaseRules failed:', e instanceof Error ? e.message : String(e)));
+
   return { ok: true, status: 'updated' };
 }
 

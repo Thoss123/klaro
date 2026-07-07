@@ -39,6 +39,17 @@ describe('parseOptionsTag', () => {
     ]);
   });
 
+  it('parses recommended workflow choices', () => {
+    const parsed = parseOptionsTag(
+      '<options>{"question":"Wie soll der Ablauf laufen?","choices":[{"id":"a","label":"Variante A","recommended":true},{"id":"b","label":"Variante B"}]}</options>',
+    );
+
+    expect(parsed?.choices).toEqual([
+      { id: 'a', label: 'Variante A', recommended: true },
+      { id: 'b', label: 'Variante B' },
+    ]);
+  });
+
   it('uses the last options tag if a message contains multiple tags', () => {
     const parsed = parseOptionsTag(
       '<options>{"question":"Alt","choices":["A"]}</options>\n<options>{"question":"Neu","choices":["B"]}</options>',
