@@ -28,6 +28,7 @@ const BASE_ARGS = {
   ownerWhatsapp: '+4367762853686',
   personaPath: 'rules/persona_thomas.md',
   appBaseUrl: 'https://www.axantilo.com',
+  approvalMode: 'whatsapp' as const,
 };
 
 describe('buildEmailAutomation', () => {
@@ -89,6 +90,38 @@ describe('buildEmailAutomation', () => {
     const trigger = triage.workflow.nodes.find((n) => n.name === 'Neue E-Mail')!;
     expect(trigger.type).toBe('n8n-nodes-base.microsoftOutlookTrigger');
     expect(trigger.credentials).toBeUndefined();
+  });
+});
+
+describe('buildEmailAutomation — draft mode (standalone, default)', () => {
+  it('builds ONLY the autopilot workflow (no control channel, no Twilio)', async () => {
+    const built = await buildEmailAutomation(supabaseWithMailCred('gmailcred-9'), {
+      ...BASE_ARGS,
+      mailProvider: 'gmail',
+      approvalMode: 'draft',
+    });
+    expect(built).toHaveLength(1);
+    expect(built[0].slug).toBe('email-autopilot');
+    const raw = JSON.stringify(built[0].workflow);
+    // Eigenständig: keine Twilio-/Pending-/Steuerkanal-Abhängigkeit, keine offenen Slots.
+    expect(raw).not.toMatch(/\{\{\s*[A-Z0-9_]+\s*\}\}/);
+    expect(raw).not.toContain('twilio');
+    expect(raw).not.toContain('/api/agent/pending');
+    // Der Entwurf landet als Gmail-Draft im Postfach.
+    const draftNode = built[0].workflow.nodes.find((n) => n.name === 'Entwurf im Postfach')!;
+    expect((draftNode.parameters as { resource: string; operation: string }).resource).toBe('draft');
+    expect((draftNode.parameters as { operation: string }).operation).toBe('create');
+  });
+
+  it('is the default when no approvalMode is given', async () => {
+    const built = await buildEmailAutomation(supabaseWithMailCred(null), {
+      userId: 'u1',
+      projectId: '712db8db-bd73-4392-915e-e9fa1a4ea744',
+      mailProvider: 'gmail',
+      personaPath: 'rules/persona_thomas.md',
+      appBaseUrl: 'https://www.axantilo.com',
+    });
+    expect(built.map((b) => b.slug)).toEqual(['email-autopilot']);
   });
 });
 

@@ -1,0 +1,177 @@
+{
+  "name": "AXANTILO: E-Mail Autopilot (Postfach-Entwurf)",
+  "nodes": [
+    {
+      "name": "Neue E-Mail",
+      "type": "{{TRIGGER_NODE}}",
+      "typeVersion": 1,
+      "position": [-260, 460],
+      "parameters": { "pollTimes": { "item": [{ "mode": "everyMinute" }] }, "simple": false, "filters": {}, "options": {} }
+    },
+    {
+      "name": "KI: Kategorisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-40, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'email/classify', user: 'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') + '\\n\\n' + ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Kategorie parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [180, 460],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const VALID = [\"lead_inquiry\",\"scheduling\",\"support_faq\",\"vendor_billing\",\"system_alerts\",\"newsletters\",\"spam_marketing\",\"other\"];\nconst PROMPT_BY_CATEGORY = { lead_inquiry: 'email/draft_lead_inquiry', support_faq: 'email/draft_support_faq', other: 'email/draft_other' };\nreturn $input.all().map(item => {\n  let category = 'other';\n  try { const p = JSON.parse(item.json.text); if (p && VALID.includes(p.category)) category = p.category; } catch (e) {}\n  return { json: { category, prompt_key: PROMPT_BY_CATEGORY[category] || null } };\n});"
+      }
+    },
+    {
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [420, 460],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            { "outputKey": "lead_inquiry", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "lead_inquiry" }] } },
+            { "outputKey": "scheduling", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "scheduling" }] } },
+            { "outputKey": "support_faq", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "support_faq" }] } },
+            { "outputKey": "vendor_billing", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "vendor_billing" }] } },
+            { "outputKey": "system_alerts", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "system_alerts" }] } },
+            { "outputKey": "newsletters", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "newsletters" }] } },
+            { "outputKey": "spam_marketing", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "spam_marketing" }] } },
+            { "outputKey": "other", "renameOutput": true, "conditions": { "combinator": "and", "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" }, "conditions": [{ "leftValue": "={{ $json.category }}", "operator": { "type": "string", "operation": "equals" }, "rightValue": "other" }] } }
+          ]
+        },
+        "options": { "fallbackOutput": "none" }
+      }
+    },
+    {
+      "name": "KI: Entwurf schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: $json.prompt_key, persona_path: '{{PERSONA_PATH}}', user: 'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') + '\\n\\n' + ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Kalender lesen",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [720, 320],
+      "disabled": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendar": { "__rl": true, "mode": "id", "value": "primary" },
+        "limit": 20,
+        "options": { "timeMin": "={{ $now.toISO() }}", "timeMax": "={{ $now.plus(7, 'days').toISO() }}", "singleEvents": true, "orderBy": "startTime" }
+      }
+    },
+    {
+      "name": "Kalender-Kontext bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 320],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const events = $input.all().map(i => i.json).filter(e => e && (e.start || e.summary));\nlet kalender_kontext;\nif (!events.length) { kalender_kontext = 'Kein Kalender-Zugriff oder keine Termine in den nächsten 7 Tagen — frage nach 2-3 Wunschterminen, schlage keine konkreten Slots vor.'; }\nelse { kalender_kontext = 'Belegte Termine der nächsten 7 Tage (heute ' + new Date().toISOString().slice(0,10) + '). Schlage 2-3 freie Fenster vor, die NICHT kollidieren:\\n' + events.map(e => '- ' + (e.start?.dateTime || e.start?.date || '?') + ' bis ' + (e.end?.dateTime || e.end?.date || '?') + ': ' + (e.summary || 'belegt')).join('\\n'); }\nreturn [{ json: { kalender_kontext } }];"
+      }
+    },
+    {
+      "name": "KI: Termin-Entwurf",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 320],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'email/draft_scheduling', persona_path: '{{PERSONA_PATH}}', variables: { kalender_kontext: $json.kalender_kontext }, user: 'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') + '\\n\\n' + ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Entwurf im Postfach",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [1440, 220],
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ 'Re: ' + ($('Neue E-Mail').item.json.subject || '') }}",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {
+          "sendTo": "={{ $('Neue E-Mail').item.json.from }}",
+          "threadId": "={{ $('Neue E-Mail').item.json.threadId }}"
+        }
+      }
+    },
+    { "name": "Kein Entwurf nötig", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [720, 560], "parameters": {} },
+    {
+      "name": "Als gelesen markieren",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [720, 760],
+      "onError": "continueRegularOutput",
+      "parameters": { "resource": "message", "operation": "markAsRead", "messageId": "={{ $('Neue E-Mail').item.json.id }}" }
+    },
+    {
+      "name": "Archivieren",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [940, 760],
+      "onError": "continueRegularOutput",
+      "parameters": { "resource": "message", "operation": "removeLabels", "messageId": "={{ $('Neue E-Mail').item.json.id }}", "labelIds": ["INBOX"] }
+    }
+  ],
+  "connections": {
+    "Neue E-Mail": { "main": [[{ "node": "KI: Kategorisieren", "type": "main", "index": 0 }]] },
+    "KI: Kategorisieren": { "main": [[{ "node": "Kategorie parsen", "type": "main", "index": 0 }]] },
+    "Kategorie parsen": { "main": [[{ "node": "Switch", "type": "main", "index": 0 }]] },
+    "KI: Entwurf schreiben": { "main": [[{ "node": "Entwurf im Postfach", "type": "main", "index": 0 }]] },
+    "Kalender lesen": { "main": [[{ "node": "Kalender-Kontext bauen", "type": "main", "index": 0 }]] },
+    "Kalender-Kontext bauen": { "main": [[{ "node": "KI: Termin-Entwurf", "type": "main", "index": 0 }]] },
+    "KI: Termin-Entwurf": { "main": [[{ "node": "Entwurf im Postfach", "type": "main", "index": 0 }]] },
+    "Als gelesen markieren": { "main": [[{ "node": "Archivieren", "type": "main", "index": 0 }]] },
+    "Switch": {
+      "main": [
+        [{ "node": "KI: Entwurf schreiben", "type": "main", "index": 0 }],
+        [{ "node": "Kalender lesen", "type": "main", "index": 0 }],
+        [{ "node": "KI: Entwurf schreiben", "type": "main", "index": 0 }],
+        [{ "node": "Kein Entwurf nötig", "type": "main", "index": 0 }],
+        [{ "node": "Kein Entwurf nötig", "type": "main", "index": 0 }],
+        [{ "node": "Als gelesen markieren", "type": "main", "index": 0 }],
+        [{ "node": "Als gelesen markieren", "type": "main", "index": 0 }],
+        [{ "node": "KI: Entwurf schreiben", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

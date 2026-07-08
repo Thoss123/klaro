@@ -36,13 +36,21 @@ function projectSuffix(projectId: string): string {
   return projectId.replace(/-/g, '').slice(0, 8);
 }
 
+/**
+ * approvalMode:
+ *  - 'draft' (Default): eigenständig, Entwurf landet im Postfach — KEIN Steuerkanal nötig.
+ *  - 'whatsapp': Entwurf geht per WhatsApp zur Freigabe (braucht den Steuerkanal + Twilio).
+ */
+export type ApprovalMode = 'draft' | 'whatsapp';
+
 export interface DeployEmailAutomationArgs {
   userId: string;
   projectId: string;
   mailProvider: MailProvider;
-  ownerWhatsapp: string; // nackte Nummer, z.B. +4367...
+  ownerWhatsapp?: string; // nur für approvalMode 'whatsapp'
   personaPath?: string;
   appBaseUrl: string;
+  approvalMode?: ApprovalMode;
 }
 
 export interface BuiltWorkflow {
@@ -145,18 +153,19 @@ export async function buildEmailAutomation(
     APP_BASE_URL: args.appBaseUrl,
     PROJECT_ID: args.projectId,
     PERSONA_PATH: persona,
-    OWNER_WHATSAPP: args.ownerWhatsapp,
+    OWNER_WHATSAPP: args.ownerWhatsapp ?? '',
     TWILIO_WHATSAPP_FROM,
     CONTROL_WEBHOOK_PATH: controlPath,
     LEARNING_WEBHOOK_PATH: learningPath,
     LEARNING_WEBHOOK_URL: `${n8nWebhookBase()}/webhook/${learningPath}`,
   };
 
-  const specs: Array<{ slug: string }> = [
-    { slug: 'email-triage-draft' },
-    { slug: 'whatsapp-control' },
-    { slug: 'email-learning-engine' },
-  ];
+  // Draft-Modus (Default): nur der eigenständige Autopilot — kein Steuerkanal, kein Twilio.
+  // WhatsApp-Modus: Triage (mit WhatsApp-Freigabe) + Steuerkanal + Learning Engine.
+  const specs: Array<{ slug: string }> =
+    (args.approvalMode ?? 'draft') === 'whatsapp'
+      ? [{ slug: 'email-triage-draft' }, { slug: 'whatsapp-control' }, { slug: 'email-learning-engine' }]
+      : [{ slug: 'email-autopilot' }];
 
   const built: BuiltWorkflow[] = [];
   for (const spec of specs) {

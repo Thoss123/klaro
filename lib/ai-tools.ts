@@ -275,7 +275,7 @@ export const AXANTILO_TOOLS: AITool[] = [
   },
   {
     name: "setup_email_automation",
-    description: "Richtet die E-Mail-Automation für den Nutzer ein und aktiviert sie (auf Axantilos Infrastruktur). Nutze es, wenn der Nutzer eingehende E-Mails/Anfragen automatisch beantworten lassen will. Der Bot sortiert dann jede Mail in 8 Kategorien (Lead, Termin, Kundenfrage/Storno, Lieferantenrechnung, System-Alerts, Newsletter, Spam, Sonstiges), schreibt für die relevanten einen Antwort-Entwurf im Stil des Betriebs und legt ihn zur Freigabe vor; Newsletter/Spam werden aufgeräumt. FRAGE VORHER, falls unklar: (1) welchen Mail-Anbieter der Nutzer hat (Gmail/Outlook/IMAP) und (2) die WhatsApp-Nummer für die Freigaben. Empfiehl die Automation aktiv, wenn der Nutzer viel Zeit mit E-Mails verliert. Erwähne technische Details (n8n, Workflows) NICHT im Chat — sprich einfach von der E-Mail-Automation des Nutzers.",
+    description: "Richtet die E-Mail-Automation für den Nutzer ein und aktiviert sie (auf Axantilos Infrastruktur). Nutze es, wenn der Nutzer eingehende E-Mails/Anfragen automatisch beantworten lassen will. Der Bot sortiert jede Mail in 8 Kategorien (Lead, Termin, Kundenfrage/Storno, Lieferantenrechnung, System-Alerts, Newsletter, Spam, Sonstiges) und schreibt für die beantwortbaren einen Antwort-Entwurf im Stil des Betriebs; Newsletter/Spam werden aufgeräumt. STANDARD (approval_mode='draft'): der Entwurf landet direkt im Postfach des Nutzers — er prüft und sendet selbst. Das ist eigenständig und braucht KEINEN extra Kanal. NUR wenn der Nutzer die Entwürfe per WhatsApp aus der Ferne freigeben/anpassen will, approval_mode='whatsapp' (dann ist owner_whatsapp Pflicht) — das ist der separate, optionale Steuerkanal. FRAGE VORHER nur nach dem Mail-Anbieter (Gmail/Outlook/IMAP); den WhatsApp-Kanal biете optional an, dränge ihn nicht auf. Erwähne technische Details (n8n, Workflows) NICHT im Chat.",
     schema: {
       type: "object",
       properties: {
@@ -284,12 +284,17 @@ export const AXANTILO_TOOLS: AITool[] = [
           enum: ["gmail", "outlook", "imap"],
           description: "Mail-Anbieter des Nutzers: gmail (Google), outlook (Microsoft 365), imap (sonstiger Anbieter)."
         },
+        approval_mode: {
+          type: "string",
+          enum: ["draft", "whatsapp"],
+          description: "Freigabe-Weg. 'draft' (Standard): Entwurf ins Postfach, eigenständig, kein Kanal nötig. 'whatsapp': Remote-Freigabe per WhatsApp-Steuerkanal (dann owner_whatsapp angeben). Weglassen = 'draft'."
+        },
         owner_whatsapp: {
           type: "string",
-          description: "WhatsApp-Nummer für die Freigaben im internationalen Format, z.B. +4367... (nackte Nummer ohne 'whatsapp:'-Präfix)."
+          description: "NUR bei approval_mode='whatsapp': WhatsApp-Nummer für die Freigaben im internationalen Format, z.B. +4367... (ohne 'whatsapp:'-Präfix)."
         }
       },
-      required: ["mail_provider", "owner_whatsapp"]
+      required: ["mail_provider"]
     }
   },
   {
