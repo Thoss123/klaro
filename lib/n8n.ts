@@ -126,6 +126,16 @@ export async function updateN8nWorkflow(n8nId: string, workflowJson: object): Pr
   await n8nFetch(`/workflows/${n8nId}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 
+/**
+ * Speichert die Workflow-Definition, OHNE zu publishen (kein availableInMCP → keine
+ * Credential-Publish-Validierung). Nötig, um einen Workflow anzulegen/zu aktualisieren,
+ * bevor der User seine Credentials (z.B. Postfach) verbunden hat.
+ */
+export async function saveN8nWorkflowDefinition(n8nId: string, workflowJson: object): Promise<void> {
+  if (MOCK()) return;
+  await n8nFetch(`/workflows/${n8nId}`, { method: 'PUT', body: JSON.stringify(workflowJson) });
+}
+
 export async function activateN8nWorkflow(n8nId: string): Promise<void> {
   if (MOCK()) return;
 

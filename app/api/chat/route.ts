@@ -390,6 +390,54 @@ export async function POST(req: NextRequest) {
                    console.error('[create_document_template] fetch failed:', (e instanceof Error ? e.message : String(e)));
                    return { status: 'error', message: 'Vorlage erstellen fehlgeschlagen.' };
                  }
+               } else if (toolCall.name === 'setup_email_automation') {
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — setup_email_automation abgebrochen.' };
+                 }
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"setup_email_automation","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { deployEmailAutomation } = await import('@/lib/deploy-agent-workflow');
+                   const { personaPath } = await import('@/lib/workspace');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const provider = argStr(toolCall.args.mail_provider);
+                   const wa = argStr(toolCall.args.owner_whatsapp).replace(/^whatsapp:/, '').trim();
+                   if (!['gmail', 'outlook', 'imap'].includes(provider)) {
+                     return { status: 'error', message: 'mail_provider muss gmail, outlook oder imap sein.' };
+                   }
+                   if (!/^\+\d{6,}$/.test(wa)) {
+                     return { status: 'error', message: 'owner_whatsapp fehlt/ungültig — bitte Nummer im Format +43... erfragen.' };
+                   }
+                   const vorname = (onboarding?.vorname || onboarding?.username || '').trim();
+                   const persona = vorname ? personaPath(vorname) : 'rules/persona_default.md';
+                   const appBaseUrl = new URL(req.url).origin;
+
+                   const out = await deployEmailAutomation(supabase, {
+                     userId: user.id,
+                     projectId: project_id,
+                     mailProvider: provider as 'gmail' | 'outlook' | 'imap',
+                     ownerWhatsapp: wa,
+                     personaPath: persona,
+                     appBaseUrl,
+                   });
+                   if (!out.ok) return { status: 'error', message: out.error || 'Einrichtung fehlgeschlagen.' };
+
+                   const providerLabel = provider === 'gmail' ? 'Gmail' : provider === 'outlook' ? 'Outlook' : 'deinem Postfach';
+                   return {
+                     status: 'success',
+                     deployed: out.workflows.length,
+                     mail_connected: out.mailConnected,
+                     message: out.mailConnected
+                       ? `E-Mail-Automation ist eingerichtet und aktiv (${providerLabel}). Ab jetzt wird jede eingehende Mail sortiert und für die wichtigen ein Antwort-Entwurf zur Freigabe vorbereitet. Sag dem Nutzer freundlich, dass es läuft, und dass er Entwürfe per WhatsApp freigeben oder anpassen kann.`
+                       : `E-Mail-Automation ist eingerichtet. LETZTER SCHRITT für den Nutzer: sein ${providerLabel}-Postfach verbinden (3-Klick-Login) — erst danach kann der Bot Mails lesen und antworten. Sag ihm freundlich, dass nur noch die Postfach-Verbindung fehlt.`,
+                   };
+                 } catch (e: unknown) {
+                   console.error('[setup_email_automation] failed:', e instanceof Error ? e.message : String(e));
+                   return { status: 'error', message: 'Einrichtung der E-Mail-Automation fehlgeschlagen.' };
+                 }
                } else if (toolCall.name === 'update_agent_prompt') {
                  if (!project_id) {
                    return { status: 'error', message: 'Kein Projekt — update_agent_prompt abgebrochen.' };
