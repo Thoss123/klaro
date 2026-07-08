@@ -70,6 +70,17 @@ describe('buildEmailAutomation', () => {
     expect((byName['Neue E-Mail'].credentials as Record<string, { id: string }>).gmailOAuth2.id).toBe('gmailcred-9');
     // Twilio → zentrale Credential.
     expect((byName['WhatsApp: Entwurf zur Freigabe'].credentials as Record<string, { id: string }>).twilioApi.id).toBe('tw-1');
+    // Kalender: verbunden → Node aktiviert + Credential gebunden.
+    expect(byName['Kalender lesen'].disabled).toBe(false);
+    expect((byName['Kalender lesen'].credentials as Record<string, { id: string }>).googleCalendarOAuth2Api.id).toBe('gmailcred-9');
+  });
+
+  it('keeps the calendar node disabled when no calendar credential exists', async () => {
+    const triage = (await buildEmailAutomation(supabaseWithMailCred(null), { ...BASE_ARGS, mailProvider: 'gmail' }))
+      .find((b) => b.slug === 'email-triage-draft')!;
+    const cal = triage.workflow.nodes.find((n) => n.name === 'Kalender lesen')!;
+    expect(cal.disabled).toBe(true);
+    expect(cal.credentials).toBeUndefined();
   });
 
   it('leaves the mail node without a credential when the user has not connected yet', async () => {

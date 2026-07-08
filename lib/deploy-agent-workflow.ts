@@ -58,13 +58,12 @@ const MAIL_CRED_KEY: Record<MailProvider, string> = {
   imap: 'imap',
 };
 
-/** n8n-Credential-ID des Users für seinen Mail-Provider (falls schon verbunden). */
-async function findMailCredential(
+/** n8n-Credential-ID des Users für ein bestimmtes Tool (falls verbunden). */
+async function findCredentialByTool(
   supabase: SupabaseClient,
   projectId: string,
-  provider: MailProvider,
+  toolName: string,
 ): Promise<string | null> {
-  const toolName = provider === 'gmail' ? 'gmail' : provider === 'outlook' ? 'outlook' : 'imap';
   const { data } = await supabase
     .from('user_credentials')
     .select('n8n_credential_id')
@@ -75,13 +74,29 @@ async function findMailCredential(
   return (data?.n8n_credential_id as string | undefined) ?? null;
 }
 
+/** n8n-Credential-ID des Users für seinen Mail-Provider (falls schon verbunden). */
+function findMailCredential(
+  supabase: SupabaseClient,
+  projectId: string,
+  provider: MailProvider,
+): Promise<string | null> {
+  const toolName = provider === 'gmail' ? 'gmail' : provider === 'outlook' ? 'outlook' : 'imap';
+  return findCredentialByTool(supabase, projectId, toolName);
+}
+
 /**
  * Bindet Credentials an die Nodes (rein nach Node-Typ) — keine user-sichtbaren Credential-
  * Felder, die IDs kommen aus zentraler Config bzw. dem verbundenen Mail-Konto des Users.
  */
 function bindCredentials(
   workflow: N8nWorkflowJson,
-  opts: { workspaceToken: string; twilio: string; mailCredId: string | null; mailProvider: MailProvider },
+  opts: {
+    workspaceToken: string;
+    twilio: string;
+    mailCredId: string | null;
+    mailProvider: MailProvider;
+    calendarCredId: string | null;
+  },
 ): void {
   const mailCredKey = MAIL_CRED_KEY[opts.mailProvider];
   for (const node of workflow.nodes ?? []) {
@@ -96,6 +111,12 @@ function bindCredentials(
       if (p?.genericAuthType === 'httpHeaderAuth') setCred('httpHeaderAuth', opts.workspaceToken);
     } else if (type === 'n8n-nodes-base.twilio') {
       setCred('twilioApi', opts.twilio);
+    } else if (type === 'n8n-nodes-base.googleCalendar') {
+      // Kalender ist im golden disabled; nur aktivieren + binden, wenn der User ihn verbunden hat.
+      if (opts.calendarCredId) {
+        setCred('googleCalendarOAuth2Api', opts.calendarCredId);
+        node.disabled = false;
+      }
     } else if (
       type.startsWith('n8n-nodes-base.gmail') ||
       type.startsWith('n8n-nodes-base.microsoftOutlook') ||
@@ -118,6 +139,7 @@ export async function buildEmailAutomation(
   const persona = args.personaPath || 'rules/persona_default.md';
   const { workspaceToken, twilio } = centralCredIds();
   const mailCredId = await findMailCredential(supabase, args.projectId, args.mailProvider);
+  const calendarCredId = await findCredentialByTool(supabase, args.projectId, 'google_calendar');
 
   const commonScalars = {
     APP_BASE_URL: args.appBaseUrl,
@@ -142,7 +164,7 @@ export async function buildEmailAutomation(
       mailProvider: args.mailProvider,
       scalars: commonScalars,
     });
-    bindCredentials(workflow, { workspaceToken, twilio, mailCredId, mailProvider: args.mailProvider });
+    bindCredentials(workflow, { workspaceToken, twilio, mailCredId, mailProvider: args.mailProvider, calendarCredId });
     built.push({ slug: spec.slug, name: String(workflow.name ?? spec.slug), workflow });
   }
   return built;
