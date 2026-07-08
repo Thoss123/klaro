@@ -433,11 +433,11 @@ return [{ json: { route, action, text: msg.text, from: msg.from } }];`,
       [1580, 300],
       "=✏️ Überarbeiteter Entwurf:\n\n{{ $('KI: Entwurf überarbeiten').item.json.text }}\n\n— Antworte SENDEN zum Abschicken, oder gib weiteres Feedback.",
     ),
-    // ── adhoc ──
+    // ── adhoc: tool-fähiger Assistent (server-seitige Function-Calling-Schleife) ──
     appHttp('KI: Assistent', [1140, 520], {
       method: 'POST',
-      url: `${APP}/api/agent/llm`,
-      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: 'control/adhoc', persona_path: '${PERSONA}', user: $json.text }) }}`,
+      url: `${APP}/api/agent/assistant`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', persona_path: '${PERSONA}', user: ${ACT}.text }) }}`,
     }),
     twilio('WhatsApp: Antwort', [1360, 520], "={{ $('KI: Assistent').item.json.text }}"),
   ],

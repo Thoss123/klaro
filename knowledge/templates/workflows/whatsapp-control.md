@@ -18,9 +18,17 @@ Drei Routen pro eingehender Nachricht:
 2. **Revision** — es gibt einen offenen Entwurf und die Nachricht ist Feedback („mach förmlicher",
    „erwähne noch X") → KI überarbeitet den Entwurf (email/revise), speichert ihn, schickt die
    neue Version zurück. Beliebig oft wiederholbar (Feedback-Verlauf wird mitgeführt).
-3. **Ad-hoc-Assistent** — kein offener Entwurf → freie Frage („was kostet bei uns X?",
-   „welche Öffnungszeiten haben wir?") wird vom Assistenten (control/adhoc) mit dem
-   Firmenwissen beantwortet.
+3. **Ad-hoc-Assistent (tool-fähig)** — kein offener Entwurf → freie Frage geht an
+   `POST /api/agent/assistant`. Dieser Endpunkt führt eine **server-seitige
+   Function-Calling-Schleife** (Mistral) aus: er beantwortet Firmen-Fragen direkt aus dem
+   Wissen ODER ruft Werkzeuge, wenn aktuelle Daten nötig sind:
+   - `list_pending_drafts` — „was wartet auf Freigabe?" (eigene DB, funktioniert sofort)
+   - `get_calendar` — „wann habe ich Zeit?" (n8n-Tool-Webhook `ASSISTANT_CALENDAR_WEBHOOK_URL`)
+   - `crm_lookup` — „welche Leads sind offen?" (n8n-Tool-Webhook `ASSISTANT_CRM_WEBHOOK_URL`)
+   Kalender/CRM melden sauber „nicht verbunden", solange kein Webhook gesetzt ist.
+   **Warum server-seitig statt nativem n8n-Agent-Node:** so bleibt der Mistral-Key server-only
+   und die Token ALLER Tool-Runden werden zuverlässig als Credits abgezogen (native Agent-Nodes
+   verlieren die Usage bei Mehrfach-Tool-Aufrufen).
 
 Derselbe Aufbau funktioniert für **Slack/Teams**: Webhook-Trigger + Sende-Node tauschen,
 Rest (pending-Lookup, Routen, LLM-Aufrufe) bleibt identisch.

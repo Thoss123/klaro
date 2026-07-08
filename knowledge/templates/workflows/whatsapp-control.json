@@ -280,12 +280,12 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "url": "{{APP_BASE_URL}}/api/agent/assistant",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'control/adhoc', persona_path: '{{PERSONA_PATH}}', user: $json.text }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', persona_path: '{{PERSONA_PATH}}', user: $('Route bestimmen').item.json.text }) }}",
         "options": {}
       }
     },

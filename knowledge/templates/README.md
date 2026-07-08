@@ -12,8 +12,8 @@ wie der Chat, Standard-Prompts per Coach-Tool `update_agent_prompt` anpassbar).
 | 2 | **Steuerkanal WhatsApp/Slack/Teams** (Freigabe, Revision, Ad-hoc-Assistent) — EIGENE Funktionalität, wird Nutzern von #1 zusätzlich vorgeschlagen, funktioniert aber unabhängig | `whatsapp-control` | ✅ live getestet |
 | 3 | **Learning Engine** (Automation lernt aus Korrekturen) | `email-learning-engine` | ✅ live getestet |
 | 4 | Lead-Follow-up nach X Tagen | `lead-followup` | ✅ vorhanden |
-| 5 | Terminvergabe mit Kalender-Anbindung (freie Slots vorschlagen, nie direkt buchen) | `tool_get_free_slots` + Erweiterung #1 | geplant |
-| 6 | CRM-Kontext im Entwurf (Lead/Kunde? Historie? nächster Schritt?) | `tool_lookup_contact` | geplant |
+| 5 | Terminvergabe mit Kalender-Anbindung (freie Slots vorschlagen, nie direkt buchen) | in #1 (scheduling-Route liest Google Calendar) + Assistent-Tool `get_calendar` | ✅ verdrahtet (braucht Google-OAuth) |
+| 6 | CRM-Kontext (Lead/Kunde? offene Leads?) | Assistent-Tool `crm_lookup` (n8n-Tool-Webhook) + geplant: CRM-Node in Lead-Route | ✅ Assistent-Tool live |
 | 7 | Proaktiver Monitor (offene Leads, fehlgeschlagene Workflows → Push) | `proactive-monitor` | geplant |
 | 8 | Angebot aus Gesprächsnotiz/Transkript generieren | `angebot-aus-notiz` | geplant |
 | 9 | Rechnungs-Eingang erfassen (Anhänge → Ablage + Buchhaltungs-Tabelle) | `rechnungs-eingang` | geplant |
@@ -26,6 +26,16 @@ wie der Chat, Standard-Prompts per Coach-Tool `update_agent_prompt` anpassbar).
 
 Branchen-Varianten entstehen NICHT als neue Templates, sondern über Kategorien-Seeds +
 Workspace-Regeln (siehe Variations-Achsen unten).
+
+### Tools/Integrationen verbinden — zwei Muster
+- **Flow-orchestriert (Standard):** Die Kategorie/Route weiß, welches Tool gebraucht wird → ein
+  **nativer n8n-Node** (Google Calendar, HubSpot, …) holt die Daten VOR dem KI-Schritt, das
+  Ergebnis geht als `variables` in den `/api/agent/llm`-Call. Beispiel: scheduling-Route in #1.
+  Native Nodes, volles Credit-Tracking, kein autonomer Agent nötig.
+- **Agent-orchestriert (nur wo dynamisch nötig):** Der freie Assistent (#2) wählt selbst aus
+  mehreren Tools. Läuft server-seitig in `/api/agent/assistant` (Mistral Function-Calling) —
+  Tools = eigene DB (`list_pending_drafts`) oder n8n-Tool-Webhooks (`get_calendar`, `crm_lookup`).
+  So bleibt der Key server-only und die Token aller Runden werden korrekt abgerechnet.
 
 ---
 
