@@ -11,12 +11,21 @@ function requirePublicSupabaseEnv() {
   return { url, anonKey }
 }
 
-/** Server routes: anon key (or service role when provided). Created lazily — safe at build time. */
+/** Server routes: service role key required in production. Created lazily — safe at build time. */
 export function createSupabaseServiceClient(): SupabaseClient {
   const { url } = requirePublicSupabaseEnv()
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim()
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  if (!serviceKey) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'SUPABASE_SERVICE_ROLE_KEY is required in production. Set it in Vercel → Environment Variables.',
+      )
+    }
+    console.warn(
+      '[supabase] SUPABASE_SERVICE_ROLE_KEY missing — falling back to anon key (dev only).',
+    )
+  }
+  const key = serviceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim()
   return createClient(url, key)
 }
 

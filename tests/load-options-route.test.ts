@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { encrypt } from '@/lib/encryption';
 
-const USER_ID = '3198ae57-85e2-4f4d-86ca-4c97afcfe1f4';
+const USER_ID = '00000000-0000-4000-8000-000000000001';
 const SUPABASE_ROW_ID = '7c1f2a3b-1111-4222-8333-944455566677';
 const N8N_CRED_ID = 'vJ2xJ8sJ3kQ9aBc1';
 

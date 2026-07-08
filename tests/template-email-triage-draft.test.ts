@@ -17,7 +17,7 @@ const COMMON = {
 };
 
 describe('email-triage-draft template (golden)', () => {
-  it('fills all slots for gmail and keeps the LLM-API architecture', () => {
+  it('fills all slots for gmail and routes all 8 categories specifically', () => {
     const { workflow, credentialBindings } = loadWorkflowTemplate('email-triage-draft', {
       mailProvider: 'gmail',
       scalars: COMMON,
@@ -25,7 +25,10 @@ describe('email-triage-draft template (golden)', () => {
 
     const trigger = workflow.nodes.find((n) => n.name === 'Neue E-Mail');
     expect(trigger?.type).toBe('n8n-nodes-base.gmailTrigger');
-    expect(credentialBindings).toEqual([{ node: 'Neue E-Mail', credentialType: 'gmailOAuth2Api' }]);
+    // Trigger + Postfach-Aufräum-Nodes (markAsRead/Archiv) brauchen Provider-Credentials.
+    expect(credentialBindings).toEqual(
+      expect.arrayContaining([{ node: 'Neue E-Mail', credentialType: 'gmailOAuth2Api' }]),
+    );
 
     const raw = JSON.stringify(workflow);
     // Keine ungefüllten Slots; n8n-Expressions ({{ $json… }}) bleiben unberührt.
@@ -34,11 +37,22 @@ describe('email-triage-draft template (golden)', () => {
     expect(raw).toContain('https://www.axantilo.com/api/agent/llm');
     expect(raw).toContain("prompt_key: 'email/classify'");
     expect(raw).not.toContain('lmChatMistralCloud');
-    // Billing/Spam erzeugen keinen Entwurf.
+
+    // 8 Kategorien → spezifische Wege:
     const sw = workflow.connections?.['Switch'] as { main: Array<Array<{ node: string }>> };
-    expect(sw.main[3][0].node).toBe('Kein Entwurf nötig');
-    expect(sw.main[4][0].node).toBe('Kein Entwurf nötig');
-    expect(sw.main[0][0].node).toBe('KI: Entwurf schreiben');
+    expect(sw.main[0][0].node).toBe('KI: Entwurf schreiben');   // lead_inquiry
+    expect(sw.main[1][0].node).toBe('Kalender lesen');           // scheduling → Kalender-Kontext
+    expect(sw.main[2][0].node).toBe('KI: Entwurf schreiben');   // support_faq (inkl. Storno/Kundenrechnung)
+    expect(sw.main[3][0].node).toBe('KI: Rechnungs-Info');      // vendor_billing → Kurzinfo, kein Entwurf
+    expect(sw.main[4][0].node).toBe('Wichtig?');                 // system_alerts → nur high stört
+    expect(sw.main[5][0].node).toBe('Als gelesen markieren');   // newsletters → aufräumen
+    expect(sw.main[6][0].node).toBe('Als gelesen markieren');   // spam_marketing → aufräumen
+    expect(sw.main[7][0].node).toBe('KI: Entwurf schreiben');   // other
+
+    // Termin-Route endet wie die anderen Entwurf-Wege in der Freigabe.
+    expect((workflow.connections?.['KI: Termin-Entwurf'] as { main: Array<Array<{ node: string }>> }).main[0][0].node).toBe('Freigabe anlegen');
+    // Kalender-Node ist disabled ausgeliefert (User verbindet Calendar, dann 1 Klick).
+    expect(workflow.nodes.find((n) => n.name === 'Kalender lesen')?.disabled).toBe(true);
   });
 
   it('resolves outlook as an alternative provider', () => {

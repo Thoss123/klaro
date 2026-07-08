@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase';
 import { getAdminUser } from '@/lib/admin-auth';
 import { reindexKnowledge } from '@/lib/knowledge-index';
 
@@ -22,7 +23,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await reindexKnowledge(supabase, folder);
+    const serviceSupabase = createSupabaseServiceClient();
+    const result = await reindexKnowledge(serviceSupabase, folder);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(

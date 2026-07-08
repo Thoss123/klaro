@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
   for (const [k, v] of Object.entries(variables ?? {})) {
     system = system.replaceAll(`{{${k}}}`, String(v));
   }
+  // Fail-safe: nicht gelieferte Aufrufer-Variablen (lowercase-Platzhalter) neutralisieren,
+  // damit nie ein roher {{platzhalter}} beim LLM landet.
+  system = system.replace(/\{\{\s*[a-z][a-z0-9_]*\s*\}\}/g, '(nicht verfügbar)');
 
   const apiKey = process.env.MISTRAL_API_KEY?.trim();
   if (!apiKey) return NextResponse.json({ error: 'MISTRAL_API_KEY not configured' }, { status: 500 });

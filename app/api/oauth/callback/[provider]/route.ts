@@ -11,8 +11,19 @@ import {
 } from '@/lib/oauth-config';
 import { OAUTH_STATE_COOKIE } from '../../[provider]/route';
 
+/** Validates return paths — same-origin relative paths only. */
+function safeReturnPath(returnUrl: string): string {
+  const trimmed = returnUrl.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
+  return trimmed;
+}
+
 /** Kleine HTML-Seite: meldet dem Opener-Fenster das Ergebnis und schließt sich. */
-function popupResultPage(payload: Record<string, unknown>, fallbackUrl: string): NextResponse {
+function popupResultPage(
+  payload: Record<string, unknown>,
+  fallbackUrl: string,
+  targetOrigin: string,
+): NextResponse {
   const json = JSON.stringify(payload);
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Verbinden…</title></head>
 <body style="font-family:system-ui;padding:2rem;text-align:center;color:#444">
@@ -20,8 +31,8 @@ function popupResultPage(payload: Record<string, unknown>, fallbackUrl: string):
 <script>
   (function () {
     var msg = Object.assign({ type: 'axantilo_oauth' }, ${json});
-    try { if (window.opener) { window.opener.postMessage(msg, '*'); window.close(); return; } } catch (e) {}
-    // Kein Popup (direkte Navigation) → zurück zur App.
+    var origin = ${JSON.stringify(targetOrigin)};
+    try { if (window.opener) { window.opener.postMessage(msg, origin); window.close(); return; } } catch (e) {}
     var u = ${JSON.stringify(fallbackUrl)};
     window.location.replace(u);
   })();
@@ -82,9 +93,14 @@ export async function GET(
   } | null = null;
   try { cookie = cookieRaw ? JSON.parse(cookieRaw) : null; } catch { cookie = null; }
 
-  const returnUrl = cookie?.returnUrl || '/';
+  const returnUrl = safeReturnPath(cookie?.returnUrl || '/');
+  const origin = getRequestOrigin(req);
   const fail = (error: string) => {
-    const res = popupResultPage({ ok: false, error }, `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}oauth_error=${encodeURIComponent(error)}`);
+    const res = popupResultPage(
+      { ok: false, error },
+      `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}oauth_error=${encodeURIComponent(error)}`,
+      origin,
+    );
     res.cookies.delete(OAUTH_STATE_COOKIE);
     return res;
   };
@@ -98,7 +114,16 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || user.id !== cookie.userId) return fail('Session abgelaufen. Bitte neu einloggen und erneut verbinden.');
 
-  const origin = getRequestOrigin(req);
+  if (cookie.projectId) {
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', cookie.projectId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!project) return fail('Projekt nicht gefunden oder kein Zugriff.');
+  }
+
   let tokens: OAuthTokenResponse;
   try {
     tokens = await exchangeCode(provider, code, origin);
@@ -143,6 +168,7 @@ export async function GET(
   const res = popupResultPage(
     { ok: true, provider, toolName: cookie.toolName, credentialId: n8nCredentialId },
     successUrl,
+    origin,
   );
   res.cookies.delete(OAUTH_STATE_COOKIE);
   return res;

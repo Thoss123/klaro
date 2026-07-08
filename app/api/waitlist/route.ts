@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServiceClient } from '@/lib/supabase';
 import { sendEmail, FROM_EMAIL } from '@/lib/email';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import type { WaitlistFormData, WaitlistStatus, WaitlistUpsertBody } from '@/lib/waitlist-types';
 
 const NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL?.trim() || 'hello@axantilo.com';
@@ -115,6 +116,15 @@ async function notifyUser(fields: ReturnType<typeof pickFields>) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+    const rate = checkRateLimit(`waitlist:${ip}`, 5, 60_000);
+    if (!rate.ok) {
+      return NextResponse.json(
+        { error: 'Zu viele Anfragen. Bitte kurz warten.' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+      );
+    }
+
     const body = (await req.json()) as WaitlistUpsertBody;
     const sessionToken = body.sessionToken?.trim();
     if (!sessionToken || sessionToken.length < 8) {

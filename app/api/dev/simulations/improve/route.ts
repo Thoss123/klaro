@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aggregateImprovements, verifyImprovement } from '@/lib/simulation/improve';
 import { listImprovements } from '@/lib/simulation/store';
-
-function devGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIM_DEV !== 'true') {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
-  }
-  return null;
-}
+import { devSimGuard } from '@/lib/simulation/dev-guard';
 
 export async function GET() {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   try {
     return NextResponse.json({ improvements: await listImprovements() });
@@ -20,7 +14,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   let body: {
     action?: string;
@@ -52,7 +46,6 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ ok: true, ...res });
     }
-    // default: aggregate
     const res = await aggregateImprovements(body.limit ?? 20);
     return NextResponse.json({ ok: true, ...res });
   } catch (e) {

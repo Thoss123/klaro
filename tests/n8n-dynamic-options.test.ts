@@ -37,7 +37,7 @@ describe('extractResourceLocatorValue', () => {
 
 describe('isUuid', () => {
   it('matches Supabase row ids (UUID)', () => {
-    expect(isUuid('3198ae57-85e2-4f4d-86ca-4c97afcfe1f4')).toBe(true);
+    expect(isUuid('00000000-0000-4000-8000-000000000001')).toBe(true);
   });
 
   it('rejects n8n credential ids (nanoid) and junk', () => {

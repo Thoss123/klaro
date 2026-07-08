@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { simulateRun, type SimProgressEvent } from '@/lib/simulation/run';
 import { listRuns, listPersonas, seedPersonas, getRun } from '@/lib/simulation/store';
+import { devSimGuard } from '@/lib/simulation/dev-guard';
 import { PHASE_ORDER } from '@/lib/simulation/types';
 import type { Phase } from '@/lib/types';
-
-/** Dev-only gate: these routes drive paid LLM calls and touch admin tables. */
-function devGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIM_DEV !== 'true') {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
-  }
-  return null;
-}
 
 // Long runs: a full 4-phase simulation can take a few minutes.
 export const maxDuration = 300;
 
 export async function GET() {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   try {
     const [runs, personas] = await Promise.all([listRuns(50), listPersonas()]);
@@ -27,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   let body: {
     action?: string;

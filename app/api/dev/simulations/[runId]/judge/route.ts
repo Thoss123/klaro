@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordJudgment } from '@/lib/simulation/run';
 import type { RubricVerdictInput } from '@/lib/simulation/types';
-
-function devGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIM_DEV !== 'true') {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
-  }
-  return null;
-}
+import { devSimGuard } from '@/lib/simulation/dev-guard';
 
 /**
  * Claude Code posts its rubric verdicts here after reading the JudgePacket.
  * Body: { findings: RubricVerdictInput[] }
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ runId: string }> }) {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   const { runId } = await ctx.params;
 

@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { createSupabaseServiceClient } from '@/lib/supabase';
+import { assertProjectOwner, requireUser } from '@/lib/access-control';
 
 /**
  * Auth für Endpunkte, die BEIDE Aufrufer bedienen:
@@ -48,9 +49,13 @@ export async function resolveCaller(
   }
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Unauthorized', status: 401 };
-  return { supabase, userId: user.id };
+  const userResult = await requireUser(supabase);
+  if (!userResult.ok) return { error: userResult.error, status: userResult.status };
+
+  if (projectId) {
+    const ownerResult = await assertProjectOwner(supabase, userResult.userId, projectId);
+    if (!ownerResult.ok) return { error: ownerResult.error, status: ownerResult.status };
+  }
+
+  return { supabase, userId: userResult.userId };
 }

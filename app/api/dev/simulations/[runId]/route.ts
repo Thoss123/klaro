@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRun, getTranscript, getFindings } from '@/lib/simulation/store';
-
-function devGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIM_DEV !== 'true') {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
-  }
-  return null;
-}
+import { devSimGuard } from '@/lib/simulation/dev-guard';
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ runId: string }> }) {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   const { runId } = await ctx.params;
   try {

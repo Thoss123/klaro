@@ -5,8 +5,8 @@ const ALGORITHM = 'aes-256-gcm';
 function getKey(): Buffer {
   const raw = process.env.ENCRYPTION_KEY;
   if (!raw) throw new Error('ENCRYPTION_KEY is not set');
-  // Derive a 32-byte key from the env secret
-  return scryptSync(raw, 'axantilo-salt', 32);
+  const salt = process.env.ENCRYPTION_SALT?.trim() || 'axantilo-salt';
+  return scryptSync(raw, salt, 32);
 }
 
 /**

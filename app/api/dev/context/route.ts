@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildInjectedSystemPrompt, estimatePromptTokens } from '@/lib/dev/build-injected-prompt';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, assertProjectOwner, requireUser } from '@/lib/access-control';
 import type { CanvasData, OnboardingData } from '@/lib/types';
 
 // Mistral large context window
@@ -40,6 +41,8 @@ export async function POST(req: NextRequest) {
 
   const currentPhase = phase || 'diagnose';
   const supabase = await createSupabaseServerClient();
+  const userResult = await requireUser(supabase);
+  if (!userResult.ok) return accessDenied(userResult);
 
   let strategieText: string | null = null;
   let project: DevContextProject | null = null;
@@ -48,6 +51,8 @@ export async function POST(req: NextRequest) {
   let canvasFromDb: CanvasData | null = null;
 
   if (project_id && typeof project_id === 'string') {
+    const ownerResult = await assertProjectOwner(supabase, userResult.userId, project_id);
+    if (!ownerResult.ok) return accessDenied(ownerResult);
     try {
       const { data: projRow } = await supabase
         .from('projects')

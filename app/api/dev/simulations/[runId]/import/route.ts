@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { importRunToSession } from '@/lib/simulation/import-session';
-
-function devGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SIM_DEV !== 'true') {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
-  }
-  return null;
-}
+import { devSimGuard } from '@/lib/simulation/dev-guard';
 
 /**
  * Import a finished run into a real chat session for a (test) user, so it can be
@@ -14,7 +8,7 @@ function devGuard(): NextResponse | null {
  * Body: { userId?: string } — defaults to SIM_TEST_USER_ID from the env.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ runId: string }> }) {
-  const blocked = devGuard();
+  const blocked = await devSimGuard();
   if (blocked) return blocked;
   const { runId } = await ctx.params;
 

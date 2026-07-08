@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { assertProjectOwner } from '@/lib/access-control';
 import { encrypt } from '@/lib/encryption';
 import { createN8nCredential, deleteN8nCredential, getN8nCredentialSchema } from '@/lib/n8n';
 import { getN8nCatalog, getCredentialByName } from '@/lib/n8n-catalog';
@@ -117,6 +118,11 @@ export async function POST(req: NextRequest) {
   const { project_id, tool_name, credential_type, value, n8n_credential_type } = await req.json();
   if (!project_id || !tool_name || !value) {
     return NextResponse.json({ error: 'project_id, tool_name, value required' }, { status: 400 });
+  }
+
+  const ownerResult = await assertProjectOwner(supabase, user.id, project_id);
+  if (!ownerResult.ok) {
+    return NextResponse.json({ error: ownerResult.error }, { status: ownerResult.status });
   }
 
   const encrypted_value = encrypt(value);

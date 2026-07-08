@@ -26,6 +26,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
 
 # vercel
@@ -47,3 +48,9 @@ CLAUDE.local.md
 
 # Playwright MCP scratch output (screenshots, page snapshots, console logs)
 .playwright-mcp/
+
+# scraped data (PII)
+scripts/output/
+
+# local IDE/agent settings
+.claude/settings.local.json

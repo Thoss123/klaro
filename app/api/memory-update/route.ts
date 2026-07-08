@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Mistral } from '@mistralai/mistralai';
-import { createSupabaseServiceClient } from '@/lib/supabase';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, assertSessionOwner, requireUser } from '@/lib/access-control';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { logSync } from '@/lib/sync-decision';
 
 export async function POST(req: Request) {
@@ -11,7 +13,22 @@ export async function POST(req: Request) {
       logSync('memory', 'skip', 'missing sessionId or newMessage');
       return NextResponse.json(
         { status: 'skipped', reason: 'missing_params' },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const userResult = await requireUser(supabase);
+    if (!userResult.ok) return accessDenied(userResult);
+
+    const sessionResult = await assertSessionOwner(supabase, userResult.userId, sessionId);
+    if (!sessionResult.ok) return accessDenied(sessionResult);
+
+    const rate = checkRateLimit(`memory:${userResult.userId}`, 10, 60_000);
+    if (!rate.ok) {
+      return NextResponse.json(
+        { status: 'error', reason: 'rate_limited', error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
       );
     }
 
@@ -20,16 +37,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'skipped', reason: 'no_api_key', memory: currentMemory || '' });
     }
 
-    const supabase = createSupabaseServiceClient()
-
     logSync('memory', 'invoke', `session=${sessionId}`, {
       currentChars: (currentMemory || '').length,
       newMessageChars: (newMessage || '').length,
     });
 
     const mistralClient = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
-    
-    // We use mistral-small-latest because it is fast, cheap, and perfect for extraction tasks.
+
     const response = await mistralClient.chat.complete({
       model: 'mistral-small-latest',
       messages: [
@@ -47,7 +61,7 @@ Deine Aufgabe ist es, das Gedächtnis des Coaches (Memory) zu aktualisieren und 
 Hierhin gehören beständige Fakten über das Unternehmen (Zielgruppe, Angebot, Prozesse, Hürden). Diese ändern sich selten. Extrahiere neue beständige Fakten und füge sie hier hinzu. Streiche alte, die sich als falsch erwiesen haben.
 
 [LATEST CONTEXT]
-Hierhin gehört der aktuellste Kontext der letzten Gesprächsrunden (z.B. "Nutzer schaut sich gerade Tool X an", "Nutzer möchte Prozess Y zuerst bauen"). Halte diese Sektion SEHR kurz (max 3 Bullet Points). Älterer Kontext fliegt hier raus.
+Hierhin gehört der aktuellste Kontext der letzten Gesprächsrunden (z.B. "Nutzer schaut sich gerade Tool X an", "Nutzer möchte Prozess Y zuerst bauen"). Halte diese Sektion SEHR kurz (max 3 Bullet Points). Älterer Kontext fließt hier raus.
 
 Gib NUR die aktualisierte Memory zurück, exakt in diesem Format:
 [CORE FACTS]
@@ -55,18 +69,18 @@ Gib NUR die aktualisierte Memory zurück, exakt in diesem Format:
 [LATEST CONTEXT]
 - ...
 
-Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zurück, aber stelle sicher, dass sie in [CORE FACTS] und [LATEST CONTEXT] gegliedert ist.`
-        }
-      ]
+Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zurück, aber stelle sicher, dass sie in [CORE FACTS] und [LATEST CONTEXT] gegliedert ist.`,
+        },
+      ],
     });
 
-    // Mistral content is `string | ContentChunk[]` — flatten to plain text.
     const rawContent = response.choices?.[0]?.message?.content;
-    const contentStr = typeof rawContent === 'string'
-      ? rawContent
-      : Array.isArray(rawContent)
-        ? rawContent.map(c => (c.type === 'text' ? c.text : '')).join('')
-        : '';
+    const contentStr =
+      typeof rawContent === 'string'
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent.map((c) => (c.type === 'text' ? c.text : '')).join('')
+          : '';
     const newMemory = contentStr.trim() || currentMemory || '';
     const normalizedCurrent = (currentMemory || '').trim();
 
@@ -82,13 +96,14 @@ Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zu
     const { error: updateError } = await supabase
       .from('sessions')
       .update({ memory: newMemory })
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .eq('user_id', userResult.userId);
 
     if (updateError) {
       logSync('memory', 'fail', 'DB update failed', { sessionId, error: updateError.message });
       return NextResponse.json(
         { status: 'error', reason: 'db_save_failed', error: updateError.message, memory: normalizedCurrent },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -102,7 +117,7 @@ Nichts erfinden! Wenn es nichts Neues gibt, gib einfach die bestehende Memory zu
     logSync('memory', 'fail', message);
     return NextResponse.json(
       { status: 'error', reason: 'exception', error: message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

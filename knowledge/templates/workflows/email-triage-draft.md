@@ -8,10 +8,23 @@ n8n_json_file: email-triage-draft.json
 # E-Mail-Automation: Triage & Antwort-Entwurf
 
 ## Beschreibung
-Bei jeder eingehenden E-Mail: kategorisieren (Lead / Termin / Kundenfrage / Rechnung / Spam / Sonstiges),
-für relevante Kategorien einen fertigen Antwort-Entwurf schreiben — mit dem Firmenwissen und dem
-persönlichen Stil aus dem Axantilo-Workspace — und den Entwurf zur Freigabe vorlegen.
-Rechnungen und Spam erzeugen bewusst KEINEN Entwurf (spart Kosten und Unterbrechungen).
+Bei jeder eingehenden E-Mail: in eine von **8 Kategorien** einordnen und einen **spezifischen Weg** fahren:
+
+| Kategorie | Weg |
+|---|---|
+| `lead_inquiry` | Antwort-Entwurf (Preise/Leistungen, Einladung) → Freigabe |
+| `scheduling` | **Kalender lesen** (Google Calendar, nächste 7 Tage) → Entwurf mit 2-3 konkreten freien Fenstern → Freigabe. Kalender-Node ist disabled ausgeliefert; ohne Verbindung fragt der Entwurf nach Wunschterminen |
+| `support_faq` | Antwort-Entwurf — **inkl. Storno/Kündigung und Fragen von Kunden zu IHRER Rechnung** → Freigabe |
+| `vendor_billing` | NUR eingehende Buchhaltung (Lieferanten-Rechnungen, Abo-Abbuchungen): KI-Kurzinfo (Anbieter, Betrag, Fälligkeit) per Steuerkanal — kein Entwurf, Mail bleibt im Postfach |
+| `system_alerts` | Security-/Login-/2FA-/Server-Mails von Tools: nur bei `urgency: high` ein Push, sonst still ignoriert |
+| `newsletters` | Als gelesen markieren + archivieren (Postfach bleibt sauber, kein Token verbrannt) |
+| `spam_marketing` | Als gelesen markieren + archivieren |
+| `other` | Zurückhaltender Entwurf → Freigabe |
+
+Die kritische Abgrenzung steckt im Classifier-Prompt: „Wo bleibt MEINE Rechnung?" (Kunde) →
+`support_faq` mit Antwort-Entwurf; „Ihre Rechnung von Hetzner" (Lieferant) → `vendor_billing`
+mit Kurzinfo. Automatisierte Tool-Mails (die gern 100/Woche senden) verbrennen keine
+Drafting-Token mehr.
 
 **Funktioniert mit jedem Mail-Anbieter**: Gmail / Outlook / IMAP über die Provider-Slots
 (`{{TRIGGER_NODE}}`/`{{SEND_NODE}}`, aufgelöst durch `lib/template-loader.ts`).

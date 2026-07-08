@@ -1,15 +1,20 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, requireUser } from '@/lib/access-control';
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createSupabaseServerClient();
+    const userResult = await requireUser(supabase);
+    if (!userResult.ok) return accessDenied(userResult);
+
     const { messages, phase, canvas } = await req.json();
 
     if (!messages || messages.length === 0) {
-      return new Response(JSON.stringify({ summary: '' }), { status: 200 });
+      return NextResponse.json({ summary: '' });
     }
 
-    // Build conversation transcript for summarization
     const transcript = (messages as Array<{ role: string; content?: string }>)
       .map((m) => `${m.role === 'user' ? 'Nutzer' : 'Axantilo'}: ${m.content}`)
       .join('\n\n');
@@ -40,7 +45,12 @@ ${canvasSummary}
 --- GESPRÄCHSVERLAUF ---
 ${transcript}`;
 
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GOOGLE_API_KEY not configured' }, { status: 503 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
     let resultText = '';
     try {
       const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
@@ -48,17 +58,14 @@ ${transcript}`;
       resultText = result.response.text();
     } catch (error: unknown) {
       console.warn('Primary model failed in summarize API:', error instanceof Error ? error.message : String(error));
-      console.log('Falling back to gemini-3.1-flash-lite...');
       const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
       const result = await fallbackModel.generateContent(prompt);
       resultText = result.response.text();
     }
-    
-    // Parse JSON safely
+
     let summary = '';
     let chatTitle = '';
     try {
-      // Remove markdown block if present
       const jsonStr = resultText.replace(/```json\n?|\n?```/g, '').trim();
       const parsed = JSON.parse(jsonStr);
       summary = parsed.summary || resultText;
@@ -68,11 +75,12 @@ ${transcript}`;
       chatTitle = `Phase: ${phase || 'diagnose'}`;
     }
 
-    return new Response(JSON.stringify({ summary, chatTitle }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return NextResponse.json({ summary, chatTitle });
   } catch (error: unknown) {
     console.error('API Summarize Error:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
 }

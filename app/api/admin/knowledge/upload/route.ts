@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createSupabaseServiceClient } from '@/lib/supabase';
 import { getAdminUser } from '@/lib/admin-auth';
 import { uploadAndIndex } from '@/lib/knowledge-index';
 
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
   if (!content.trim()) return NextResponse.json({ error: 'content required' }, { status: 400 });
 
   try {
-    const entry = await uploadAndIndex(supabase, filepath, content);
+    const serviceSupabase = createSupabaseServiceClient();
+    const entry = await uploadAndIndex(serviceSupabase, filepath, content);
     return NextResponse.json({ ok: true, entry });
   } catch (e) {
     return NextResponse.json(

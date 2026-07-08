@@ -48,6 +48,26 @@ describe('AGENT_PROMPTS registry', () => {
     expect(getAgentPromptDef('email/classify')!.json).toBe(true);
     expect(getAgentPromptDef('email/learn')!.json).toBe(true);
   });
+
+  it('classify covers all 8 categories incl. the customer-vs-vendor billing split', () => {
+    const sys = getAgentPromptDef('email/classify')!.system;
+    for (const c of ['lead_inquiry', 'scheduling', 'support_faq', 'vendor_billing', 'system_alerts', 'newsletters', 'spam_marketing', 'other']) {
+      expect(sys).toContain(`"${c}"`);
+    }
+    // Die kritische Abgrenzung muss explizit im Prompt stehen.
+    expect(sys).toMatch(/Fragen von KUNDEN zu deren Rechnungen.*support_faq/);
+    expect(sys).toContain('Storno');
+  });
+
+  it('scheduling prompt embeds the calendar context variable', () => {
+    expect(getAgentPromptDef('email/draft_scheduling')!.system).toContain('{{kalender_kontext}}');
+  });
+
+  it('vendor billing summary uses the small model (plain text)', () => {
+    const def = getAgentPromptDef('email/summarize_vendor_billing')!;
+    expect(def.model).toBe('mistral-small-latest');
+    expect(def.json).toBeUndefined();
+  });
 });
 
 describe('resolveAgentPrompt', () => {

@@ -281,8 +281,8 @@ export const AXANTILO_TOOLS: AITool[] = [
       properties: {
         prompt_key: {
           type: "string",
-          enum: ["email/classify", "email/draft_lead_inquiry", "email/draft_scheduling", "email/draft_support_faq", "email/draft_other", "email/revise", "email/learn", "control/adhoc"],
-          description: "Welcher Agenten-Prompt angepasst wird: email/classify (Kategorisierung), email/draft_* (Antwort-Entwürfe je Kategorie), email/revise (Überarbeitung nach Feedback), email/learn (Regel-Lernen), control/adhoc (Chat-Assistent im Steuerkanal)."
+          enum: ["email/classify", "email/draft_lead_inquiry", "email/draft_scheduling", "email/draft_support_faq", "email/draft_other", "email/summarize_vendor_billing", "email/revise", "email/learn", "control/adhoc"],
+          description: "Welcher Agenten-Prompt angepasst wird: email/classify (8-Kategorien-Router), email/draft_* (Antwort-Entwürfe je Kategorie; draft_scheduling nutzt {{kalender_kontext}}), email/summarize_vendor_billing (Kurzinfo zu Eingangsrechnungen), email/revise (Überarbeitung nach Feedback), email/learn (Regel-Lernen), control/adhoc (Chat-Assistent im Steuerkanal)."
         },
         content: {
           type: "string",

@@ -10,6 +10,9 @@
  * Legt man ein Credential per API mit bereits befülltem `oauthTokenData` an,
  * gilt es in n8n sofort als "verbunden" — kein Klick in der n8n-UI nötig.
  *
+ * SECURITY NOTE: clientSecret wird pro User-Credential in n8n dupliziert.
+ * Langfristig: n8n-zentralen OAuth-Flow nutzen (siehe docs/security-runbook.md).
+ *
  * Auth läuft IMMER über Axantilos zentrale OAuth-Apps (eine pro Provider).
  * Der User wählt nur sein Konto + bestätigt — er legt nie eigene Clients an.
  */
@@ -131,23 +134,13 @@ export const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
       'profile',
       'offline_access',
       'User.Read',
-      'User.Read.All',
-      'Contacts.Read',
       'Contacts.ReadWrite',
-      'Calendars.Read',
-      'Calendars.Read.Shared',
       'Calendars.ReadWrite',
       'Mail.ReadWrite',
-      'Mail.ReadWrite.Shared',
       'Mail.Send',
-      'Mail.Send.Shared',
-      'MailboxSettings.Read',
       'Files.ReadWrite.All',
       'Chat.ReadWrite',
-      'Chat.ReadWrite.All',
       'ChannelMessage.Send',
-      'ChannelMessage.Read.All',
-      'Group.ReadWrite.All',
       'Team.ReadBasic.All',
     ],
     clientId: () => process.env.MICROSOFT_CLIENT_ID,

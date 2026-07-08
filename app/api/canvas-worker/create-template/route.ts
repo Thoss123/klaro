@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, assertProjectOwner, requireUser } from '@/lib/access-control';
 import { normalizeDocumentTemplate } from '@/lib/canvas-normalize';
 import { buildTemplateAiInstruction, findTemplateFillStep } from '@/lib/document-template';
 import { getBuiltWorkflows } from '@/lib/workflow-plans';
@@ -34,10 +35,11 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userResult = await requireUser(supabase);
+    if (!userResult.ok) return accessDenied(userResult);
+
+    const ownerResult = await assertProjectOwner(supabase, userResult.userId, project_id);
+    if (!ownerResult.ok) return accessDenied(ownerResult);
 
     const { data: canvasRow, error: fetchError } = await supabase
       .from('project_canvas')

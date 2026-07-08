@@ -138,7 +138,7 @@ create table if not exists user_credentials (
 - `[ ]` **Env auf Vercel / lokal:**
 
 ```env
-N8N_API_URL=https://n8n.srv1046571.hstgr.cloud/api/v1
+N8N_API_URL=https://n8n.example.com/api/v1
 N8N_API_KEY=<key>
 MOCK_N8N=false
 ```
@@ -146,7 +146,7 @@ MOCK_N8N=false
 ### 2.2 Backend verifizieren (kein neuer Code nötig, nur testen)
 
 - `[x]` **Mock-Test lokal:** `MOCK_N8N=true` → `POST /api/n8n/workflows` mit Test-User → Eintrag in `workflows` Tabelle, `n8n_workflow_id` mock. _Verifiziert: 200, Zeile mit `mock_wf_…`, `status=inactive`, korrektes n8n-JSON aus `buildN8nWorkflow`._
-- `[x]` **Live-Test:** `MOCK_N8N=false` → minimaler Workflow-JSON (Manual Trigger → Set Node) per `createN8nWorkflow` aus Route oder einmaligem Script (`npm run test:n8n`). _Live verifiziert (Juni 2026) via `npm run test:n8n` gegen `n8n.srv1046571.hstgr.cloud`: create → activate (400 bei Manual-Trigger erwartet) → executions → deactivate → delete, alles grün, Cleanup ok._
+- `[x]` **Live-Test:** `MOCK_N8N=false` → minimaler Workflow-JSON (Manual Trigger → Set Node) per `createN8nWorkflow` aus Route oder einmaligem Script (`npm run test:n8n`). _Live verifiziert (Juni 2026) via `npm run test:n8n` gegen `n8n.example.com`: create → activate (400 bei Manual-Trigger erwartet) → executions → deactivate → delete, alles grün, Cleanup ok._
 - `[x]` **Activate/Deactivate:** `PATCH /api/n8n/workflows` mit `action: activate|deactivate`. _Verifiziert: `status` → `active`._
 - `[x]` **Executions:** `GET /api/n8n/executions?workflow_id=<db-id>` liefert Liste (oder leer bei neuem WF). _Verifiziert (Mock): Liste mit `success`._ ⚠️ Param heißt `workflow_id` (DB-ID), nicht `workflowId`.
 

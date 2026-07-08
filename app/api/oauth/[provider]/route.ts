@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { getRequestOrigin } from '@/lib/app-origin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, assertProjectOwner, requireUser } from '@/lib/access-control';
 import { OAUTH_PROVIDERS, oauthRedirectUri, type OAuthProvider } from '@/lib/oauth-config';
 
 export const OAUTH_STATE_COOKIE = 'axantilo_oauth_state';
@@ -34,11 +35,15 @@ export async function GET(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userResult = await requireUser(supabase);
+  if (!userResult.ok) return accessDenied(userResult);
 
   const sp = req.nextUrl.searchParams;
   const projectId = sp.get('project_id') || '';
+  if (projectId) {
+    const ownerResult = await assertProjectOwner(supabase, userResult.userId, projectId);
+    if (!ownerResult.ok) return accessDenied(ownerResult);
+  }
   const toolName = sp.get('tool_name') || '';
   const credentialType = sp.get('n8n_credential_type') || '';
   const returnUrl = sp.get('return_url') || '/';
@@ -62,7 +67,7 @@ export async function GET(
   const res = NextResponse.redirect(authUrl.toString());
   res.cookies.set(
     OAUTH_STATE_COOKIE,
-    JSON.stringify({ state, userId: user.id, projectId, toolName, credentialType, returnUrl }),
+    JSON.stringify({ state, userId: userResult.userId, projectId, toolName, credentialType, returnUrl }),
     {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

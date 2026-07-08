@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Mistral } from '@mistralai/mistralai';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, assertProjectOwner, requireUser } from '@/lib/access-control';
 import { evaluateHistoryForCanvas, logSync, summarizeCanvasDiff } from '@/lib/sync-decision';
 import { filterCanvasHistory } from '@/lib/hidden-chat';
 import { normalizeCanvasData } from '@/lib/canvas-normalize';
@@ -13,13 +14,15 @@ export async function POST(req: NextRequest) {
     const { history, currentCanvas, phase, projectId, sessionId } = await req.json();
     type ChatMsg = { role: string; content: string };
     const supabase = projectId ? await createSupabaseServerClient() : null;
-    const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
-    if (projectId && !user) {
-      return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 });
-    }
-    if (projectId && user) {
+    let user: { id: string } | null = null;
+    if (supabase && projectId) {
+      const userResult = await requireUser(supabase);
+      if (!userResult.ok) return accessDenied(userResult);
+      const ownerResult = await assertProjectOwner(supabase, userResult.userId, projectId);
+      if (!ownerResult.ok) return accessDenied(ownerResult);
+      user = { id: userResult.userId };
       const { canAfford } = await import('@/lib/billing/credits');
-      const affordability = await canAfford(user.id, 1);
+      const affordability = await canAfford(userResult.userId, 1);
       if (!affordability.ok) {
         return NextResponse.json(
           { code: 'INSUFFICIENT_CREDITS', balance: affordability.balance, required: affordability.required },

@@ -20,6 +20,9 @@ export async function getAdminUser(supabase: SupabaseClient): Promise<User | nul
   } = await supabase.auth.getUser();
   if (!user) return null;
   const allow = getAdminEmails();
-  if (allow.length === 0) return user;
+  if (allow.length === 0) {
+    if (process.env.NODE_ENV === 'production') return null;
+    return user;
+  }
   return allow.includes((user.email || '').toLowerCase()) ? user : null;
 }

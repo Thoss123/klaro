@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest) {
 
   const caller = await resolveCaller(req, project_id ?? null);
   if ('error' in caller) return NextResponse.json({ error: caller.error }, { status: caller.status });
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  if (!id || !project_id) return NextResponse.json({ error: 'id and project_id required' }, { status: 400 });
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof status === 'string') patch.status = status;
@@ -91,6 +91,7 @@ export async function PATCH(req: NextRequest) {
     .from('agent_pending_actions')
     .update(patch)
     .eq('id', id)
+    .eq('project_id', project_id)
     .select()
     .single();
 

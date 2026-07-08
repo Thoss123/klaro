@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Mistral } from '@mistralai/mistralai';
 import { mistralCompleteJson, safeParseJson } from '@/lib/agents/llm';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { accessDenied, requireUser } from '@/lib/access-control';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 /**
  * Research endpoint (Phase 3) — backs the coach's `research_solutions` tool.
@@ -115,6 +118,18 @@ Kontext: ${input.context || '(keiner)'}${grounding}`;
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createSupabaseServerClient();
+    const userResult = await requireUser(supabase);
+    if (!userResult.ok) return accessDenied(userResult);
+
+    const rate = checkRateLimit(`research:${userResult.userId}`, 10, 60_000);
+    if (!rate.ok) {
+      return NextResponse.json(
+        { options: [], source: 'rate_limited', error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+      );
+    }
+
     const input = (await req.json()) as ResearchInput;
 
     // 1. Best-effort web search via n8n/Apify.

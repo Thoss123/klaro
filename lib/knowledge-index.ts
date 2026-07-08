@@ -132,7 +132,7 @@ export async function uploadAndIndex(
 
 /**
  * Re-embed knowledge files from disk and upsert them via the given Supabase
- * client. The client must be authenticated (RLS allows writes to authenticated).
+ * client. The client must use service role for writes (admin routes after getAdminUser).
  */
 export async function reindexKnowledge(
   supabase: SupabaseClient,

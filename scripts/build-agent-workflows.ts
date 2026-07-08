@@ -84,7 +84,36 @@ function twilio(name: string, pos: [number, number], message: string) {
 const chain = (pairs: Array<[string, string]>) =>
   Object.fromEntries(pairs.map(([a, b]) => [a, { main: [[{ node: b, type: 'main', index: 0 }]] }]));
 
-// ═════════════════ Flow 1: E-Mail Triage & Entwurf ═════════════════
+// ═════════════════ Flow 1: E-Mail Triage — 8 Kategorien, spezifische Routen ═════════════════
+// 0 lead_inquiry → Entwurf | 1 scheduling → Kalender + Entwurf | 2 support_faq → Entwurf
+// 3 vendor_billing → Kurzinfo per WhatsApp | 4 system_alerts → nur bei urgency=high Push
+// 5 newsletters + 6 spam_marketing → gelesen markieren + archivieren | 7 other → Entwurf
+const CATEGORIES = [
+  'lead_inquiry', 'scheduling', 'support_faq', 'vendor_billing',
+  'system_alerts', 'newsletters', 'spam_marketing', 'other',
+] as const;
+
+const EMAIL_TEXT = "($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '')";
+const EMAIL_USER = `'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') + '\\n\\n' + ${EMAIL_TEXT}`;
+
+/** Gmail-Postfach-Aktion (markAsRead/removeLabels) — fail-open, damit Aufräumen nie den Flow killt. */
+function gmailAction(name: string, pos: [number, number], operation: string, extra: Record<string, unknown> = {}) {
+  return {
+    name,
+    type: 'n8n-nodes-base.gmail',
+    typeVersion: 2,
+    position: pos,
+    credentials: CRED_GMAIL,
+    onError: 'continueRegularOutput',
+    parameters: {
+      resource: 'message',
+      operation,
+      messageId: "={{ $('Neue E-Mail').item.json.id }}",
+      ...extra,
+    },
+  };
+}
+
 const flow1 = {
   name: 'AXANTILO: E-Mail Triage & Entwurf',
   nodes: [
@@ -92,38 +121,38 @@ const flow1 = {
       name: 'Neue E-Mail',
       type: 'n8n-nodes-base.gmailTrigger',
       typeVersion: 1,
-      position: [0, 300] as [number, number],
+      position: [-260, 460] as [number, number],
       credentials: CRED_GMAIL,
       parameters: { pollTimes: { item: [{ mode: 'everyMinute' }] }, simple: false, filters: {}, options: {} },
     },
-    appHttp('KI: Kategorisieren', [240, 300], {
+    appHttp('KI: Kategorisieren', [-40, 460], {
       method: 'POST',
       url: `${APP}/api/agent/llm`,
-      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: 'email/classify', user: 'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\n\\n' + ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '') }) }}`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: 'email/classify', user: ${EMAIL_USER} }) }}`,
     }),
     {
       name: 'Kategorie parsen',
       type: 'n8n-nodes-base.code',
       typeVersion: 2,
-      position: [480, 300] as [number, number],
+      position: [180, 460] as [number, number],
       parameters: {
         mode: 'runOnceForAllItems',
         language: 'javaScript',
-        jsCode: `const PROMPT_BY_CATEGORY = {
+        jsCode: `const VALID = ${JSON.stringify(CATEGORIES)};
+const PROMPT_BY_CATEGORY = {
   lead_inquiry: 'email/draft_lead_inquiry',
-  scheduling: 'email/draft_scheduling',
   support_faq: 'email/draft_support_faq',
   other: 'email/draft_other',
 };
 return $input.all().map(item => {
-  let category = 'other';
+  let category = 'other', urgency = 'medium', reason = '';
   try {
     const parsed = JSON.parse(item.json.text);
-    if (parsed && parsed.category && (PROMPT_BY_CATEGORY[parsed.category] || parsed.category === 'billing' || parsed.category === 'spam_marketing')) {
-      category = parsed.category;
-    }
+    if (parsed && VALID.includes(parsed.category)) category = parsed.category;
+    if (['low','medium','high'].includes(parsed?.urgency)) urgency = parsed.urgency;
+    if (typeof parsed?.reason === 'string') reason = parsed.reason;
   } catch (e) { /* ungültiges LLM-JSON -> sicherer Fallback "other" */ }
-  return { json: { category, prompt_key: PROMPT_BY_CATEGORY[category] || null } };
+  return { json: { category, urgency, reason, prompt_key: PROMPT_BY_CATEGORY[category] || null } };
 });`,
       },
     },
@@ -131,11 +160,11 @@ return $input.all().map(item => {
       name: 'Switch',
       type: 'n8n-nodes-base.switch',
       typeVersion: 3.4,
-      position: [720, 300] as [number, number],
+      position: [420, 460] as [number, number],
       parameters: {
         mode: 'rules',
         rules: {
-          values: ['lead_inquiry', 'scheduling', 'support_faq', 'billing', 'spam_marketing', 'other'].map((c) => ({
+          values: CATEGORIES.map((c) => ({
             outputKey: c,
             renameOutput: true,
             conditions: {
@@ -148,22 +177,113 @@ return $input.all().map(item => {
         options: { fallbackOutput: 'none' },
       },
     },
-    appHttp('KI: Entwurf schreiben', [980, 220], {
+
+    // ── Entwurf-Route (lead_inquiry / support_faq / other) ──────────────────
+    appHttp('KI: Entwurf schreiben', [720, 120], {
       method: 'POST',
       url: `${APP}/api/agent/llm`,
-      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: $json.prompt_key, persona_path: '${PERSONA}', user: 'Betreff: ' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') + '\\n\\n' + ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || '') }) }}`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: $json.prompt_key, persona_path: '${PERSONA}', user: ${EMAIL_USER} }) }}`,
     }),
-    appHttp('Freigabe anlegen', [1220, 220], {
+
+    // ── Termin-Route (scheduling): Kalender lesen → Kontext → Entwurf ──────
+    {
+      name: 'Kalender lesen',
+      type: 'n8n-nodes-base.googleCalendar',
+      typeVersion: 1.3,
+      position: [720, 320] as [number, number],
+      // DISABLED ausgeliefert: n8n reicht bei disabled Nodes das Item durch → der
+      // Kontext-Builder erzeugt den "kein Kalender-Zugriff"-Fallback. Sobald der User
+      // Google Calendar verbindet (3-Klick-OAuth), aktiviert er den Node im Editor.
+      // (Aktiv ohne Credential würde der Publish-Validator den PUT ablehnen.)
+      disabled: true,
+      onError: 'continueRegularOutput',
+      alwaysOutputData: true,
+      parameters: {
+        resource: 'event',
+        operation: 'getAll',
+        calendar: { __rl: true, mode: 'id', value: 'primary' },
+        limit: 20,
+        options: {
+          timeMin: '={{ $now.toISO() }}',
+          timeMax: "={{ $now.plus(7, 'days').toISO() }}",
+          singleEvents: true,
+          orderBy: 'startTime',
+        },
+      },
+    },
+    {
+      name: 'Kalender-Kontext bauen',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [940, 320] as [number, number],
+      parameters: {
+        mode: 'runOnceForAllItems',
+        language: 'javaScript',
+        jsCode: `const events = $input.all().map(i => i.json).filter(e => e && (e.start || e.summary));
+let kalender_kontext;
+if (!events.length) {
+  kalender_kontext = 'Kein Kalender-Zugriff oder keine Termine in den nächsten 7 Tagen gefunden — schlage KEINE konkreten Slots vor, sondern frage nach 2-3 Wunschterminen.';
+} else {
+  kalender_kontext = 'Belegte Termine der nächsten 7 Tage (heute ist ' + new Date().toISOString().slice(0, 10) + '). Schlage 2-3 freie Fenster innerhalb der Öffnungszeiten vor, die NICHT kollidieren:\\n'
+    + events.map(e => '- ' + (e.start?.dateTime || e.start?.date || '?') + ' bis ' + (e.end?.dateTime || e.end?.date || '?') + ': ' + (e.summary || 'belegt')).join('\\n');
+}
+return [{ json: { kalender_kontext } }];`,
+      },
+    },
+    appHttp('KI: Termin-Entwurf', [1160, 320], {
+      method: 'POST',
+      url: `${APP}/api/agent/llm`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: 'email/draft_scheduling', persona_path: '${PERSONA}', variables: { kalender_kontext: $json.kalender_kontext }, user: ${EMAIL_USER} }) }}`,
+    }),
+
+    // ── Gemeinsames Ende der Entwurf-Wege: Freigabe + WhatsApp ──────────────
+    appHttp('Freigabe anlegen', [1400, 220], {
       method: 'POST',
       url: `${APP}/api/agent/pending`,
-      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', contact: '${OWNER_WA}', payload: { draft: $json.text, first_draft: $json.text, feedback_log: [], category: $('Kategorie parsen').item.json.category, original_email: ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || ''), send_target: ($('Neue E-Mail').item.json.from || ''), subject: ($('Neue E-Mail').item.json.subject || ''), provider: 'gmail', persona: '${PERSONA}' } }) }}`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', contact: '${OWNER_WA}', payload: { draft: $json.text, first_draft: $json.text, feedback_log: [], category: $('Kategorie parsen').item.json.category, original_email: ${EMAIL_TEXT}, send_target: ($('Neue E-Mail').item.json.from || ''), subject: ($('Neue E-Mail').item.json.subject || ''), provider: 'gmail', persona: '${PERSONA}' } }) }}`,
     }),
     twilio(
       'WhatsApp: Entwurf zur Freigabe',
-      [1460, 220],
-      "=📧 Neuer Entwurf ({{ $('Kategorie parsen').item.json.category }}) für: {{ $('Neue E-Mail').item.json.from }}\nBetreff: {{ $('Neue E-Mail').item.json.subject }}\n\n{{ $('KI: Entwurf schreiben').item.json.text }}\n\n— Antworte SENDEN zum Abschicken, oder schreib, was geändert werden soll.",
+      [1640, 220],
+      "=📧 Neuer Entwurf ({{ $('Kategorie parsen').item.json.category }}) für: {{ $('Neue E-Mail').item.json.from }}\nBetreff: {{ $('Neue E-Mail').item.json.subject }}\n\n{{ $('Freigabe anlegen').item.json.action.payload.draft }}\n\n— Antworte SENDEN zum Abschicken, oder schreib, was geändert werden soll.",
     ),
-    { name: 'Kein Entwurf nötig', type: 'n8n-nodes-base.noOp', typeVersion: 1, position: [980, 460] as [number, number], parameters: {} },
+
+    // ── vendor_billing: schnelle Info-Message, kein Entwurf ─────────────────
+    appHttp('KI: Rechnungs-Info', [720, 560], {
+      method: 'POST',
+      url: `${APP}/api/agent/llm`,
+      jsonBody: `={{ JSON.stringify({ project_id: '${PROJECT_ID}', prompt_key: 'email/summarize_vendor_billing', user: (${EMAIL_USER}).slice(0, 2000) }) }}`,
+    }),
+    twilio(
+      'WhatsApp: Rechnungs-Info',
+      [960, 560],
+      "=💰 Eingangsrechnung/Beleg:\n{{ $json.text }}\n\n(Nur zur Info — Mail bleibt im Postfach, keine Antwort nötig.)",
+    ),
+
+    // ── system_alerts: nur bei urgency=high stören ──────────────────────────
+    {
+      name: 'Wichtig?',
+      type: 'n8n-nodes-base.if',
+      typeVersion: 2.2,
+      position: [720, 720] as [number, number],
+      parameters: {
+        conditions: {
+          combinator: 'and',
+          options: { caseSensitive: false, leftValue: '', typeValidation: 'loose' },
+          conditions: [{ leftValue: '={{ $json.urgency }}', operator: { type: 'string', operation: 'equals' }, rightValue: 'high' }],
+        },
+      },
+    },
+    twilio(
+      'WhatsApp: System-Alert',
+      [960, 680],
+      "=⚠️ System-Alert ({{ $('Kategorie parsen').item.json.reason }}):\n{{ $('Neue E-Mail').item.json.subject }}\nVon: {{ $('Neue E-Mail').item.json.from }}",
+    ),
+    { name: 'Alert ignoriert', type: 'n8n-nodes-base.noOp', typeVersion: 1, position: [960, 800] as [number, number], parameters: {} },
+
+    // ── newsletters + spam_marketing: Postfach aufräumen ────────────────────
+    gmailAction('Als gelesen markieren', [720, 920], 'markAsRead'),
+    gmailAction('Archivieren', [960, 920], 'removeLabels', { labelIds: ['INBOX'] }),
   ],
   connections: {
     ...chain([
@@ -171,16 +291,29 @@ return $input.all().map(item => {
       ['KI: Kategorisieren', 'Kategorie parsen'],
       ['Kategorie parsen', 'Switch'],
       ['KI: Entwurf schreiben', 'Freigabe anlegen'],
+      ['Kalender lesen', 'Kalender-Kontext bauen'],
+      ['Kalender-Kontext bauen', 'KI: Termin-Entwurf'],
+      ['KI: Termin-Entwurf', 'Freigabe anlegen'],
       ['Freigabe anlegen', 'WhatsApp: Entwurf zur Freigabe'],
+      ['KI: Rechnungs-Info', 'WhatsApp: Rechnungs-Info'],
+      ['Als gelesen markieren', 'Archivieren'],
     ]),
     Switch: {
       main: [
-        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }], // lead_inquiry
-        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }], // scheduling
-        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }], // support_faq
-        [{ node: 'Kein Entwurf nötig', type: 'main', index: 0 }],    // billing
-        [{ node: 'Kein Entwurf nötig', type: 'main', index: 0 }],    // spam_marketing
-        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }], // other
+        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }],   // 0 lead_inquiry
+        [{ node: 'Kalender lesen', type: 'main', index: 0 }],          // 1 scheduling
+        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }],   // 2 support_faq
+        [{ node: 'KI: Rechnungs-Info', type: 'main', index: 0 }],      // 3 vendor_billing
+        [{ node: 'Wichtig?', type: 'main', index: 0 }],                // 4 system_alerts
+        [{ node: 'Als gelesen markieren', type: 'main', index: 0 }],   // 5 newsletters
+        [{ node: 'Als gelesen markieren', type: 'main', index: 0 }],   // 6 spam_marketing
+        [{ node: 'KI: Entwurf schreiben', type: 'main', index: 0 }],   // 7 other
+      ],
+    },
+    'Wichtig?': {
+      main: [
+        [{ node: 'WhatsApp: System-Alert', type: 'main', index: 0 }],
+        [{ node: 'Alert ignoriert', type: 'main', index: 0 }],
       ],
     },
   },
