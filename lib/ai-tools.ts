@@ -303,6 +303,21 @@ export const AXANTILO_TOOLS: AITool[] = [
     schema: { type: "object", properties: {}, required: [] }
   },
   {
+    name: "setup_ai_tool",
+    description: "Richtet eine sofort laufende KI-Funktionalität als Webhook ein (kein Postfach/OAuth nötig) und aktiviert sie. Verfügbar: 'lead_qualify' (eingehende Anfrage vorqualifizieren: heiß/warm/kalt + nächster Schritt), 'review_response' (öffentliche Antwort auf eine Kundenbewertung schreiben), 'social_post' (Social-Media-Post erstellen). Nutze es, wenn der Nutzer eine dieser Aufgaben automatisieren will. Man schickt Text an die zurückgegebene Webhook-URL und bekommt das Ergebnis. Verhalten per update_agent_prompt (prompt_key tool/<name>) anpassbar. Gib dem Nutzer die Webhook-URL.",
+    schema: {
+      type: "object",
+      properties: {
+        functionality: {
+          type: "string",
+          enum: ["lead_qualify", "review_response", "social_post"],
+          description: "Welche KI-Funktionalität eingerichtet wird."
+        }
+      },
+      required: ["functionality"]
+    }
+  },
+  {
     name: "update_agent_prompt",
     description: "Passt einen Standard-Prompt der laufenden Automations-Agenten an (E-Mail-Beantworter, Steuerkanal, Learning). Nutze es, wenn der Nutzer das VERHALTEN seiner Automation ändern will (z.B. 'die Antworten sollen förmlicher sein', 'bei Leads immer das Probetraining erwähnen', 'Termine nie am Wochenende anbieten'). Baue aus dem Wunsch einen vollständigen, präzisen System-Prompt (deutsch), der die Platzhalter {{firmenwissen}} und {{persona}} enthalten MUSS, wenn der Standard sie hatte. Mit content=null wird die Anpassung gelöscht und der Standard wiederhergestellt. Erwähne technische Details (Prompt, Keys) im Chat nicht — sag einfach, dass die Automation angepasst wurde.",
     schema: {

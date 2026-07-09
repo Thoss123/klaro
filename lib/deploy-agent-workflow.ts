@@ -237,6 +237,84 @@ export async function deployEmailAutomation(
   return { ok: true, workflows: results, mailConnected };
 }
 
+/**
+ * Generische AI-Webhook-Funktionalitäten: alle laufen SOFORT (Webhook → KI → Antwort),
+ * ohne Postfach/OAuth. Jede = eigener Prompt + eigener Webhook-Pfad. Neue Funktionalität =
+ * neuer Prompt in agent-prompts.ts + ein Eintrag hier (kein neues Workflow-JSON nötig).
+ */
+export const AI_TOOL_FUNCTIONS = {
+  lead_qualify: { promptKey: 'tool/lead_qualify', label: 'Lead-Qualifizierung' },
+  review_response: { promptKey: 'tool/review_response', label: 'Bewertungs-Antwort' },
+  social_post: { promptKey: 'tool/social_post', label: 'Social-Media-Post' },
+} as const;
+
+export type AiToolFunction = keyof typeof AI_TOOL_FUNCTIONS;
+
+export interface DeployAiToolArgs {
+  userId: string;
+  projectId: string;
+  functionality: AiToolFunction;
+  personaPath?: string;
+  appBaseUrl: string;
+}
+
+/** Baut eine generische AI-Webhook-Funktionalität mit gefülltem Prompt-Key + Credential. */
+export function buildAiTool(args: DeployAiToolArgs): BuiltWorkflow {
+  const fn = AI_TOOL_FUNCTIONS[args.functionality];
+  const { workspaceToken } = centralCredIds();
+  const webhookPath = `${args.functionality.replace(/_/g, '-')}-${projectSuffix(args.projectId)}`;
+  const { workflow } = loadWorkflowTemplate('ai-webhook', {
+    scalars: {
+      FN_WEBHOOK_PATH: webhookPath,
+      PROMPT_KEY: fn.promptKey,
+      APP_BASE_URL: args.appBaseUrl,
+      PROJECT_ID: args.projectId,
+      PERSONA_PATH: args.personaPath || 'rules/persona_default.md',
+    },
+  });
+  workflow.name = `AXANTILO: ${fn.label}`;
+  bindCredentials(workflow, { workspaceToken, twilio: '', mailCredId: null, mailProvider: 'gmail', calendarCredId: null });
+  return { slug: `ai-webhook:${args.functionality}`, name: String(workflow.name), workflow };
+}
+
+/** Deployt + aktiviert eine AI-Webhook-Funktionalität sofort (kein Postfach/OAuth nötig). */
+export async function deployAiTool(
+  supabase: SupabaseClient,
+  args: DeployAiToolArgs,
+): Promise<{ ok: boolean; n8nId: string; webhookUrl: string; label: string; error?: string }> {
+  const { createN8nWorkflow, saveN8nWorkflowDefinition, activateN8nWorkflow } = await import('@/lib/n8n');
+  const built = buildAiTool(args);
+  const label = AI_TOOL_FUNCTIONS[args.functionality].label;
+
+  const { data: existing } = await supabase
+    .from('workflows')
+    .select('n8n_workflow_id')
+    .eq('project_id', args.projectId)
+    .eq('name', built.name)
+    .maybeSingle();
+
+  let n8nId: string;
+  if (existing?.n8n_workflow_id) {
+    n8nId = existing.n8n_workflow_id as string;
+    await saveN8nWorkflowDefinition(n8nId, built.workflow as object);
+  } else {
+    const created = await createN8nWorkflow(built.workflow as object);
+    n8nId = created.id;
+    const { error: insErr } = await supabase.from('workflows').insert({
+      user_id: args.userId,
+      project_id: args.projectId,
+      name: built.name,
+      n8n_workflow_id: n8nId,
+      status: 'active',
+    });
+    if (insErr) return { ok: false, n8nId, webhookUrl: '', label, error: `DB-Eintrag fehlgeschlagen: ${insErr.message}` };
+  }
+  await activateN8nWorkflow(n8nId).catch(() => undefined);
+
+  const webhookUrl = `${n8nWebhookBase()}/webhook/${args.functionality.replace(/_/g, '-')}-${projectSuffix(args.projectId)}`;
+  return { ok: true, n8nId, webhookUrl, label };
+}
+
 export interface DeployChatbotArgs {
   userId: string;
   projectId: string;

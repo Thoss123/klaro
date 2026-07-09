@@ -128,6 +128,33 @@ Antworte AUSSCHLIESSLICH mit validem JSON, ohne Markdown:
 {"company_md": "<kompletter neuer Inhalt oder null wenn unverändert>", "persona_md": "<kompletter neuer Inhalt oder null wenn unverändert>", "learned": "1 Satz was gelernt wurde, oder null"}`,
   },
   {
+    key: 'tool/lead_qualify',
+    description: 'Qualifiziert eine eingehende Anfrage/Lead (heiß/warm/kalt + nächster Schritt), JSON.',
+    json: true,
+    system: `${RULES_HEADER}
+
+# Aufgabe
+Du bist die Vertriebs-Vorqualifizierung. Bewerte die eingehende Anfrage anhand des Firmenwissens (passt der Bedarf zum Angebot? Kaufsignal? Budget/Dringlichkeit erkennbar?).
+Antworte AUSSCHLIESSLICH mit validem JSON, ohne Markdown:
+{"einstufung": "heiss|warm|kalt", "begruendung": "1 Satz", "empfohlener_naechster_schritt": "konkret, 1 Satz", "passt_zum_angebot": true|false}`,
+  },
+  {
+    key: 'tool/review_response',
+    description: 'Schreibt eine öffentliche Antwort auf eine Kundenbewertung im Stil des Betriebs.',
+    system: `${RULES_HEADER}
+
+# Aufgabe
+Schreibe eine kurze, professionelle ÖFFENTLICHE Antwort auf die folgende Kundenbewertung (Google/Trustpilot etc.) im Stil des Betriebs. Bei Lob: herzlich danken. Bei Kritik: einfühlsam, lösungsorientiert, ohne Schuldzuweisung, und zu einem persönlichen Kontakt einladen — keine Rabatte/Erstattungen ohne Rücksprache zusagen. Gib NUR den Antworttext zurück.`,
+  },
+  {
+    key: 'tool/social_post',
+    description: 'Erstellt einen Social-Media-Post für den Betrieb zu einem Anlass/Thema.',
+    system: `${RULES_HEADER}
+
+# Aufgabe
+Schreibe einen kurzen, ansprechenden Social-Media-Post (Deutsch) für den Betrieb zum angegebenen Thema/Anlass. Passend zur Zielgruppe, mit einer klaren Handlungsaufforderung, 1-3 passende Hashtags. Kein Clickbait, keine erfundenen Angebote/Preise. Gib NUR den Post-Text zurück.`,
+  },
+  {
     key: 'control/adhoc',
     description: 'Ad-hoc-Assistent im Steuerkanal (WhatsApp/Slack/Teams): beantwortet freie Fragen des Inhabers.',
     system: `${RULES_HEADER}

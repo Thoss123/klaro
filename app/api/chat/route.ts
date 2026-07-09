@@ -478,6 +478,42 @@ export async function POST(req: NextRequest) {
                    console.error('[setup_chatbot] failed:', e instanceof Error ? e.message : String(e));
                    return { status: 'error', message: 'Chatbot-Einrichtung fehlgeschlagen.' };
                  }
+               } else if (toolCall.name === 'setup_ai_tool') {
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — setup_ai_tool abgebrochen.' };
+                 }
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"setup_ai_tool","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { deployAiTool, AI_TOOL_FUNCTIONS } = await import('@/lib/deploy-agent-workflow');
+                   const { personaPath } = await import('@/lib/workspace');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const fn = argStr(toolCall.args.functionality);
+                   if (!(fn in AI_TOOL_FUNCTIONS)) {
+                     return { status: 'error', message: `Unbekannte Funktionalität: ${fn}` };
+                   }
+                   const vorname = (onboarding?.vorname || onboarding?.username || '').trim();
+                   const persona = vorname ? personaPath(vorname) : 'rules/persona_default.md';
+                   const out = await deployAiTool(supabase, {
+                     userId: user.id,
+                     projectId: project_id,
+                     functionality: fn as keyof typeof AI_TOOL_FUNCTIONS,
+                     personaPath: persona,
+                     appBaseUrl: new URL(req.url).origin,
+                   });
+                   if (!out.ok) return { status: 'error', message: out.error || 'Einrichtung fehlgeschlagen.' };
+                   return {
+                     status: 'success',
+                     webhook_url: out.webhookUrl,
+                     message: `„${out.label}" ist eingerichtet und AKTIV — läuft sofort (kein Postfach nötig). Text an ${out.webhookUrl} (POST { text }) → Ergebnis. Sag dem Nutzer, dass die Funktion live ist, in Alltagssprache.`,
+                   };
+                 } catch (e: unknown) {
+                   console.error('[setup_ai_tool] failed:', e instanceof Error ? e.message : String(e));
+                   return { status: 'error', message: 'Einrichtung der KI-Funktion fehlgeschlagen.' };
+                 }
                } else if (toolCall.name === 'update_agent_prompt') {
                  if (!project_id) {
                    return { status: 'error', message: 'Kein Projekt — update_agent_prompt abgebrochen.' };

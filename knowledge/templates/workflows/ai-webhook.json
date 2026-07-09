@@ -1,0 +1,40 @@
+{
+  "name": "AXANTILO: AI-Webhook",
+  "nodes": [
+    {
+      "name": "Eingang",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "parameters": { "httpMethod": "POST", "path": "{{FN_WEBHOOK_PATH}}", "responseMode": "responseNode", "options": {} }
+    },
+    {
+      "name": "KI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: '{{PROMPT_KEY}}', persona_path: '{{PERSONA_PATH}}', user: ($json.body.text || $json.body.question || $json.body.message || $json.body.input || JSON.stringify($json.body)) }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Antwort",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 0],
+      "parameters": { "respondWith": "json", "responseBody": "={{ JSON.stringify({ result: $json.text }) }}" }
+    }
+  ],
+  "connections": {
+    "Eingang": { "main": [[{ "node": "KI", "type": "main", "index": 0 }]] },
+    "KI": { "main": [[{ "node": "Antwort", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
