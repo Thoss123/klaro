@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export type DataLayerRecord = {
@@ -19,9 +20,21 @@ export async function ensureDataLayer(
   userId: string,
   projectId: string,
 ): Promise<DataLayerRecord | null> {
-  try {
-    const supabase = await createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
+  return ensureDataLayerWithClient(supabase, userId, projectId);
+}
 
+/**
+ * Wie `ensureDataLayer`, nimmt aber einen bereits aufgelösten Client entgegen — für
+ * Aufrufer, die schon einen Service-/Anon-Client haben (z. B. `resolveCaller`-Ergebnis
+ * bei Maschinen-Aufrufen, wo `createSupabaseServerClient()` keine Cookie-Session findet).
+ */
+export async function ensureDataLayerWithClient(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<DataLayerRecord | null> {
+  try {
     const { data: existing } = await supabase
       .from('user_data_layer')
       .select('*')
@@ -64,6 +77,64 @@ export async function ensureDataLayer(
     console.error('[data-layer] ensureDataLayer error:', e instanceof Error ? e.message : String(e));
     return null;
   }
+}
+
+export type DataTableRecord = {
+  id: string;
+  layer_id: string;
+  user_id: string;
+  project_id: string;
+  table_name: string;
+  display_name: string;
+  description: string | null;
+  schema_def: unknown;
+  row_count: number;
+  created_at: string;
+};
+
+/**
+ * Findet oder legt (idempotent) die `user_data_tables`-Zeile für einen logischen Tabellennamen
+ * an. Stellt vorher sicher, dass die Datenablage selbst existiert (`ensureDataLayer`).
+ * Genutzt von `/api/agent/data`, damit n8n-Workflows Tabellen einfach per Name ansprechen
+ * können, ohne vorher manuell etwas in Supabase anzulegen.
+ */
+export async function getOrCreateTable(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+  tableName: string,
+): Promise<DataTableRecord | null> {
+  const { data: existing } = await supabase
+    .from('user_data_tables')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('table_name', tableName)
+    .maybeSingle();
+
+  if (existing) return existing as DataTableRecord;
+
+  const layer = await ensureDataLayerWithClient(supabase, userId, projectId);
+  if (!layer) return null;
+
+  const { data: created, error } = await supabase
+    .from('user_data_tables')
+    .insert({
+      layer_id: layer.id,
+      user_id: userId,
+      project_id: projectId,
+      table_name: tableName,
+      display_name: tableName,
+      schema_def: [],
+    })
+    .select()
+    .single();
+
+  if (error || !created) {
+    console.error('[data-layer] getOrCreateTable insert failed:', error?.message);
+    return null;
+  }
+
+  return created as DataTableRecord;
 }
 
 /** Human-readable summary string for coach context injection. */
