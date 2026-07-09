@@ -14,9 +14,10 @@
 
 /** Map of n8n credential type key → env var holding the shared credential ID. */
 const CENTRAL_CRED_ENV: Record<string, string> = {
-  smtp:        'N8N_CREDENTIAL_SMTP',        // Resend SMTP — all transactional email via hello@axantilo.com
-  twilioApi:   'N8N_CREDENTIAL_TWILIO',      // Twilio — central number for SMS + WhatsApp-via-Twilio
-  whatsAppApi: 'N8N_CREDENTIAL_WHATSAPP',    // WhatsApp Business Cloud (Meta) — if used separately
+  smtp:           'N8N_CREDENTIAL_SMTP',            // Resend SMTP — all transactional email via hello@axantilo.com
+  twilioApi:      'N8N_CREDENTIAL_TWILIO',          // Twilio — central number for SMS + WhatsApp-via-Twilio
+  whatsAppApi:    'N8N_CREDENTIAL_WHATSAPP',        // WhatsApp Business Cloud (Meta) — if used separately
+  httpHeaderAuth: 'N8N_CREDENTIAL_WORKSPACE_TOKEN', // Workspace-API-Token — Bearer für n8n→App-Calls auf /api/agent/* & /api/workspace
 };
 
 /** Returns the n8n credential ID for a central service, or undefined if not configured. */
