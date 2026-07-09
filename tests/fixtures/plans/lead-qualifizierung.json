@@ -1,0 +1,58 @@
+{
+  "title": "Lead-Qualifizierung mit Sofort-Hinweis",
+  "description": "Neue Anfrage einordnen (heiss/warm/kalt), passende Antwort entwerfen, heisse Leads sofort melden, alle Leads in der Ablage protokollieren.",
+  "pain_point_id": "pp_1",
+  "steps": [
+    {
+      "label": "Neue Anfrage",
+      "tool": "gmailTrigger",
+      "type": "trigger",
+      "description": "Neue Mail-Anfrage kommt im Postfach an"
+    },
+    {
+      "label": "Anfrage einstufen",
+      "tool": "textClassifier",
+      "type": "ai",
+      "description": "KI bewertet die Anfrage anhand des Firmenwissens und stuft sie heiss/warm/kalt ein"
+    },
+    {
+      "label": "Heiss?",
+      "tool": "if",
+      "type": "decision",
+      "description": "Verzweigt nach Einstufung: heiss sofort melden, sonst normaler Ablauf"
+    },
+    {
+      "label": "Inhaber sofort informieren",
+      "tool": "slack",
+      "type": "action",
+      "description": "Heisser Lead wird priorisiert per Slack an den Inhaber gemeldet"
+    },
+    {
+      "label": "Erste Antwort entwerfen",
+      "tool": "chainLlm",
+      "type": "ai",
+      "description": "Passende erste Antwort formulieren, abgestimmt auf die Einstufung"
+    },
+    {
+      "label": "Antwort senden",
+      "tool": "gmail",
+      "type": "action",
+      "description": "Entworfene Antwort an den Anfragenden senden"
+    },
+    {
+      "label": "Lead in Liste eintragen",
+      "tool": "googleSheets",
+      "type": "output",
+      "description": "Lead mit Einstufung und Begründung in die Lead-Liste eintragen"
+    }
+  ],
+  "edges": [
+    { "from": 1, "to": 2 },
+    { "from": 2, "to": 3 },
+    { "from": 3, "to": 4, "branch": "true" },
+    { "from": 4, "to": 5 },
+    { "from": 3, "to": 5, "branch": "false" },
+    { "from": 5, "to": 6 },
+    { "from": 6, "to": 7 }
+  ]
+}

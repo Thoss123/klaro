@@ -1,0 +1,73 @@
+{
+  "title": "Kontakte automatisch abgleichen",
+  "description": "Neuen/geänderten Kontakt gegen die Datenablage abgleichen, bei Duplikaten per KI zusammenführen, bei Unklarheit dem Inhaber zur Prüfung vorlegen, sonst automatisch aktualisieren.",
+  "pain_point_id": "pp_4",
+  "steps": [
+    {
+      "label": "Kontakt geändert",
+      "tool": "webhook",
+      "type": "trigger",
+      "description": "Neuer oder geänderter Kontakt aus einem der Quellsysteme meldet sich"
+    },
+    {
+      "label": "Bestehenden Kontakt abgleichen",
+      "tool": "httpRequest",
+      "type": "action",
+      "description": "Datenablage nach Mail/Telefonnummer durchsuchen (op select)"
+    },
+    {
+      "label": "Schon vorhanden?",
+      "tool": "if",
+      "type": "decision",
+      "description": "Nein: neu anlegen, Ja: auf Abweichung prüfen"
+    },
+    {
+      "label": "Neuen Kontakt anlegen",
+      "tool": "httpRequest",
+      "type": "action",
+      "description": "Neuen Kontakt in der Datenablage anlegen (op insert)"
+    },
+    {
+      "label": "Abweichung per KI zusammenführen",
+      "tool": "agent",
+      "type": "ai",
+      "description": "Bei unscharfen Duplikaten entscheidet die KI selbstständig, welche Version aktueller/vollständiger ist und schlägt eine Zusammenführung vor"
+    },
+    {
+      "label": "Zusammenführung eindeutig?",
+      "tool": "if",
+      "type": "decision",
+      "description": "Eindeutiger Treffer: automatisch übernehmen, sonst dem Inhaber vorlegen"
+    },
+    {
+      "label": "Freigabe beim Inhaber einholen",
+      "tool": "gmail",
+      "type": "human",
+      "description": "Vorschlag zur Zusammenführung zur Freigabe an den Inhaber senden"
+    },
+    {
+      "label": "Zielsysteme aktualisieren",
+      "tool": "googleSheets",
+      "type": "output",
+      "description": "Freigegebene Änderung in Tabelle/CRM spiegeln"
+    },
+    {
+      "label": "Datenablage fortschreiben",
+      "tool": "httpRequest",
+      "type": "output",
+      "description": "Aktuellen Stand als Quelle der Wahrheit in der Datenablage speichern (op update)"
+    }
+  ],
+  "edges": [
+    { "from": 1, "to": 2 },
+    { "from": 2, "to": 3 },
+    { "from": 3, "to": 4, "branch": "false" },
+    { "from": 3, "to": 5, "branch": "true" },
+    { "from": 4, "to": 9 },
+    { "from": 5, "to": 6 },
+    { "from": 6, "to": 8, "branch": "true" },
+    { "from": 6, "to": 7, "branch": "false" },
+    { "from": 7, "to": 8 },
+    { "from": 8, "to": 9 }
+  ]
+}
