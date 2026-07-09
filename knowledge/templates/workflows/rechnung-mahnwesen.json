@@ -1,0 +1,265 @@
+{
+  "name": "AXANTILO: Rechnung & Mahnwesen",
+  "nodes": [
+    {
+      "name": "Auftrag erledigt",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-260, 460],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{ORDER_DONE_WEBHOOK_PATH}}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Rechnungsdaten sammeln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 460],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Nimmt die Trigger-Payload (Webhook/Formular) entgegen und normalisiert die fuer die\n// Rechnung noetigen Felder. Fehlende Felder bleiben leer -> 'KI: Rechnungstext formatieren'\n// erfindet nichts dazu, sondern laesst die Position offen.\nconst b = $json.body || $json || {};\nreturn [{\n  json: {\n    kunde_name: b.kunde_name || b.customer || '',\n    kunde_email: b.kunde_email || b.email || '',\n    leistung: b.leistung || b.service || '',\n    betrag_hinweis: b.betrag || b.amount || '',\n    faelligkeit_tage: Number(b.faelligkeit_tage || 14),\n  },\n}];"
+      }
+    },
+    {
+      "name": "KI: Rechnungstext formatieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [180, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'invoice/draft', persona_path: '{{PERSONA_PATH}}', user: 'Kunde: ' + ($json.kunde_name || 'unbekannt') + '\\nLeistung: ' + ($json.leistung || 'unklar') + '\\nBetrag-Hinweis: ' + ($json.betrag_hinweis || '-') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Rechnungstext parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 460],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Sicheres Parsen des LLM-JSON aus 'KI: Rechnungstext formatieren'. Bei ungueltigem JSON:\n// leerer, aber gueltiger Fallback -> Rechnung wird trotzdem erzeugt, nur mit leeren Feldern.\nlet data = { positionen: '', leistungstext: '', betrag_gesamt: '' };\ntry {\n  const parsed = JSON.parse($input.first().json.text);\n  if (parsed && typeof parsed === 'object') data = { ...data, ...parsed };\n} catch (e) { /* ungueltiges LLM-JSON -> Fallback mit leeren Feldern */ }\nconst quelle = $('Rechnungsdaten sammeln').item.json;\nconst now = new Date();\nconst due = new Date(now.getTime() + (quelle.faelligkeit_tage || 14) * 24 * 60 * 60 * 1000);\nreturn [{\n  json: {\n    rechnungsnummer: 'R-' + now.getFullYear() + '-' + String(now.getTime()).slice(-6),\n    datum: now.toISOString().slice(0, 10),\n    faelligkeit: due.toISOString().slice(0, 10),\n    kunde_name: quelle.kunde_name,\n    kunde_email: quelle.kunde_email,\n    leistungstext: data.leistungstext || quelle.leistung,\n    positionen: data.positionen,\n    betrag_gesamt: data.betrag_gesamt || quelle.betrag_hinweis,\n  },\n}];"
+      }
+    },
+    {
+      "name": "Rechnung aus Vorlage kopieren",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [620, 460],
+      "parameters": {
+        "resource": "file",
+        "operation": "copy",
+        "fileId": { "__rl": true, "mode": "id", "value": "{{INVOICE_DOC_TEMPLATE_ID}}" },
+        "name": "={{ 'Rechnung ' + $json.rechnungsnummer + ' - ' + $json.kunde_name }}",
+        "sameFolder": true,
+        "options": {}
+      }
+    },
+    {
+      "name": "Rechnung befüllen",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [840, 460],
+      "parameters": {
+        "resource": "document",
+        "operation": "update",
+        "documentURL": "={{ $json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            { "object": "text", "action": "replaceAll", "text": "{{rechnungsnummer}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.rechnungsnummer }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{datum}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.datum }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{kundenname}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.kunde_name }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{leistung}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.leistungstext }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{positionen}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.positionen }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{betrag}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.betrag_gesamt }}", "matchCase": true },
+            { "object": "text", "action": "replaceAll", "text": "{{faelligkeit}}", "replaceText": "={{ $('Rechnungstext parsen').item.json.faelligkeit }}", "matchCase": true }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Rechnung als PDF exportieren",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1060, 460],
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $('Rechnung aus Vorlage kopieren').item.json.id }}" },
+        "options": {
+          "fileName": "={{ $('Rechnungstext parsen').item.json.rechnungsnummer + '.pdf' }}",
+          "googleFileConversion": { "conversion": { "docsToFormat": "application/pdf" } }
+        }
+      }
+    },
+    {
+      "name": "Rechnung senden",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [1280, 460],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Rechnungstext parsen').item.json.kunde_email }}",
+        "subject": "={{ 'Ihre Rechnung ' + $('Rechnungstext parsen').item.json.rechnungsnummer }}",
+        "emailType": "text",
+        "message": "={{ 'Anbei erhalten Sie die Rechnung ' + $('Rechnungstext parsen').item.json.rechnungsnummer + ' über ' + $('Rechnungstext parsen').item.json.betrag_gesamt + ', fällig am ' + $('Rechnungstext parsen').item.json.faelligkeit + '.' }}",
+        "options": {
+          "attachmentsUi": { "attachmentsBinary": [{ "property": "data" }] }
+        }
+      }
+    },
+    {
+      "name": "Rechnung in Datenablage speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{INVOICE_TABLE}}', op: 'insert', row: { data: { rechnungsnummer: $('Rechnungstext parsen').item.json.rechnungsnummer, customer: $('Rechnungstext parsen').item.json.kunde_name, email: $('Rechnungstext parsen').item.json.kunde_email, amount: $('Rechnungstext parsen').item.json.betrag_gesamt, due_date: $('Rechnungstext parsen').item.json.faelligkeit, status: 'sent', mahnstufe: 0, sent_at: $now.toISO() } } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Täglicher Mahnlauf",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-260, 900],
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "triggerAtHour": 8 }] }
+      }
+    },
+    {
+      "name": "Offene Rechnungen lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-40, 900],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{INVOICE_TABLE}}', op: 'select', limit: 500 }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Mahnstufe berechnen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [180, 900],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Bestimmt pro offener Rechnung, ob eine neue Mahnstufe faellig ist. Nie mehrfach dieselbe\n// Stufe senden; laeuft ueber die Datenablage statt paralleler Wait-Nodes (wie followup-serie).\nconst rows = ($input.first().json.rows || []);\nconst now = new Date();\nconst out = [];\nfor (const row of rows) {\n  const d = row.data || {};\n  if (d.status === 'paid' || d.status === 'bezahlt') continue;\n  const dueAt = d.due_date ? new Date(d.due_date) : null;\n  if (!dueAt || isNaN(dueAt.getTime()) || now < dueAt) continue; // noch nicht faellig\n  const daysOverdue = Math.floor((now.getTime() - dueAt.getTime()) / (24 * 60 * 60 * 1000));\n  const currentStage = Number(d.mahnstufe || 0);\n  let nextStage = currentStage;\n  if (currentStage === 0 && daysOverdue >= 0) nextStage = 1;\n  else if (currentStage === 1 && daysOverdue >= 7) nextStage = 2;\n  else if (currentStage === 2 && daysOverdue >= 14) nextStage = 3;\n  if (nextStage === currentStage) continue; // noch keine neue Stufe faellig\n  out.push({\n    json: {\n      row_id: row.id,\n      rechnungsnummer: d.rechnungsnummer || row.id,\n      stage: nextStage,\n      send_target: d.email || d.send_target || '',\n      amount: d.amount || '',\n      due_date: d.due_date || '',\n      customer: d.customer || '',\n      days_overdue: daysOverdue,\n    },\n  });\n}\nreturn out;"
+      }
+    },
+    {
+      "name": "KI: Zahlungserinnerung",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 900],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'invoice/reminder', persona_path: '{{PERSONA_PATH}}', variables: { mahnstufe: String($json.stage), rechnung_kontext: 'Rechnung ' + $json.rechnungsnummer + ', Kunde ' + $json.customer + ', Betrag ' + $json.amount + ', fällig am ' + $json.due_date }, user: 'Rechnung ' + $json.rechnungsnummer + ' ist seit ' + $json.days_overdue + ' Tag(en) überfällig.' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Mahnung senden",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [620, 900],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Mahnstufe berechnen').item.json.send_target }}",
+        "subject": "={{ 'Zahlungserinnerung: Rechnung ' + $('Mahnstufe berechnen').item.json.rechnungsnummer }}",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Mahnstufe aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 900],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{INVOICE_TABLE}}', op: 'update', id: $('Mahnstufe berechnen').item.json.row_id, data: { mahnstufe: $('Mahnstufe berechnen').item.json.stage, status: 'gemahnt', last_reminded_at: $now.toISO() } }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Auftrag erledigt": {
+      "main": [[{ "node": "Rechnungsdaten sammeln", "type": "main", "index": 0 }]]
+    },
+    "Rechnungsdaten sammeln": {
+      "main": [[{ "node": "KI: Rechnungstext formatieren", "type": "main", "index": 0 }]]
+    },
+    "KI: Rechnungstext formatieren": {
+      "main": [[{ "node": "Rechnungstext parsen", "type": "main", "index": 0 }]]
+    },
+    "Rechnungstext parsen": {
+      "main": [[{ "node": "Rechnung aus Vorlage kopieren", "type": "main", "index": 0 }]]
+    },
+    "Rechnung aus Vorlage kopieren": {
+      "main": [[{ "node": "Rechnung befüllen", "type": "main", "index": 0 }]]
+    },
+    "Rechnung befüllen": {
+      "main": [[{ "node": "Rechnung als PDF exportieren", "type": "main", "index": 0 }]]
+    },
+    "Rechnung als PDF exportieren": {
+      "main": [[{ "node": "Rechnung senden", "type": "main", "index": 0 }]]
+    },
+    "Rechnung senden": {
+      "main": [[{ "node": "Rechnung in Datenablage speichern", "type": "main", "index": 0 }]]
+    },
+    "Täglicher Mahnlauf": {
+      "main": [[{ "node": "Offene Rechnungen lesen", "type": "main", "index": 0 }]]
+    },
+    "Offene Rechnungen lesen": {
+      "main": [[{ "node": "Mahnstufe berechnen", "type": "main", "index": 0 }]]
+    },
+    "Mahnstufe berechnen": {
+      "main": [[{ "node": "KI: Zahlungserinnerung", "type": "main", "index": 0 }]]
+    },
+    "KI: Zahlungserinnerung": {
+      "main": [[{ "node": "Mahnung senden", "type": "main", "index": 0 }]]
+    },
+    "Mahnung senden": {
+      "main": [[{ "node": "Mahnstufe aktualisieren", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

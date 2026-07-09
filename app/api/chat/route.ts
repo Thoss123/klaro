@@ -528,7 +528,7 @@ export async function POST(req: NextRequest) {
                    if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
 
                    const slug = argStr(toolCall.args.slug);
-                   if (slug !== 'followup-serie' && slug !== 'angebot-autopilot') {
+                   if (slug !== 'followup-serie' && slug !== 'angebot-autopilot' && slug !== 'rechnung-mahnwesen') {
                      return { status: 'error', message: `Unbekanntes Template: ${slug}` };
                    }
                    const provider = argStr(toolCall.args.mail_provider) || 'gmail';
@@ -550,6 +550,15 @@ export async function POST(req: NextRequest) {
                      scalars.TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM?.trim() || '+14155238886';
                      scalars.OFFER_APPROVAL_WEBHOOK_PATH = `offer-approval-${projectSuffix(project_id)}`;
                    }
+                   if (slug === 'rechnung-mahnwesen') {
+                     const docTemplateId = argStr(toolCall.args.invoice_doc_template_id).trim();
+                     if (!docTemplateId) {
+                       return { status: 'error', message: 'Für Rechnung & Mahnwesen fehlt die Google-Docs-ID der Rechnungsvorlage (invoice_doc_template_id).' };
+                     }
+                     scalars.INVOICE_TABLE = argStr(toolCall.args.invoice_table) || 'rechnungen';
+                     scalars.INVOICE_DOC_TEMPLATE_ID = docTemplateId;
+                     scalars.ORDER_DONE_WEBHOOK_PATH = `auftrag-fertig-${projectSuffix(project_id)}`;
+                   }
 
                    const out = await deployTemplateWorkflow(supabase, {
                      slug,
@@ -567,7 +576,9 @@ export async function POST(req: NextRequest) {
                      message: out.active
                        ? (slug === 'angebot-autopilot'
                            ? 'Der Angebots-Autopilot ist eingerichtet und aktiv. Eingehende Anfragen werden automatisch zu einem Angebotsentwurf, der per WhatsApp zur Freigabe geschickt wird. Sag dem Nutzer freundlich, dass es läuft.'
-                           : 'Die Follow-up-Serie ist eingerichtet und aktiv. Offene Angebote werden ab jetzt automatisch nach 3, 7 und 14 Tagen nachgefasst. Sag dem Nutzer freundlich, dass es läuft.')
+                           : slug === 'rechnung-mahnwesen'
+                             ? 'Rechnung & Mahnwesen ist eingerichtet und aktiv. Erledigte Aufträge werden automatisch zu einer Rechnung (PDF) und offene Beträge nach Fälligkeit automatisch angemahnt. Sag dem Nutzer freundlich, dass es läuft.'
+                             : 'Die Follow-up-Serie ist eingerichtet und aktiv. Offene Angebote werden ab jetzt automatisch nach 3, 7 und 14 Tagen nachgefasst. Sag dem Nutzer freundlich, dass es läuft.')
                        : 'Die Automation ist eingerichtet. LETZTER SCHRITT für den Nutzer: sein Postfach verbinden (3-Klick-Login) — erst danach läuft sie automatisch.',
                    };
                  } catch (e: unknown) {

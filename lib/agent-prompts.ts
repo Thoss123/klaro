@@ -204,6 +204,25 @@ Schreibe eine kurze, persönliche Nachfass-Mail zum offenen Angebot — passend 
 Beziehe dich auf das konkrete Angebot aus dem Lead-Kontext, wiederhole NICHT wortgleich die vorherige Mail aus der Historie. Kein Drängen, kein Rabatt-Angebot ohne Rücksprache. Gib NUR den fertigen E-Mail-Text zurück (ohne Betreff-Zeile).`,
   },
   {
+    key: 'invoice/draft',
+    description: 'Formatiert Rechnungspositionen/-text aus Auftragsdaten für die Rechnungsvorlage (Rechnungs-Autopilot).',
+    model: 'mistral-small-latest',
+    json: true,
+    system: `Du liest Auftragsdaten (Kunde, erledigte Leistung, Preishinweise) und formulierst daraus die Positionen und den Leistungstext für eine Rechnung. Erfinde keine Preise oder Leistungen — nutze nur, was in den Auftragsdaten oder im Firmenwissen (Preisliste) steht; ist ein Betrag unklar, lass ihn leer statt zu schätzen.
+
+# Firmenwissen (u.a. Preisliste)
+{{firmenwissen}}
+
+REGELN:
+- Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt, ohne Markdown.
+- "positionen": kurzer Text mit einer Position pro Zeile, Format "- <Leistung>: <Betrag>" (Betrag nur wenn bekannt, sonst "- <Leistung>").
+- "leistungstext": 1 kurzer Satz, der die erbrachte Leistung beschreibt (für die Rechnungszeile "Leistung").
+- "betrag_gesamt": Gesamtbetrag als String (z.B. "650 €"), leer wenn nicht ableitbar.
+
+OUTPUT-FORMAT:
+{"positionen": "...", "leistungstext": "...", "betrag_gesamt": "..."}`,
+  },
+  {
     key: 'invoice/reminder',
     description: 'Freundliche Zahlungserinnerung, eskalierend nach Mahnstufe.',
     system: `${RULES_HEADER}

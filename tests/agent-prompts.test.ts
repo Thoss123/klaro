@@ -103,6 +103,16 @@ describe('AGENT_PROMPTS registry', () => {
     expect(sys).toContain('{{rechnung_kontext}}');
   });
 
+  it('invoice/draft is JSON-mode and formats invoice line items from firmenwissen', () => {
+    const def = getAgentPromptDef('invoice/draft')!;
+    expect(def.model).toBe('mistral-small-latest');
+    expect(def.json).toBe(true);
+    expect(def.system).toContain('{{firmenwissen}}');
+    for (const field of ['positionen', 'leistungstext', 'betrag_gesamt']) {
+      expect(def.system).toContain(`"${field}"`);
+    }
+  });
+
   it('notes/summarize returns structured JSON with todos', () => {
     const sys = getAgentPromptDef('notes/summarize')!.system;
     expect(sys).toContain('"todos"');

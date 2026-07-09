@@ -47,6 +47,19 @@ const MAIL_BINDING_CRED_TYPES: Record<MailProvider, string[]> = {
   imap: ['imap', 'smtp'],
 };
 
+/**
+ * Google-Service-Nodes → (user_credentials.tool_name, n8n-Credential-Key). Diese laufen über
+ * den zentralen Google-3-Klick-OAuth (pro User verbundenes Konto), nicht über zentrale Creds —
+ * daher hier per tool_name aus user_credentials binden (analog zu google_calendar in
+ * lib/deploy-agent-workflow.ts). tool_name-Konvention: siehe lib/workflow-generator.ts CREDENTIAL_TYPE.
+ */
+const GOOGLE_SERVICE_BINDINGS: Record<string, { toolName: string; credKey: string }> = {
+  'n8n-nodes-base.googleDocs': { toolName: 'google_docs', credKey: 'googleDocsOAuth2Api' },
+  'n8n-nodes-base.googleDrive': { toolName: 'google_drive', credKey: 'googleDriveOAuth2Api' },
+  'n8n-nodes-base.googleSheets': { toolName: 'google_sheets', credKey: 'googleSheetsOAuth2Api' },
+  'n8n-nodes-base.googleCalendar': { toolName: 'google_calendar', credKey: 'googleCalendarOAuth2Api' },
+};
+
 /** Kurzer, stabiler Suffix pro Projekt für kollisionsfreie Webhook-Pfade/Credential-Namen. */
 export function projectSuffix(projectId: string): string {
   return projectId.replace(/-/g, '').slice(0, 8);
@@ -152,6 +165,25 @@ export async function buildTemplateWorkflow(
     node.credentials = {
       ...(node.credentials as Record<string, unknown> | undefined),
       [binding.credentialType]: { id: credId, name: binding.credentialType },
+    };
+  }
+
+  // Google-Service-Nodes (Docs/Drive/Sheets/Calendar) sind ebenfalls kein Struct-Slot —
+  // die pro-User Google-Credential (3-Klick-OAuth) hier per tool_name binden. Nur binden,
+  // wenn der User den Dienst schon verbunden hat; sonst bleibt der Node uncredentialed und
+  // die Aktivierung wartet (analog zum Mail-Gate).
+  const googleCredCache = new Map<string, string | null>();
+  for (const node of workflow.nodes) {
+    const g = GOOGLE_SERVICE_BINDINGS[node.type];
+    if (!g) continue;
+    if (!googleCredCache.has(g.toolName)) {
+      googleCredCache.set(g.toolName, await findCredentialByTool(supabase, args.projectId, g.toolName));
+    }
+    const credId = googleCredCache.get(g.toolName);
+    if (!credId) continue;
+    node.credentials = {
+      ...(node.credentials as Record<string, unknown> | undefined),
+      [g.credKey]: { id: credId, name: g.credKey },
     };
   }
 

@@ -325,7 +325,7 @@ export const AXANTILO_TOOLS: AITool[] = [
       properties: {
         slug: {
           type: "string",
-          enum: ["followup-serie", "angebot-autopilot"],
+          enum: ["followup-serie", "angebot-autopilot", "rechnung-mahnwesen"],
           description: "Golden-Template-Slug aus knowledge/templates/workflows/<slug>.json."
         },
         mail_provider: {
@@ -344,6 +344,14 @@ export const AXANTILO_TOOLS: AITool[] = [
         owner_whatsapp: {
           type: "string",
           description: "NUR für angebot-autopilot (Freigabe/Revision per WhatsApp): Nummer des Verantwortlichen im internationalen Format, z.B. +4367... (ohne 'whatsapp:'-Präfix)."
+        },
+        invoice_table: {
+          type: "string",
+          description: "Optional: logischer Tabellenname der Rechnungen in der Datenablage für rechnung-mahnwesen (Default 'rechnungen')."
+        },
+        invoice_doc_template_id: {
+          type: "string",
+          description: "NUR für rechnung-mahnwesen: Google-Docs-Datei-ID der Rechnungsvorlage des Nutzers (aus der Docs-URL). Wird pro Rechnung kopiert und befüllt."
         }
       },
       required: ["slug"]
