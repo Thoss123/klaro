@@ -92,6 +92,15 @@ export const NODE_MAP: NodeMapEntry[] = [
     wiringNote: 'Startet bei neuer Outlook-/Microsoft-365-Mail. Auth: OAuth2 über Microsoft-Login.',
   },
   {
+    n8nType: 'n8n-nodes-base.googleCalendarTrigger',
+    displayName: 'Google Calendar Trigger',
+    aliases: ['kalender trigger', 'termin beendet', 'nach dem termin', 'kalender-event', 'meeting beendet'],
+    role: 'trigger',
+    credentialType: 'googleCalendarOAuth2Api',
+    typicalOps: ['triggerOn:eventEnded', 'triggerOn:eventCreated', 'triggerOn:eventStarted'],
+    wiringNote: `Startet bei Kalender-Ereignis (z.B. Termin beendet/erstellt); calendarId + triggerOn setzen. ${GOOGLE_AUTH}`,
+  },
+  {
     n8nType: 'n8n-nodes-base.emailReadImap',
     displayName: 'IMAP E-Mail Trigger',
     aliases: ['imap', 'e-mail abrufen', 'posteingang imap', 'mail-eingang imap'],
