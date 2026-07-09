@@ -1059,6 +1059,11 @@ const UNIVERSAL_RULES = [
   'Dynamische Felder als Expression mit führendem "=": "={{ $json.feld }}".',
   'Pflichtfelder füllen (z.B. Airtable Base/Table) — tool-abhängige resourceLocator-Felder per Live-Optionen wählen, nicht leer lassen.',
   'Google-Dienste (Gmail/Sheets/Docs/Drive/Calendar/YouTube): zentrale Google-OAuth-App (3 Klicks), nie eigene OAuth-Clients/Token.',
+  'Serien/Follow-up: EIN scheduleTrigger + Datenablage-Stand (Stufe pro Kontakt), nie parallele Wait-Nodes.',
+  'Persistenter Zustand über Läufe: Datenablage-Schritt (HTTP `/api/agent/data`, op select/insert/update/delete).',
+  'Dokument-Erzeugung (Angebot/Rechnung): Dokumentvorlage + Google Docs (createFromTemplate) → Drive-PDF-Export.',
+  'KI-Schritte laufen zentral über Axantilo — kein eigener KI-Zugang des Nutzers nötig.',
+  '„Nach jedem Termin" → googleCalendarTrigger.',
 ];
 
 const byType = new Map(NODE_MAP.map(e => [e.n8nType, e]));

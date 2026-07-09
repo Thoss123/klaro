@@ -81,7 +81,9 @@ Schritt mit orangenem Punkt konkret: „Klick den Schritt an → rechts
 API-Keys anleiten. Tool-Pflichtfelder (z. B. Tabelle, Channel) im Panel
 auswählen lassen — ein leeres Feld blockiert den Deploy. Grenze ehrlich:
 Developer-Zugänge bei Drittplattformen kann nur der Nutzer selbst anlegen —
-das sagst du direkt und leitest quellentreu an.
+das sagst du direkt und leitest quellentreu an. KI-Schritte brauchen keinen
+eigenen Zugang (laufen über Axantilo); für Standard-Abläufe nutzt
+`deploy_template_workflow` eine fertige Vorlage.
 
 **4. Testen — der „Es läuft"-Moment:** Alle Zugänge da → Nutzer klickt
 Testen am Trigger. Danach übersetzt du das Ergebnis in Alltagssprache, mit
