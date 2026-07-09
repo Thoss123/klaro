@@ -7,10 +7,21 @@ import type { N8nCatalogIndexEntry, NodeResolverResult, N8nCatalogSnapshot } fro
 import { buildDefaultParameters, getNodeByName, getN8nCatalog, getCatalogIndex } from '@/lib/n8n-catalog';
 import { searchCatalogIndex } from '@/lib/n8n-categories';
 import { describeNodeForPrompt } from '@/lib/n8n-node-doc';
-import { matchMainNodeType, matchToolCapability } from '@/lib/node-map';
+import { matchMainNodeType, matchToolCapability, nodeMapEntry } from '@/lib/node-map';
 import { type CompleteJson, safeParseJson } from '@/lib/agents/llm';
 
 const find = (index: N8nCatalogIndexEntry[], name: string) => index.find(e => e.name === name);
+
+/**
+ * Exakter Treffer über den `tool`-Alias (z.B. "gmail", "chainLlm", "if") —
+ * entspricht `n8n_type.split('.').pop()`, dem Format, in dem applyResolverToSteps
+ * `step.tool` schreibt (node-resolver.ts:372). Ist DAS die Wahrheit für einen Schritt,
+ * gewinnt sie gegen Typ-Inferenz UND Keyword-Heuristik (s. heuristicResolveStep).
+ */
+function findByExactTool(index: N8nCatalogIndexEntry[], tool: string | undefined): N8nCatalogIndexEntry | undefined {
+  if (!tool) return undefined;
+  return index.find(e => e.name.split('.').pop() === tool);
+}
 
 /** Letzter KI-Fallback, wenn keine spezifischere Wahl greift. */
 function preferAiFallback(index: N8nCatalogIndexEntry[]): N8nCatalogIndexEntry | undefined {
@@ -63,6 +74,9 @@ function pickTriggerNode(hay: string, index: N8nCatalogIndexEntry[]): N8nCatalog
   if (/neue mail|eingehende mail|mail-eingang|posteingang|gmail/.test(hay)) {
     return find(index, 'n8n-nodes-base.gmailTrigger');
   }
+  if (/kalender|termin|meeting|calendar|besprechung/.test(hay)) {
+    return find(index, 'n8n-nodes-base.googleCalendarTrigger');
+  }
   if (/formular|form/.test(hay)) return find(index, 'n8n-nodes-base.formTrigger');
   if (/webhook|api|http|eingehend|empfäng|signal/.test(hay)) return find(index, 'n8n-nodes-base.webhook');
   return find(index, 'n8n-nodes-base.manualTrigger');
@@ -111,7 +125,18 @@ function filterResolverCandidates(entries: N8nCatalogIndexEntry[]): N8nCatalogIn
 const EXPLICIT_SET_RE = /\b(feld(er)? setzen|felder umbenennen|daten setzen|mapping|edit fields)\b/i;
 const AI_LABEL_RE = /\bki\b|gpt|openai|generier|analysier|zusammenfass|klassifizier|extrahier|caption|texten|umformulier/i;
 
-/** Deterministic fallback when LLM fails or for obvious step types. NODE_MAP-getrieben. */
+/**
+ * Deterministic fallback when LLM fails or for obvious step types. NODE_MAP-getrieben.
+ *
+ * Präzedenz (wichtig — nicht umsortieren ohne die Tests zu prüfen):
+ *   1. `step.tool` exakt (Suffix-Match, z.B. "gmail"/"chainLlm"/"if") — die Wahrheit, wenn vorhanden.
+ *   2. Selbst-lieferndes Tool (Fireflies/Otter) → seine Quelle/Trigger.
+ *   3. Explizites `step.type` (trigger/ai/decision/human) → die dafür vorgesehene Node-Kategorie.
+ *      Keyword-Heuristiken (AI_LABEL_RE/Entscheidungs-Regex) sind NUR Fallback für Schritte
+ *      OHNE eindeutigen Typ — sie dürfen einen expliziten Typ nicht überstimmen (sonst wird z.B.
+ *      ein `type:"human"`-Schritt mit "…zur Prüfung…" im Label fälschlich zu einem blanken IF).
+ *   4. NODE_MAP-Alias-Treffer über Label+Tool-Text, generische HTTP-API, explizites Set.
+ */
 export function heuristicResolveStep(
   step: WorkflowStep,
   index: N8nCatalogIndexEntry[],
@@ -119,9 +144,20 @@ export function heuristicResolveStep(
   const label = (step.label || '').toLowerCase();
   const tool = (step.tool || '').toLowerCase();
   const hay = `${label} ${tool}`.trim();
-  const type = step.type || 'action';
+  // Nur wenn KEIN Typ am Schritt hängt, ist er "unspezifiziert" und darf über Label-Keywords
+  // geraten werden. Ein explizit gesetzter Typ (auch "action"/"output") ist eine PIN — er
+  // gewinnt gegen jede Keyword-Heuristik unten (Bug: "Zusammenfassung an Inhaber senden" mit
+  // type:"action" wurde sonst fälschlich zur KI-Chain statt zum Sende-Node).
+  const type = step.type;
+  const typeUnset = type === undefined;
 
-  // 0. Selbst-lieferndes Tool (Fireflies/Otter transkribiert selbst) → seine Quelle/Trigger,
+  // 0. `tool` exakt gesetzt und im Katalog auflösbar → gewinnt gegen Typ-Inferenz UND Keywords.
+  //    Original-Schreibweise verwenden (nicht `tool`/lowercased) — n8n-Type-Suffixe sind camelCase
+  //    (z.B. "chainLlm", "googleSheets"), ein toLowerCase() würde den Suffix-Vergleich brechen.
+  const exact = findByExactTool(index, step.tool);
+  if (exact) return makeResult(step.id, exact);
+
+  // 1. Selbst-lieferndes Tool (Fireflies/Otter transkribiert selbst) → seine Quelle/Trigger,
   //    NIE ein KI-Transkriptions-Node.
   const cap = matchToolCapability(hay);
   if (cap?.triggerNode && (type === 'trigger' || cap.selfProduces)) {
@@ -129,44 +165,53 @@ export function heuristicResolveStep(
     if (n) return makeResult(step.id, n);
   }
 
-  // 1. Trigger: passend zur echten Quelle.
+  // 2. Trigger: passend zur echten Quelle. Expliziter Typ zuerst.
   if (type === 'trigger') {
     const n = pickTriggerNode(hay, index);
     if (n) return makeResult(step.id, n);
   }
 
-  // 2. KI: AI Agent (offen) vs. Basic LLM Chain / Spezial-Chain (fest).
-  if (type === 'ai' || AI_LABEL_RE.test(hay)) {
+  // 3. KI: AI Agent (offen) vs. Basic LLM Chain / Spezial-Chain (fest). Expliziter Typ zuerst,
+  //    Label-Keywords nur wenn GAR KEIN Typ gesetzt ist (sonst überstimmen Keywords wie
+  //    "zusammenfass…" einen z.B. als "action" gemeinten Sende-Schritt).
+  if (type === 'ai' || (typeUnset && AI_LABEL_RE.test(hay))) {
     const n = pickAiNode(step, index);
     if (n) return makeResult(step.id, n);
   }
 
-  // 3. Entscheidung → IF.
-  if (type === 'decision' || /\bwenn\b|\bif\b|entscheid|prüf|verzweig/.test(hay)) {
+  // 4. Entscheidung → IF. Expliziter Typ zuerst, Keyword-Regex nur als Fallback wenn kein Typ gesetzt ist.
+  if (type === 'decision' || (typeUnset && /\bwenn\b|\bif\b|entscheid|prüf|verzweig/.test(hay))) {
     const n = find(index, 'n8n-nodes-base.if');
     if (n) return makeResult(step.id, n);
   }
 
-  // 4. Freigabe durch Menschen → Kanal-Node (sendAndWait + IF/Loopback macht expandPatterns).
+  // 5. Freigabe durch Menschen → Kanal-Node (sendAndWait + IF/Loopback macht expandPatterns).
   if (type === 'human') {
     const n = pickApprovalChannel(hay, index);
     if (n) return makeResult(step.id, n);
   }
 
-  // 5. NODE_MAP-Alias-Treffer (gmail/slack/drive/sheets/airtable/notion/youtube/meta …).
+  // 6. NODE_MAP-Alias-Treffer (gmail/slack/drive/sheets/airtable/notion/youtube/meta …).
+  //    Auch hier: ein gepinnter Typ, der klar NICHT "ai" ist, darf nicht durch einen
+  //    KI-Node ersetzt werden, nur weil das Label zufällig ein KI-Alias-Wort enthält
+  //    (z.B. "Zusammenfassung an Inhaber senden" mit type:"action" → kein chainSummarization).
   const mapType = matchMainNodeType(hay);
   if (mapType) {
-    const n = find(index, mapType);
-    if (n) return makeResult(step.id, n);
+    const mapEntry = nodeMapEntry(mapType);
+    const conflictsWithPinnedType = mapEntry?.role === 'ai' && type !== undefined && type !== 'ai';
+    if (!conflictsWithPinnedType) {
+      const n = find(index, mapType);
+      if (n) return makeResult(step.id, n);
+    }
   }
 
-  // 6. Generische HTTP-API.
+  // 7. Generische HTTP-API.
   if (/http|api|request|rest/.test(hay)) {
     const n = find(index, 'n8n-nodes-base.httpRequest');
     if (n) return makeResult(step.id, n);
   }
 
-  // 7. Nur bei EXPLIZITER Feld-Manipulation → Set (keine „Durchreich"-Sets).
+  // 8. Nur bei EXPLIZITER Feld-Manipulation → Set (keine „Durchreich"-Sets).
   if (EXPLICIT_SET_RE.test(hay)) {
     const n = find(index, 'n8n-nodes-base.set');
     if (n) return makeResult(step.id, n);

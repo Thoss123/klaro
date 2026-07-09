@@ -35,6 +35,7 @@ const CATALOG_ENTRIES: Array<{
   { name: 'n8n-nodes-base.formTrigger', displayName: 'Form Trigger', category: 'trigger' },
   { name: 'n8n-nodes-base.gmailTrigger', displayName: 'Gmail Trigger', category: 'trigger', cred: 'gmailOAuth2' },
   { name: 'n8n-nodes-base.gmail', displayName: 'Gmail', category: 'action', cred: 'gmailOAuth2' },
+  { name: 'n8n-nodes-base.googleCalendarTrigger', displayName: 'Google Calendar Trigger', category: 'trigger', cred: 'googleCalendarOAuth2Api' },
   { name: 'n8n-nodes-base.googleCalendar', displayName: 'Google Calendar', category: 'action', cred: 'googleCalendarOAuth2Api' },
   { name: 'n8n-nodes-base.googleSheets', displayName: 'Google Sheets', category: 'data', cred: 'googleSheetsOAuth2Api' },
   { name: 'n8n-nodes-base.slack', displayName: 'Slack', category: 'action', cred: 'slackApi' },

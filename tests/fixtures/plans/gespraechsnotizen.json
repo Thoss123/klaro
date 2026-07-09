@@ -5,7 +5,7 @@
   "steps": [
     {
       "label": "Termin beendet",
-      "tool": "googleCalendar",
+      "tool": "googleCalendarTrigger",
       "type": "trigger",
       "description": "Kalender-Ende eines Kundentermins erkennen"
     },
@@ -40,7 +40,7 @@
       "description": "Vorhandenen CRM-Eintrag um Zusammenfassung und neue To-dos ergänzen"
     },
     {
-      "label": "Notiz-Mail an Inhaber",
+      "label": "Zusammenfassung an Inhaber senden",
       "tool": "gmail",
       "type": "action",
       "description": "Kurze Mail mit Zusammenfassung und offenen To-dos an den Inhaber senden"
