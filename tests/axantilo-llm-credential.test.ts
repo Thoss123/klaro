@@ -80,6 +80,9 @@ describe('ensureAxantiloLlmCredential', () => {
     expect(call.type).toBe('openAiApi');
     expect(call.data.apiKey).toBe(`wtoken.${PROJECT_ID}`);
     expect(call.data.url).toBe('https://axantilo.com/api/agent/v1');
+    // n8n Public-API lehnt openAiApi ohne diese Felder mit 400 ab (if/then-Schema-Quirk).
+    expect(call.data.header).toBe(false);
+    expect(call.data.allowedHttpRequestDomains).toBe('all');
     expect(upsertCalls).toHaveLength(1);
     const row = upsertCalls[0] as Record<string, unknown>;
     expect(row.tool_name).toBe(AXANTILO_AI_TOOL);

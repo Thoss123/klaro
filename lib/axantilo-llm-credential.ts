@@ -71,7 +71,12 @@ export async function ensureAxantiloLlmCredential(
       const cred = await createN8nCredential({
         name: `AXANTILO AI (${projectShort(projectId)})`,
         type: 'openAiApi',
-        data: { apiKey, url: baseUrl },
+        // header + allowedHttpRequestDomains MÜSSEN explizit gesetzt sein: n8n's Credential-
+        // Schema behandelt ein fehlendes `header`/`allowedHttpRequestDomains` so, als sei die
+        // `if`-Bedingung erfüllt, und verlangt dann headerName/headerValue/allowedDomains →
+        // die Public-API lehnt sonst mit 400 ab. `header:false` = kein Custom-Auth-Header,
+        // `allowedHttpRequestDomains:'all'` = Base-URL-Override auf unseren Proxy erlaubt.
+        data: { apiKey, url: baseUrl, header: false, allowedHttpRequestDomains: 'all' },
       });
       credentialId = cred.id;
     } catch (e) {
