@@ -514,6 +514,52 @@ export async function POST(req: NextRequest) {
                    console.error('[setup_ai_tool] failed:', e instanceof Error ? e.message : String(e));
                    return { status: 'error', message: 'Einrichtung der KI-Funktion fehlgeschlagen.' };
                  }
+               } else if (toolCall.name === 'deploy_template_workflow') {
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — deploy_template_workflow abgebrochen.' };
+                 }
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"deploy_template_workflow","args":${JSON.stringify(toolCall.args)}}</tool_call>\n`));
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { deployTemplateWorkflow } = await import('@/lib/template-deploy');
+                   const { personaPath } = await import('@/lib/workspace');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const slug = argStr(toolCall.args.slug);
+                   if (slug !== 'followup-serie') {
+                     return { status: 'error', message: `Unbekanntes Template: ${slug}` };
+                   }
+                   const provider = argStr(toolCall.args.mail_provider) || 'gmail';
+                   if (!['gmail', 'outlook', 'imap'].includes(provider)) {
+                     return { status: 'error', message: 'mail_provider muss gmail, outlook oder imap sein.' };
+                   }
+                   const followupTable = argStr(toolCall.args.followup_table) || 'followup_leads';
+                   const vorname = (onboarding?.vorname || onboarding?.username || '').trim();
+                   const persona = vorname ? personaPath(vorname) : 'rules/persona_default.md';
+
+                   const out = await deployTemplateWorkflow(supabase, {
+                     slug,
+                     userId: user.id,
+                     projectId: project_id,
+                     appBaseUrl: new URL(req.url).origin,
+                     mailProvider: provider as 'gmail' | 'outlook' | 'imap',
+                     scalars: { PERSONA_PATH: persona, FOLLOWUP_TABLE: followupTable },
+                   });
+                   if (!out.ok) return { status: 'error', message: out.error || 'Deploy fehlgeschlagen.' };
+                   return {
+                     status: 'success',
+                     deployed: out.n8nId,
+                     active: out.active,
+                     message: out.active
+                       ? 'Die Follow-up-Serie ist eingerichtet und aktiv. Offene Angebote werden ab jetzt automatisch nach 3, 7 und 14 Tagen nachgefasst. Sag dem Nutzer freundlich, dass es läuft.'
+                       : 'Die Follow-up-Serie ist eingerichtet. LETZTER SCHRITT für den Nutzer: sein Postfach verbinden (3-Klick-Login) — erst danach kann automatisch nachgefasst werden.',
+                   };
+                 } catch (e: unknown) {
+                   console.error('[deploy_template_workflow] failed:', e instanceof Error ? e.message : String(e));
+                   return { status: 'error', message: 'Deploy des Templates fehlgeschlagen.' };
+                 }
                } else if (toolCall.name === 'update_agent_prompt') {
                  if (!project_id) {
                    return { status: 'error', message: 'Kein Projekt — update_agent_prompt abgebrochen.' };
