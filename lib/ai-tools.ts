@@ -318,6 +318,30 @@ export const AXANTILO_TOOLS: AITool[] = [
     }
   },
   {
+    name: "deploy_template_workflow",
+    description: "Deployt ein golden Workflow-Template (z.B. die Lead-Follow-up-Serie) für den Nutzer auf Axantilos geteilter n8n-Instanz und aktiviert es. NUR in Phase 4 (Umsetzung) nutzbar, NACHDEM der Nutzer sich für einen konkreten Plan entschieden hat. Sammle vorher nur die für das jeweilige Template nötigen Angaben (z.B. Mail-Anbieter) — keine technischen Details wie Slots/JSON im Chat erwähnen.",
+    schema: {
+      type: "object",
+      properties: {
+        slug: {
+          type: "string",
+          enum: ["followup-serie"],
+          description: "Golden-Template-Slug aus knowledge/templates/workflows/<slug>.json."
+        },
+        mail_provider: {
+          type: "string",
+          enum: ["gmail", "outlook", "imap"],
+          description: "Mail-Anbieter des Nutzers, für Templates mit Mail-Provider-Slot (z.B. followup-serie)."
+        },
+        followup_table: {
+          type: "string",
+          description: "Optional: logischer Tabellenname in der Datenablage für followup-serie (Default 'followup_leads')."
+        }
+      },
+      required: ["slug"]
+    }
+  },
+  {
     name: "update_agent_prompt",
     description: "Passt einen Standard-Prompt der laufenden Automations-Agenten an (E-Mail-Beantworter, Steuerkanal, Learning). Nutze es, wenn der Nutzer das VERHALTEN seiner Automation ändern will (z.B. 'die Antworten sollen förmlicher sein', 'bei Leads immer das Probetraining erwähnen', 'Termine nie am Wochenende anbieten'). Baue aus dem Wunsch einen vollständigen, präzisen System-Prompt (deutsch), der die Platzhalter {{firmenwissen}} und {{persona}} enthalten MUSS, wenn der Standard sie hatte. Mit content=null wird die Anpassung gelöscht und der Standard wiederhergestellt. Erwähne technische Details (Prompt, Keys) im Chat nicht — sag einfach, dass die Automation angepasst wurde.",
     schema: {
@@ -338,7 +362,7 @@ export const AXANTILO_TOOLS: AITool[] = [
   }
 ];
 
-/** Phase-gated tool list — research_solutions gehört zur gemergten Analyse; build_workflow zur Umsetzung. */
+/** Phase-gated tool list — research_solutions gehört zur gemergten Analyse; build_workflow/deploy_template_workflow zur Umsetzung. */
 export function getToolsForPhase(phase: string): AITool[] {
   // Gemergte Phase 2 (Analyse & Plan); 'plan' als Legacy-Alias.
   if (phase === 'analyse' || phase === 'plan') {
@@ -348,15 +372,20 @@ export function getToolsForPhase(phase: string): AITool[] {
         t.name !== 'request_credential' &&
         t.name !== 'deploy_workflow' &&
         t.name !== 'test_workflow' &&
-        t.name !== 'edit_workflow',
+        t.name !== 'edit_workflow' &&
+        t.name !== 'deploy_template_workflow',
     );
   }
   if (phase === 'umsetzung') {
     return AXANTILO_TOOLS.filter(t => t.name !== 'research_solutions');
   }
-  // Phase 1 (Diagnose): weder Recherche, noch Build, noch Vorlagen-Templatisierung.
+  // Phase 1 (Diagnose): weder Recherche, noch Build, noch Vorlagen-Templatisierung, noch Template-Deploy.
   return AXANTILO_TOOLS.filter(
-    t => t.name !== 'research_solutions' && t.name !== 'build_workflow' && t.name !== 'create_document_template',
+    t =>
+      t.name !== 'research_solutions' &&
+      t.name !== 'build_workflow' &&
+      t.name !== 'create_document_template' &&
+      t.name !== 'deploy_template_workflow',
   );
 }
 
