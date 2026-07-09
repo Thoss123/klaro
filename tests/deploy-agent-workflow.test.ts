@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildEmailAutomation, deployEmailAutomation } from '@/lib/deploy-agent-workflow';
+import { buildEmailAutomation, buildFaqChatbot, deployEmailAutomation } from '@/lib/deploy-agent-workflow';
 
 /** Mock: user_credentials-Lookup liefert (oder nicht) eine n8n-Credential-ID. */
 function supabaseWithMailCred(credId: string | null): SupabaseClient {
@@ -122,6 +122,30 @@ describe('buildEmailAutomation — draft mode (standalone, default)', () => {
       appBaseUrl: 'https://www.axantilo.com',
     });
     expect(built.map((b) => b.slug)).toEqual(['email-autopilot']);
+  });
+});
+
+describe('buildFaqChatbot', () => {
+  beforeEach(() => {
+    process.env.N8N_CREDENTIAL_WORKSPACE_TOKEN = 'wtok-1';
+    process.env.N8N_API_URL = 'https://n8n.example.com/api/v1';
+  });
+
+  it('fills slots, binds the header-auth credential, and needs no mailbox', () => {
+    const built = buildFaqChatbot({
+      userId: 'u1',
+      projectId: '712db8db-bd73-4392-915e-e9fa1a4ea744',
+      personaPath: 'rules/persona_thomas.md',
+      appBaseUrl: 'https://www.axantilo.com',
+    });
+    expect(built.slug).toBe('faq-chatbot');
+    const raw = JSON.stringify(built.workflow);
+    expect(raw).not.toMatch(/\{\{\s*[A-Z0-9_]+\s*\}\}/);
+    expect(raw).toContain('faq-712db8db'); // eindeutiger Webhook-Pfad pro Projekt
+    const httpNode = built.workflow.nodes.find((n) => n.name === 'KI: Antwort')!;
+    expect((httpNode.credentials as Record<string, { id: string }>).httpHeaderAuth.id).toBe('wtok-1');
+    // Kein Postfach/Mail-Node → läuft ohne OAuth.
+    expect(raw).not.toContain('gmail');
   });
 });
 

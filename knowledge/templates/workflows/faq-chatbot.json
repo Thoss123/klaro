@@ -1,0 +1,40 @@
+{
+  "name": "AXANTILO: FAQ-Chatbot",
+  "nodes": [
+    {
+      "name": "Frage empfangen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "parameters": { "httpMethod": "POST", "path": "{{FAQ_WEBHOOK_PATH}}", "responseMode": "responseNode", "options": {} }
+    },
+    {
+      "name": "KI: Antwort",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'control/adhoc', persona_path: '{{PERSONA_PATH}}', user: ($json.body.question || $json.body.text || $json.body.message || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Antwort zurück",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 0],
+      "parameters": { "respondWith": "json", "responseBody": "={{ JSON.stringify({ answer: $json.text }) }}" }
+    }
+  ],
+  "connections": {
+    "Frage empfangen": { "main": [[{ "node": "KI: Antwort", "type": "main", "index": 0 }]] },
+    "KI: Antwort": { "main": [[{ "node": "Antwort zurück", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -447,6 +447,37 @@ export async function POST(req: NextRequest) {
                    console.error('[setup_email_automation] failed:', e instanceof Error ? e.message : String(e));
                    return { status: 'error', message: 'Einrichtung der E-Mail-Automation fehlgeschlagen.' };
                  }
+               } else if (toolCall.name === 'setup_chatbot') {
+                 if (!project_id) {
+                   return { status: 'error', message: 'Kein Projekt — setup_chatbot abgebrochen.' };
+                 }
+                 controller.enqueue(new TextEncoder().encode(`\n<tool_call>{"type":"setup_chatbot","args":{}}</tool_call>\n`));
+                 try {
+                   const { createSupabaseServerClient } = await import('@/lib/supabase-server');
+                   const { deployFaqChatbot } = await import('@/lib/deploy-agent-workflow');
+                   const { personaPath } = await import('@/lib/workspace');
+                   const supabase = await createSupabaseServerClient();
+                   const { data: { user } } = await supabase.auth.getUser();
+                   if (!user) return { status: 'error', message: 'Nicht angemeldet.' };
+
+                   const vorname = (onboarding?.vorname || onboarding?.username || '').trim();
+                   const persona = vorname ? personaPath(vorname) : 'rules/persona_default.md';
+                   const out = await deployFaqChatbot(supabase, {
+                     userId: user.id,
+                     projectId: project_id,
+                     personaPath: persona,
+                     appBaseUrl: new URL(req.url).origin,
+                   });
+                   if (!out.ok) return { status: 'error', message: out.error || 'Chatbot-Einrichtung fehlgeschlagen.' };
+                   return {
+                     status: 'success',
+                     webhook_url: out.webhookUrl,
+                     message: `Der FAQ-Chatbot ist eingerichtet und AKTIV — er läuft sofort (kein Postfach nötig). Fragen an ${out.webhookUrl} (POST { question }) werden aus dem Firmenwissen beantwortet. Sag dem Nutzer, dass sein Chatbot live ist und wie er ihn testen/einbinden kann, ohne technische Interna zu überladen.`,
+                   };
+                 } catch (e: unknown) {
+                   console.error('[setup_chatbot] failed:', e instanceof Error ? e.message : String(e));
+                   return { status: 'error', message: 'Chatbot-Einrichtung fehlgeschlagen.' };
+                 }
                } else if (toolCall.name === 'update_agent_prompt') {
                  if (!project_id) {
                    return { status: 'error', message: 'Kein Projekt — update_agent_prompt abgebrochen.' };

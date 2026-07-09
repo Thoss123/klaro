@@ -236,3 +236,65 @@ export async function deployEmailAutomation(
 
   return { ok: true, workflows: results, mailConnected };
 }
+
+export interface DeployChatbotArgs {
+  userId: string;
+  projectId: string;
+  personaPath?: string;
+  appBaseUrl: string;
+}
+
+/** Baut den FAQ-Chatbot mit gefüllten Slots + gebundener Header-Auth-Credential. */
+export function buildFaqChatbot(args: DeployChatbotArgs): BuiltWorkflow {
+  const { workspaceToken } = centralCredIds();
+  const { workflow } = loadWorkflowTemplate('faq-chatbot', {
+    scalars: {
+      FAQ_WEBHOOK_PATH: `faq-${projectSuffix(args.projectId)}`,
+      APP_BASE_URL: args.appBaseUrl,
+      PROJECT_ID: args.projectId,
+      PERSONA_PATH: args.personaPath || 'rules/persona_default.md',
+    },
+  });
+  bindCredentials(workflow, { workspaceToken, twilio: '', mailCredId: null, mailProvider: 'gmail', calendarCredId: null });
+  return { slug: 'faq-chatbot', name: String(workflow.name ?? 'faq-chatbot'), workflow };
+}
+
+/**
+ * Deployt den FAQ-Chatbot und AKTIVIERT ihn sofort — ein Webhook-Workflow braucht kein
+ * verbundenes Postfach / kein OAuth. Gibt die öffentliche Webhook-URL zurück.
+ */
+export async function deployFaqChatbot(
+  supabase: SupabaseClient,
+  args: DeployChatbotArgs,
+): Promise<{ ok: boolean; n8nId: string; webhookUrl: string; error?: string }> {
+  const { createN8nWorkflow, saveN8nWorkflowDefinition, activateN8nWorkflow } = await import('@/lib/n8n');
+  const built = buildFaqChatbot(args);
+
+  const { data: existing } = await supabase
+    .from('workflows')
+    .select('n8n_workflow_id')
+    .eq('project_id', args.projectId)
+    .eq('name', built.name)
+    .maybeSingle();
+
+  let n8nId: string;
+  if (existing?.n8n_workflow_id) {
+    n8nId = existing.n8n_workflow_id as string;
+    await saveN8nWorkflowDefinition(n8nId, built.workflow as object);
+  } else {
+    const created = await createN8nWorkflow(built.workflow as object);
+    n8nId = created.id;
+    const { error: insErr } = await supabase.from('workflows').insert({
+      user_id: args.userId,
+      project_id: args.projectId,
+      name: built.name,
+      n8n_workflow_id: n8nId,
+      status: 'active',
+    });
+    if (insErr) return { ok: false, n8nId, webhookUrl: '', error: `DB-Eintrag fehlgeschlagen: ${insErr.message}` };
+  }
+  await activateN8nWorkflow(n8nId).catch(() => undefined);
+
+  const webhookUrl = `${n8nWebhookBase()}/webhook/faq-${projectSuffix(args.projectId)}`;
+  return { ok: true, n8nId, webhookUrl };
+}

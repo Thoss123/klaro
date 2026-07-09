@@ -298,6 +298,11 @@ export const AXANTILO_TOOLS: AITool[] = [
     }
   },
   {
+    name: "setup_chatbot",
+    description: "Richtet einen FAQ-/Website-Chatbot für den Nutzer ein und aktiviert ihn SOFORT. Der Bot beantwortet Kundenfragen aus dem Firmenwissen im Stil des Betriebs — braucht KEIN verbundenes Postfach, kein OAuth, läuft sofort. Man schickt eine Frage an eine Webhook-URL und bekommt die Antwort zurück (für ein Website-Widget, einen WhatsApp- oder Slack-Bot). Nutze es, wenn der Nutzer einen Chatbot / automatische Antworten auf Website-/Kundenfragen will. Gib dem Nutzer danach die zurückgegebene Webhook-URL. Verhalten ist per update_agent_prompt (prompt_key control/adhoc) anpassbar.",
+    schema: { type: "object", properties: {}, required: [] }
+  },
+  {
     name: "update_agent_prompt",
     description: "Passt einen Standard-Prompt der laufenden Automations-Agenten an (E-Mail-Beantworter, Steuerkanal, Learning). Nutze es, wenn der Nutzer das VERHALTEN seiner Automation ändern will (z.B. 'die Antworten sollen förmlicher sein', 'bei Leads immer das Probetraining erwähnen', 'Termine nie am Wochenende anbieten'). Baue aus dem Wunsch einen vollständigen, präzisen System-Prompt (deutsch), der die Platzhalter {{firmenwissen}} und {{persona}} enthalten MUSS, wenn der Standard sie hatte. Mit content=null wird die Anpassung gelöscht und der Standard wiederhergestellt. Erwähne technische Details (Prompt, Keys) im Chat nicht — sag einfach, dass die Automation angepasst wurde.",
     schema: {
