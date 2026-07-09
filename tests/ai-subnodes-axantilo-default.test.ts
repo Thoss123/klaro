@@ -66,12 +66,15 @@ describe('ensureRequiredSubNodes — Axantilo Chat Model als Default', () => {
     expect(model.value).toMatch(/mistral/);
   });
 
-  it('disabled die Responses-API (unser Proxy spricht nur Chat Completions)', () => {
+  it('disabled die Responses-API TOP-LEVEL (unser Proxy spricht nur Chat Completions)', () => {
     const steps: WorkflowStep[] = [{ id: 'a', label: 'Agent', type: 'ai', n8nType: AGENT }];
     const { steps: out } = ensureRequiredSubNodes(steps, [], [openAiEntryV13]);
     const sub = out.find(s => s.subNodeOf?.parentId === 'a')!;
-    const options = (sub.parameters as Record<string, unknown>).options as { responsesApiEnabled: boolean };
-    expect(options.responsesApiEnabled).toBe(false);
+    // responsesApiEnabled ist ein TOP-LEVEL-Param von lmChatOpenAi — NICHT unter options,
+    // sonst greift der Default (true) und n8n ruft /responses statt /chat/completions → 404.
+    const params = sub.parameters as Record<string, unknown>;
+    expect(params.responsesApiEnabled).toBe(false);
+    expect((params.options as Record<string, unknown> | undefined)?.responsesApiEnabled).toBeUndefined();
   });
 
   it('ist idempotent — kein doppeltes Anhängen bei zweitem Durchlauf', () => {

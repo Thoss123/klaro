@@ -107,12 +107,15 @@ function axantiloDefaultModelId(): string {
  * `parameters.model` für die Axantilo Chat Model-Sub-Node (lmChatOpenAi) — Shape hängt vom
  * n8n-typeVersion ab: ab 1.2 ist `model` ein resourceLocator-Objekt ({__rl,mode,value}),
  * davor ein simpler String. responsesApiEnabled MUSS false sein — unser Proxy spricht nur
- * Chat Completions, nicht OpenAIs Responses-API.
+ * Chat Completions, nicht OpenAIs Responses-API. WICHTIG: responsesApiEnabled ist ein
+ * TOP-LEVEL-Parameter des lmChatOpenAi-Nodes, NICHT unter `options` — steht er unter options,
+ * greift der Default (true) und n8n ruft /responses statt /chat/completions → 404 am Proxy.
+ * Die Base-URL kommt aus der openAiApi-Credential (url), daher kein options.baseURL nötig.
  */
 function axantiloChatModelParameters(version: number): Record<string, unknown> {
   const modelId = axantiloDefaultModelId();
   const model = version >= 1.2 ? { __rl: true, mode: 'id' as const, value: modelId } : modelId;
-  return { model, options: { responsesApiEnabled: false } };
+  return { model, responsesApiEnabled: false };
 }
 
 /**
