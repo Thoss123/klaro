@@ -185,6 +185,11 @@ Struktur-Regeln (zwingend — danach wird gebaut):
 - Feste KI-Aufgabe (zusammenfassen, klassifizieren, Text aus Vorlage) →
   tool `chainLlm`; offene Aufgabe (recherchieren, entscheiden, Tools nutzen) →
   tool `agent`.
+- Serien/Follow-ups: EIN schedule-Trigger + Zustand in der Datenablage statt
+  paralleler Warte-Schritte.
+- Erzeugte Dokumente (Angebot, Rechnung): Vorlage + Docs-/PDF-Schritt.
+- Wiederkehrender Zustand über mehrere Läufe: eigener „Daten lesen/schreiben"-
+  Schritt.
 - Schritte NUR im Canvas, nie als Liste im Chat (Ausnahme: Nutzer fragt
   explizit danach).
 
