@@ -69,6 +69,15 @@ describe('AGENT_PROMPTS registry', () => {
     expect(def.json).toBeUndefined();
   });
 
+  it('offer/extract is JSON-mode and extracts customer/request fields', () => {
+    const def = getAgentPromptDef('offer/extract')!;
+    expect(def.model).toBe('mistral-small-latest');
+    expect(def.json).toBe(true);
+    for (const field of ['kunde_name', 'leistung', 'budget_hinweis', 'kontakt_email']) {
+      expect(def.system).toContain(`"${field}"`);
+    }
+  });
+
   it('the 5 workflow-package prompt keys exist with the right shape', () => {
     for (const key of ['offer/draft', 'followup/draft_stage', 'invoice/reminder', 'report/weekly']) {
       const def = getAgentPromptDef(key)!;
