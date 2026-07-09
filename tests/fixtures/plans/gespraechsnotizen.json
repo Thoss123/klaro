@@ -1,0 +1,58 @@
+{
+  "title": "Gesprächsnotizen automatisch strukturieren",
+  "description": "Nach jedem Termin Rohnotiz erfassen, per KI zu Zusammenfassung + To-dos strukturieren, mit bestehenden CRM-Einträgen abgleichen, eintragen und den Inhaber informieren.",
+  "pain_point_id": "pp_2",
+  "steps": [
+    {
+      "label": "Termin beendet",
+      "tool": "googleCalendar",
+      "type": "trigger",
+      "description": "Kalender-Ende eines Kundentermins erkennen"
+    },
+    {
+      "label": "Notiz strukturieren",
+      "tool": "chainSummarization",
+      "type": "ai",
+      "description": "KI erstellt aus der Rohnotiz eine Zusammenfassung mit To-dos als JSON"
+    },
+    {
+      "label": "Bestehenden Kunden abgleichen",
+      "tool": "httpRequest",
+      "type": "action",
+      "description": "Datenablage nach dem Kunden aus dem Termin durchsuchen (op select)"
+    },
+    {
+      "label": "Kunde bereits vorhanden?",
+      "tool": "if",
+      "type": "decision",
+      "description": "Entscheidet, ob ein neuer CRM-Eintrag angelegt oder ein bestehender aktualisiert wird"
+    },
+    {
+      "label": "Eintrag im CRM anlegen",
+      "tool": "googleSheets",
+      "type": "output",
+      "description": "Neuen Kunden mit Zusammenfassung und To-dos in die Tabelle/CRM eintragen"
+    },
+    {
+      "label": "Bestehenden Eintrag aktualisieren",
+      "tool": "googleSheets",
+      "type": "output",
+      "description": "Vorhandenen CRM-Eintrag um Zusammenfassung und neue To-dos ergänzen"
+    },
+    {
+      "label": "Notiz-Mail an Inhaber",
+      "tool": "gmail",
+      "type": "action",
+      "description": "Kurze Mail mit Zusammenfassung und offenen To-dos an den Inhaber senden"
+    }
+  ],
+  "edges": [
+    { "from": 1, "to": 2 },
+    { "from": 2, "to": 3 },
+    { "from": 3, "to": 4 },
+    { "from": 4, "to": 5, "branch": "false" },
+    { "from": 4, "to": 6, "branch": "true" },
+    { "from": 5, "to": 7 },
+    { "from": 6, "to": 7 }
+  ]
+}

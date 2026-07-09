@@ -1,0 +1,65 @@
+{
+  "title": "Wochenbericht mit Freigabe",
+  "description": "Wöchentlich Kennzahlen aus der Datenablage ziehen, KI formuliert den Bericht im Ton des Absenders, Freigabe durch den Inhaber, dann Versand und Archivierung.",
+  "pain_point_id": "pp_3",
+  "steps": [
+    {
+      "label": "Freitagnachmittag",
+      "tool": "scheduleTrigger",
+      "type": "trigger",
+      "description": "Jeden Freitag um 16:00 Uhr auslösen"
+    },
+    {
+      "label": "Kennzahlen der Woche lesen",
+      "tool": "googleSheets",
+      "type": "action",
+      "description": "Kennzahlen aus der Tabelle/Datenablage der aktuellen Woche lesen"
+    },
+    {
+      "label": "Kennzahlen aggregieren",
+      "tool": "code",
+      "type": "action",
+      "description": "Rohdaten zu Wochen-KPIs zusammenrechnen (Summen, Trends, Auffälligkeiten)"
+    },
+    {
+      "label": "Bericht formulieren",
+      "tool": "chainLlm",
+      "type": "ai",
+      "description": "KI formuliert aus den KPIs einen Wochenbericht im Ton des Absenders"
+    },
+    {
+      "label": "Freigabe einholen",
+      "tool": "gmail",
+      "type": "human",
+      "description": "Entwurf zur Freigabe an den Inhaber senden und auf Antwort warten"
+    },
+    {
+      "label": "Freigegeben?",
+      "tool": "if",
+      "type": "decision",
+      "description": "Ja: Bericht rausschicken, Nein: zurück zur Überarbeitung"
+    },
+    {
+      "label": "Bericht versenden",
+      "tool": "gmail",
+      "type": "action",
+      "description": "Finalen Wochenbericht an Kunde/Team senden"
+    },
+    {
+      "label": "Bericht archivieren",
+      "tool": "googleSheets",
+      "type": "output",
+      "description": "Versendeten Bericht in der Ablage/Archiv-Tabelle protokollieren"
+    }
+  ],
+  "edges": [
+    { "from": 1, "to": 2 },
+    { "from": 2, "to": 3 },
+    { "from": 3, "to": 4 },
+    { "from": 4, "to": 5 },
+    { "from": 5, "to": 6 },
+    { "from": 6, "to": 4, "branch": "false" },
+    { "from": 6, "to": 7, "branch": "true" },
+    { "from": 7, "to": 8 }
+  ]
+}
