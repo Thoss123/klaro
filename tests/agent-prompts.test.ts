@@ -68,6 +68,37 @@ describe('AGENT_PROMPTS registry', () => {
     expect(def.model).toBe('mistral-small-latest');
     expect(def.json).toBeUndefined();
   });
+
+  it('the 5 workflow-package prompt keys exist with the right shape', () => {
+    for (const key of ['offer/draft', 'followup/draft_stage', 'invoice/reminder', 'report/weekly']) {
+      const def = getAgentPromptDef(key)!;
+      expect(def).toBeDefined();
+      expect(def.system).toContain('{{firmenwissen}}');
+      expect(def.system).toContain('{{persona}}');
+    }
+    const notes = getAgentPromptDef('notes/summarize')!;
+    expect(notes).toBeDefined();
+    expect(notes.json).toBe(true);
+  });
+
+  it('followup/draft_stage embeds stage and lead-context variables', () => {
+    const sys = getAgentPromptDef('followup/draft_stage')!.system;
+    expect(sys).toContain('{{stage}}');
+    expect(sys).toContain('{{lead_kontext}}');
+    expect(sys).toContain('{{bisherige_mails}}');
+  });
+
+  it('invoice/reminder is escalation-aware by mahnstufe', () => {
+    const sys = getAgentPromptDef('invoice/reminder')!.system;
+    expect(sys).toContain('{{mahnstufe}}');
+    expect(sys).toContain('{{rechnung_kontext}}');
+  });
+
+  it('notes/summarize returns structured JSON with todos', () => {
+    const sys = getAgentPromptDef('notes/summarize')!.system;
+    expect(sys).toContain('"todos"');
+    expect(sys).toContain('"zusammenfassung"');
+  });
 });
 
 describe('resolveAgentPrompt', () => {

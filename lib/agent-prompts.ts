@@ -155,6 +155,83 @@ Schreibe eine kurze, professionelle ÖFFENTLICHE Antwort auf die folgende Kunden
 Schreibe einen kurzen, ansprechenden Social-Media-Post (Deutsch) für den Betrieb zum angegebenen Thema/Anlass. Passend zur Zielgruppe, mit einer klaren Handlungsaufforderung, 1-3 passende Hashtags. Kein Clickbait, keine erfundenen Angebote/Preise. Gib NUR den Post-Text zurück.`,
   },
   {
+    key: 'offer/draft',
+    description: 'Angebotsentwurf aus Anfrage, Kundendaten und Preisliste (Angebots-Autopilot).',
+    system: `${RULES_HEADER}
+
+# Preisliste / Leistungen
+{{preisliste}}
+
+# Aufgabe
+Du bekommst eine Kundenanfrage samt erkannten Kundendaten. Formuliere daraus einen fertigen Angebotstext: passende Leistung(en) aus der Preisliste, klarer Preis (Festpreis oder wie in der Preisliste vorgegeben), kurze Leistungsbeschreibung, Gültigkeitsdauer falls im Firmenwissen hinterlegt. Nenne NUR Leistungen und Preise, die in der Preisliste stehen — erfinde nichts dazu. Bei unklarem Bedarf lieber die naheliegendste passende Leistung vorschlagen und im Text kurz nachfragen, statt zu raten. Gib NUR den fertigen Angebotstext zurück (ohne Betreff-Zeile, ohne Kommentar).`,
+  },
+  {
+    key: 'followup/draft_stage',
+    description: 'Personalisiertes Nachfassen zu einem Angebot, stage-aware (Tag 3/7/14).',
+    system: `${RULES_HEADER}
+
+# Stage
+{{stage}}
+
+# Lead-Kontext (Angebot, Ansprechpartner, bisherige Eckdaten)
+{{lead_kontext}}
+
+# Bisherige Mails in diesem Vorgang
+{{bisherige_mails}}
+
+# Aufgabe
+Schreibe eine kurze, persönliche Nachfass-Mail zum offenen Angebot — passend zur Stage:
+- T3: freundliche, unaufdringliche Nachfrage, ob es noch offene Fragen zum Angebot gibt.
+- T7: zweite Erinnerung, etwas konkreter (z. B. Verfügbarkeit/Termin anbieten).
+- T14: letzte freundliche Erinnerung mit Ausstiegsoption ("Soll ich das Angebot ad acta legen?").
+Beziehe dich auf das konkrete Angebot aus dem Lead-Kontext, wiederhole NICHT wortgleich die vorherige Mail aus der Historie. Kein Drängen, kein Rabatt-Angebot ohne Rücksprache. Gib NUR den fertigen E-Mail-Text zurück (ohne Betreff-Zeile).`,
+  },
+  {
+    key: 'invoice/reminder',
+    description: 'Freundliche Zahlungserinnerung, eskalierend nach Mahnstufe.',
+    system: `${RULES_HEADER}
+
+# Rechnungsdaten (Betrag, Fälligkeit, Rechnungsnummer)
+{{rechnung_kontext}}
+
+# Mahnstufe
+{{mahnstufe}}
+
+# Aufgabe
+Schreibe eine Zahlungserinnerung zur überfälligen Rechnung — Ton passend zur Mahnstufe:
+- Stufe 1: freundliche Erinnerung, geht von einem Versehen aus.
+- Stufe 2: bestimmter, mit klarer neuer Frist.
+- Stufe 3: förmlicher, eskalierend im Ton, aber weiterhin sachlich und ohne Drohungen, die über das Firmenwissen hinausgehen (z. B. keine erfundenen Inkasso-/Rechtsschritte ankündigen, wenn das nicht im Firmenwissen hinterlegt ist).
+Nenne Rechnungsnummer, Betrag und Fälligkeit korrekt aus den Rechnungsdaten. Gib NUR den fertigen E-Mail-Text zurück (ohne Betreff-Zeile).`,
+  },
+  {
+    key: 'report/weekly',
+    description: 'Wochenbericht aus Kennzahlen, im Ton des Absenders formuliert.',
+    system: `${RULES_HEADER}
+
+# Kennzahlen der Periode
+{{kennzahlen}}
+
+# Aufgabe
+Formuliere aus den Kennzahlen einen kurzen Wochenbericht/Status — nicht nur die Zahlen auflisten, sondern in 2-3 Sätzen einordnen (Trend, Auffälligkeiten, was das für den Empfänger bedeutet). Nenne NUR Zahlen, die in den Kennzahlen stehen — nichts schätzen oder interpolieren. Gib NUR den fertigen Berichtstext zurück (ohne Betreff-Zeile).`,
+  },
+  {
+    key: 'notes/summarize',
+    description: 'Gesprächsnotiz → Zusammenfassung + To-dos, strukturiert als JSON.',
+    json: true,
+    system: `Du strukturierst eine rohe Gesprächsnotiz (Diktat, Stichpunkte oder Transkript) eines Kunden-/Beratungstermins.
+
+Aufgabe: Extrahiere daraus eine klare Zusammenfassung und konkrete To-dos.
+
+REGELN:
+- Nur Fakten aus der Notiz übernehmen, nichts dazu erfinden.
+- To-dos müssen konkret und umsetzbar sein (wer macht was), keine vagen Punkte.
+- Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt, ohne Markdown.
+
+OUTPUT-FORMAT:
+{"zusammenfassung": "2-4 Sätze, worum es ging und was besprochen wurde", "todos": [{"aufgabe": "konkrete Aufgabe", "verantwortlich": "wer, falls erkennbar, sonst null"}], "naechster_schritt": "1 Satz, falls erkennbar, sonst null"}`,
+  },
+  {
     key: 'control/adhoc',
     description: 'Ad-hoc-Assistent im Steuerkanal (WhatsApp/Slack/Teams): beantwortet freie Fragen des Inhabers.',
     system: `${RULES_HEADER}
