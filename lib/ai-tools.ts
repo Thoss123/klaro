@@ -319,23 +319,31 @@ export const AXANTILO_TOOLS: AITool[] = [
   },
   {
     name: "deploy_template_workflow",
-    description: "Deployt ein golden Workflow-Template (z.B. die Lead-Follow-up-Serie) für den Nutzer auf Axantilos geteilter n8n-Instanz und aktiviert es. NUR in Phase 4 (Umsetzung) nutzbar, NACHDEM der Nutzer sich für einen konkreten Plan entschieden hat. Sammle vorher nur die für das jeweilige Template nötigen Angaben (z.B. Mail-Anbieter) — keine technischen Details wie Slots/JSON im Chat erwähnen.",
+    description: "Deployt ein golden Workflow-Template (z.B. die Lead-Follow-up-Serie oder den Angebots-Autopilot) für den Nutzer auf Axantilos geteilter n8n-Instanz und aktiviert es. NUR in Phase 4 (Umsetzung) nutzbar, NACHDEM der Nutzer sich für einen konkreten Plan entschieden hat. Sammle vorher nur die für das jeweilige Template nötigen Angaben (z.B. Mail-Anbieter) — keine technischen Details wie Slots/JSON im Chat erwähnen.",
     schema: {
       type: "object",
       properties: {
         slug: {
           type: "string",
-          enum: ["followup-serie"],
+          enum: ["followup-serie", "angebot-autopilot"],
           description: "Golden-Template-Slug aus knowledge/templates/workflows/<slug>.json."
         },
         mail_provider: {
           type: "string",
           enum: ["gmail", "outlook", "imap"],
-          description: "Mail-Anbieter des Nutzers, für Templates mit Mail-Provider-Slot (z.B. followup-serie)."
+          description: "Mail-Anbieter des Nutzers, für Templates mit Mail-Provider-Slot (z.B. followup-serie, angebot-autopilot)."
         },
         followup_table: {
           type: "string",
-          description: "Optional: logischer Tabellenname in der Datenablage für followup-serie (Default 'followup_leads')."
+          description: "Optional: logischer Tabellenname in der Datenablage für followup-serie/angebot-autopilot (Default 'followup_leads')."
+        },
+        preisliste_table: {
+          type: "string",
+          description: "Optional: logischer Tabellenname der Preisliste in der Datenablage für angebot-autopilot (Default 'preisliste')."
+        },
+        owner_whatsapp: {
+          type: "string",
+          description: "NUR für angebot-autopilot (Freigabe/Revision per WhatsApp): Nummer des Verantwortlichen im internationalen Format, z.B. +4367... (ohne 'whatsapp:'-Präfix)."
         }
       },
       required: ["slug"]

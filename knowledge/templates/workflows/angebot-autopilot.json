@@ -1,0 +1,349 @@
+{
+  "name": "AXANTILO: Angebots-Autopilot",
+  "nodes": [
+    {
+      "name": "Neue Anfrage",
+      "type": "{{TRIGGER_NODE}}",
+      "typeVersion": 1,
+      "position": [-260, 460],
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      }
+    },
+    {
+      "name": "KI: Anfrage extrahieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-40, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'offer/extract', user: 'Betreff: ' + ($('Neue Anfrage').item.json.subject || '') + '\\nVon: ' + ($('Neue Anfrage').item.json.from || '') + '\\n\\n' + ($('Neue Anfrage').item.json.textPlain || $('Neue Anfrage').item.json.snippet || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Extraktion parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [180, 460],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Sicheres Parsen des LLM-JSON aus 'KI: Anfrage extrahieren'. Bei ungültigem JSON:\n// leerer, aber gültiger Fallback -> Angebots-Entwurf fragt im Text nach fehlenden Angaben,\n// statt den Workflow abzubrechen.\nlet data = { kunde_name: '', leistung: '', budget_hinweis: '', kontakt_email: '' };\ntry {\n  const parsed = JSON.parse($input.first().json.text);\n  if (parsed && typeof parsed === 'object') data = { ...data, ...parsed };\n} catch (e) { /* ungültiges LLM-JSON -> Fallback mit leeren Feldern */ }\nconst fromHeader = $('Neue Anfrage').item.json.from || '';\nconst emailMatch = fromHeader.match(/[^<\\s]+@[^>\\s]+/);\nreturn [{\n  json: {\n    kunde_name: data.kunde_name || '',\n    leistung: data.leistung || '',\n    budget_hinweis: data.budget_hinweis || '',\n    kontakt_email: data.kontakt_email || (emailMatch ? emailMatch[0] : fromHeader),\n  },\n}];"
+      }
+    },
+    {
+      "name": "Preisliste lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{PREISLISTE_TABLE}}', op: 'select', limit: 200 }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Preisliste zusammenfassen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 460],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Baut aus den Datenablage-Zeilen der Preisliste einen kompakten Text-Block fuer den\n// offer/draft-Prompt ({{preisliste}}). Jede Zeile: { data: { leistung, preis, einheit?, hinweis? } }.\nconst rows = ($input.first().json.rows || []);\nif (!rows.length) {\n  return [{ json: { preisliste_text: 'Keine Preisliste hinterlegt — im Angebotstext transparent nachfragen, welche Leistung/Preis gemeint ist, statt zu raten.' } }];\n}\nconst lines = rows.map((row) => {\n  const d = row.data || {};\n  const preis = d.preis ? `${d.preis}${d.einheit ? ' ' + d.einheit : ''}` : 'Preis auf Anfrage';\n  return `- ${d.leistung || 'Leistung'}: ${preis}${d.hinweis ? ' (' + d.hinweis + ')' : ''}`;\n}).join('\\n');\nreturn [{ json: { preisliste_text: lines } }];"
+      }
+    },
+    {
+      "name": "KI: Angebot entwerfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'offer/draft', persona_path: '{{PERSONA_PATH}}', variables: { preisliste: $json.preisliste_text }, user: 'Kunde: ' + ($('Extraktion parsen').item.json.kunde_name || 'unbekannt') + '\\nGewuenschte Leistung: ' + ($('Extraktion parsen').item.json.leistung || 'unklar, aus Anfrage ableiten') + '\\nBudget-Hinweis: ' + ($('Extraktion parsen').item.json.budget_hinweis || '-') + '\\n\\nUrspruengliche Anfrage:\\nBetreff: ' + ($('Neue Anfrage').item.json.subject || '') + '\\n' + ($('Neue Anfrage').item.json.textPlain || $('Neue Anfrage').item.json.snippet || '') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Anfrage in Datenablage speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{FOLLOWUP_TABLE}}', op: 'insert', row: { data: { email: $('Extraktion parsen').item.json.kontakt_email, send_target: $('Extraktion parsen').item.json.kontakt_email, lead_kontext: ('Angebot fuer ' + ($('Extraktion parsen').item.json.kunde_name || 'Kunde') + ': ' + ($('Extraktion parsen').item.json.leistung || '')), bisherige_mails: $json.text, status: 'entwurf', followup_stage: 0 } } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', contact: 'whatsapp:{{OWNER_WHATSAPP}}', kind: 'offer_approval', payload: { draft: $('KI: Angebot entwerfen').item.json.text, first_draft: $('KI: Angebot entwerfen').item.json.text, feedback_log: [], kunde_name: $('Extraktion parsen').item.json.kunde_name, send_target: $('Extraktion parsen').item.json.kontakt_email, subject: ('Ihr Angebot: ' + ($('Extraktion parsen').item.json.leistung || 'Anfrage')), followup_row_id: $('Anfrage in Datenablage speichern').item.json.row.id, provider: 'gmail', persona: '{{PERSONA_PATH}}' } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "WhatsApp: Angebot zur Freigabe",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1500, 460],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=📝 Neues Angebot für {{ $('Extraktion parsen').item.json.kunde_name }} ({{ $('Extraktion parsen').item.json.kontakt_email }}):\n\n{{ $('KI: Angebot entwerfen').item.json.text }}\n\n— Antworte SENDEN zum Verschicken, oder schreib, was geändert werden soll.",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe-Antwort (WhatsApp)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-260, 900],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{OFFER_APPROVAL_WEBHOOK_PATH}}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Antwort lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 900],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Twilio-Inbound-Format (Body/From) — gleiches Muster wie whatsapp-control.json.\nconst b = $json.body || {};\nconst text = String(b.Body || '').trim();\nconst from = String(b.From || '');\nconst is_approval = /^(senden|ok|passt|ja|go|send)[.!\\s]*$/i.test(text);\nreturn [{ json: { text, from, is_approval } }];"
+      }
+    },
+    {
+      "name": "Offene Angebots-Freigabe suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [180, 900],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ '{{APP_BASE_URL}}/api/agent/pending?project_id={{PROJECT_ID}}&status=pending&contact=' + encodeURIComponent($json.from) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigegeben?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [400, 900],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action !== null && $json.action !== undefined && $('Antwort lesen').item.json.is_approval }}",
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Angebot senden",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [620, 800],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.action.payload.send_target }}",
+        "subject": "={{ $json.action.payload.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.action.payload.draft }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe abschließen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 800],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Offene Angebots-Freigabe suchen').item.json.action.id, project_id: '{{PROJECT_ID}}', status: 'sent' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Angebot als versendet markieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 800],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', table: '{{FOLLOWUP_TABLE}}', op: 'update', id: $('Offene Angebots-Freigabe suchen').item.json.action.payload.followup_row_id, data: { status: 'offen', offer_sent_at: $now.toISO() } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "WhatsApp: Gesendet",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1280, 800],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=✅ Angebot an {{ $('Offene Angebots-Freigabe suchen').item.json.action.payload.send_target }} gesendet.",
+        "options": {}
+      }
+    },
+    {
+      "name": "KI: Angebot überarbeiten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 1020],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'offer/draft', persona_path: $('Offene Angebots-Freigabe suchen').item.json.action.payload.persona || '{{PERSONA_PATH}}', user: 'BISHERIGER ANGEBOTSENTWURF:\\n' + ($('Offene Angebots-Freigabe suchen').item.json.action.payload.draft || '') + '\\n\\nFEEDBACK DES INHABERS ZUR ÜBERARBEITUNG:\\n' + $('Antwort lesen').item.json.text, variables: { preisliste: '(unverändert — siehe bisherigen Entwurf, nur Feedback einarbeiten)' } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 1020],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Offene Angebots-Freigabe suchen').item.json.action.id, project_id: '{{PROJECT_ID}}', payload: Object.assign({}, $('Offene Angebots-Freigabe suchen').item.json.action.payload, { draft: $json.text, feedback_log: ($('Offene Angebots-Freigabe suchen').item.json.action.payload.feedback_log || []).concat([$('Antwort lesen').item.json.text]) }) }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "WhatsApp: Neuer Entwurf",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1060, 1020],
+      "parameters": {
+        "from": "{{TWILIO_WHATSAPP_FROM}}",
+        "to": "{{OWNER_WHATSAPP}}",
+        "toWhatsapp": true,
+        "message": "=✏️ Überarbeitetes Angebot:\n\n{{ $('KI: Angebot überarbeiten').item.json.text }}\n\n— Antworte SENDEN zum Verschicken, oder gib weiteres Feedback.",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Neue Anfrage": {
+      "main": [[{ "node": "KI: Anfrage extrahieren", "type": "main", "index": 0 }]]
+    },
+    "KI: Anfrage extrahieren": {
+      "main": [[{ "node": "Extraktion parsen", "type": "main", "index": 0 }]]
+    },
+    "Extraktion parsen": {
+      "main": [[{ "node": "Preisliste lesen", "type": "main", "index": 0 }]]
+    },
+    "Preisliste lesen": {
+      "main": [[{ "node": "Preisliste zusammenfassen", "type": "main", "index": 0 }]]
+    },
+    "Preisliste zusammenfassen": {
+      "main": [[{ "node": "KI: Angebot entwerfen", "type": "main", "index": 0 }]]
+    },
+    "KI: Angebot entwerfen": {
+      "main": [[{ "node": "Anfrage in Datenablage speichern", "type": "main", "index": 0 }]]
+    },
+    "Anfrage in Datenablage speichern": {
+      "main": [[{ "node": "Freigabe anlegen", "type": "main", "index": 0 }]]
+    },
+    "Freigabe anlegen": {
+      "main": [[{ "node": "WhatsApp: Angebot zur Freigabe", "type": "main", "index": 0 }]]
+    },
+    "Freigabe-Antwort (WhatsApp)": {
+      "main": [[{ "node": "Antwort lesen", "type": "main", "index": 0 }]]
+    },
+    "Antwort lesen": {
+      "main": [[{ "node": "Offene Angebots-Freigabe suchen", "type": "main", "index": 0 }]]
+    },
+    "Offene Angebots-Freigabe suchen": {
+      "main": [[{ "node": "Freigegeben?", "type": "main", "index": 0 }]]
+    },
+    "Freigegeben?": {
+      "main": [
+        [{ "node": "Angebot senden", "type": "main", "index": 0 }],
+        [{ "node": "KI: Angebot überarbeiten", "type": "main", "index": 0 }]
+      ]
+    },
+    "Angebot senden": {
+      "main": [[{ "node": "Freigabe abschließen", "type": "main", "index": 0 }]]
+    },
+    "Freigabe abschließen": {
+      "main": [[{ "node": "Angebot als versendet markieren", "type": "main", "index": 0 }]]
+    },
+    "Angebot als versendet markieren": {
+      "main": [[{ "node": "WhatsApp: Gesendet", "type": "main", "index": 0 }]]
+    },
+    "KI: Angebot überarbeiten": {
+      "main": [[{ "node": "Freigabe aktualisieren", "type": "main", "index": 0 }]]
+    },
+    "Freigabe aktualisieren": {
+      "main": [[{ "node": "WhatsApp: Neuer Entwurf", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -155,6 +155,23 @@ Schreibe eine kurze, professionelle ÖFFENTLICHE Antwort auf die folgende Kunden
 Schreibe einen kurzen, ansprechenden Social-Media-Post (Deutsch) für den Betrieb zum angegebenen Thema/Anlass. Passend zur Zielgruppe, mit einer klaren Handlungsaufforderung, 1-3 passende Hashtags. Kein Clickbait, keine erfundenen Angebote/Preise. Gib NUR den Post-Text zurück.`,
   },
   {
+    key: 'offer/extract',
+    description: 'Extrahiert Kundendaten und gewünschte Leistung aus einer Angebotsanfrage (JSON).',
+    model: 'mistral-small-latest',
+    json: true,
+    system: `Du liest eine eingehende Kundenanfrage (Mail oder Formular) für ein Angebot und extrahierst die relevanten Daten daraus. Erfinde nichts — steht eine Angabe nicht in der Anfrage, lass das Feld leer.
+
+REGELN:
+- Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt, ohne Markdown.
+- "kunde_name": Name des Anfragenden, falls erkennbar (Person oder Firma), sonst leer.
+- "leistung": die gewünschte Leistung/das Produkt in eigenen, kurzen Worten (falls unklar: die naheliegendste Interpretation, nicht raten bei völliger Unklarheit — dann leer).
+- "budget_hinweis": falls die Anfrage einen Preisrahmen/eine Mengenangabe nennt, sonst leer.
+- "kontakt_email": die E-Mail-Adresse des Anfragenden, falls im Text oder Absender erkennbar, sonst leer.
+
+OUTPUT-FORMAT:
+{"kunde_name": "...", "leistung": "...", "budget_hinweis": "...", "kontakt_email": "..."}`,
+  },
+  {
     key: 'offer/draft',
     description: 'Angebotsentwurf aus Anfrage, Kundendaten und Preisliste (Angebots-Autopilot).',
     system: `${RULES_HEADER}
