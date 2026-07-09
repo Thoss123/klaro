@@ -5,6 +5,7 @@
 import { aiSlotsFor, subNodeCount } from './ai-subnodes';
 import { WorkflowStep, StepConfig } from './types';
 import { isCentralCredential } from './central-credentials';
+import { isAxantiloAiTool } from './axantilo-llm-credential';
 
 export function requiresConfig(step: WorkflowStep): boolean {
   if (step.subNodeOf) return true;
@@ -22,8 +23,16 @@ export function isConfigured(step: WorkflowStep, config?: StepConfig): boolean {
 
   const credType = config?.credentialType || step.credentialType;
   const needsCred = !!credType;
-  // Central credentials (Resend SMTP, Twilio, …) are pre-configured — no user input needed.
-  if (needsCred && !isCentralCredential(credType!) && !config?.credentialValue?.trim()) return false;
+  // Central credentials (Resend SMTP, Twilio, …) and the Axantilo Chat Model (axantilo_ai,
+  // provisioned per-project by ensureAxantiloLlmCredential) are pre-configured — no user input needed.
+  if (
+    needsCred &&
+    !isCentralCredential(credType!) &&
+    !isAxantiloAiTool(step.tool) &&
+    !config?.credentialValue?.trim()
+  ) {
+    return false;
+  }
 
   // AI-Parent: Pflicht-Slots (z. B. Chat Model*) müssen verbunden sein.
   for (const slot of aiSlotsFor(step.n8nType)) {
@@ -93,4 +102,16 @@ export function credentialToolName(config: StepConfig, step: WorkflowStep): stri
   if (config.credentialType) return config.credentialType;
   if (config.n8nType) return config.n8nType.split('.').pop() || config.n8nType;
   return step.tool || step.n8nType?.split('.').pop() || 'unknown';
+}
+
+/**
+ * `tool`-Schlüssel für einen StepMapping-Eintrag (deploy/sync). Normalerweise aus dem
+ * n8n-Type abgeleitet (z.B. "gmail" aus "n8n-nodes-base.gmail") — außer der Step trägt
+ * bereits den speziellen `axantilo_ai`-Marker (auto-angehängtes Chat-Model, siehe
+ * lib/ai-subnodes.ts#attachSubNode): dann MUSS der Marker erhalten bleiben, sonst bindet
+ * der Deploy-Route die zentrale Axantilo-Proxy-Credential nicht (credMap['axantilo_ai']).
+ */
+export function mappingToolForStep(step: WorkflowStep, n8nType?: string | null): string | undefined {
+  if (isAxantiloAiTool(step.tool)) return step.tool;
+  return n8nType?.split('.').pop() || undefined;
 }

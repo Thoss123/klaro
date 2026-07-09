@@ -3,7 +3,7 @@
  */
 
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { buildParameters } from './workflow-deploy';
+import { buildParameters, mappingToolForStep } from './workflow-deploy';
 import {
   isN8nMcpConfigured,
   mcpUpdateWorkflow,
@@ -156,7 +156,7 @@ export function buildMappingsFromWorkflow(
       n8n_type: n8nType,
       type_version: config?.n8nTypeVersion ?? step.n8nTypeVersion,
       credential_type: config?.credentialType || step.credentialType,
-      tool: n8nType?.split('.').pop(),
+      tool: mappingToolForStep(step, n8nType),
       ...(parameters ? { parameters } : {}),
     };
   });

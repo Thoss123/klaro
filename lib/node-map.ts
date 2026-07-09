@@ -280,7 +280,7 @@ export const NODE_MAP: NodeMapEntry[] = [
     role: 'ai',
     typicalOps: ['promptType', 'text'],
     oneJob: 'OFFENE Aufgabe: selbst entscheiden, Tools nutzen, mehrstufig/iterativ.',
-    wiringNote: 'NUR für offene Aufgaben (Tools nutzen, entscheiden, mehrstufig). Feste Einzelaufgabe (zusammenfassen/klassifizieren/extrahieren/aus Vorlage) → Basic LLM Chain. Braucht ZWINGEND ein Chat Model als Sub-Node (ai_languageModel), optional Memory/Tools.',
+    wiringNote: 'NUR für offene Aufgaben (Tools nutzen, entscheiden, mehrstufig). Feste Einzelaufgabe (zusammenfassen/klassifizieren/extrahieren/aus Vorlage) → Basic LLM Chain. Braucht ZWINGEND ein Chat Model als Sub-Node (ai_languageModel), optional Memory/Tools. Default-Chat-Model = „Axantilo Chat Model" (lmChatOpenAi @ Axantilo-Proxy, zentral, kein Nutzer-Zugang nötig).',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.chainLlm',
@@ -288,14 +288,14 @@ export const NODE_MAP: NodeMapEntry[] = [
     aliases: ['llm chain', 'prompt-kette', 'einfacher prompt', 'text generieren', 'umformulieren', 'aus vorlage'],
     role: 'ai',
     oneJob: 'FESTE Einzelaufgabe: ein Prompt rein, ein Ergebnis raus — keine Tools, deterministisch.',
-    wiringNote: 'Default für feste KI-Aufgaben (generieren/umformulieren/Text aus Vorlage). Günstiger & verlässlicher als Agent, wenn keine Tools/Entscheidungen nötig. Braucht ein Chat Model als Sub-Node (ai_languageModel).',
+    wiringNote: 'Default für feste KI-Aufgaben (generieren/umformulieren/Text aus Vorlage). Günstiger & verlässlicher als Agent, wenn keine Tools/Entscheidungen nötig. Braucht ein Chat Model als Sub-Node (ai_languageModel). Default-Chat-Model = „Axantilo Chat Model" (lmChatOpenAi @ Axantilo-Proxy, zentral, kein Nutzer-Zugang nötig).',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.chainSummarization',
     displayName: 'Summarization Chain',
     aliases: ['zusammenfassen', 'summarize', 'zusammenfassung'],
     role: 'ai',
-    wiringNote: 'Fasst Eingangstext zusammen; braucht ein Chat Model als Sub-Node (ai_languageModel).',
+    wiringNote: 'Fasst Eingangstext zusammen; braucht ein Chat Model als Sub-Node (ai_languageModel). Default-Chat-Model = „Axantilo Chat Model" (lmChatOpenAi @ Axantilo-Proxy, zentral, kein Nutzer-Zugang nötig).',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.openAi',
@@ -315,7 +315,7 @@ export const NODE_MAP: NodeMapEntry[] = [
     role: 'ai',
     subNodeSlot: 'ai_languageModel',
     credentialType: 'openAiApi',
-    wiringNote: 'NUR als Sub-Node an Agent/Chain (slot ai_languageModel) — nie im Hauptflow.',
+    wiringNote: 'NUR als Sub-Node an Agent/Chain (slot ai_languageModel) — nie im Hauptflow. Default-Auswahl von Axantilo = „Axantilo Chat Model": zeigt über eine openAiApi-Credential mit custom Base-URL auf Axantilos eigenen, gemeterten Mistral-Proxy (tool: axantilo_ai, zentral pro Projekt provisioniert via ensureAxantiloLlmCredential — kein Nutzer-Zugang nötig). Nur bei einer ECHTEN, vom Nutzer verbundenen OpenAI-Credential zeigt der Node auf die echte OpenAI-API.',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.lmChatMistralCloud',
@@ -324,7 +324,7 @@ export const NODE_MAP: NodeMapEntry[] = [
     role: 'ai',
     subNodeSlot: 'ai_languageModel',
     credentialType: 'mistralCloudApi',
-    wiringNote: 'NUR als Sub-Node (ai_languageModel); Modellwahl über parameters.model (z.B. "mistral-large-latest").',
+    wiringNote: 'NUR als Sub-Node (ai_languageModel); Modellwahl über parameters.model (z.B. "mistral-large-latest"). Kein Axantilo-Default mehr (siehe lmChatOpenAi) — braucht eine eigene mistralCloudApi-Credential des Nutzers, falls explizit gewünscht.',
   },
   {
     n8nType: '@n8n/n8n-nodes-langchain.lmChatAnthropic',

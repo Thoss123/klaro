@@ -8,6 +8,7 @@ import { isConfigured, requiresConfig } from './workflow-deploy';
 import { mainWorkflowSteps, stepNumber } from './workflow-overview';
 import { getNodeByName, getN8nCatalog } from './n8n-catalog';
 import { buildInitialParameters } from './n8n-parameter-utils';
+import { isAxantiloAiTool } from './axantilo-llm-credential';
 
 export type StepSetupGuide = {
   stepId: string;
@@ -78,6 +79,13 @@ export function suggestParametersForStep(
 
   if (/lmChatMistral/i.test(n8n)) {
     return { model: 'mistral-small-latest' };
+  }
+
+  // Axantilo Chat Model (unser gemeterter Proxy) hat sein Modell schon in step.parameters
+  // (siehe lib/ai-subnodes.ts#attachSubNode) — hier KEINEN echten OpenAI-Modellnamen
+  // vorschlagen, sonst überschreibt suggestParametersForStep die Mistral-Modell-ID.
+  if (isAxantiloAiTool(step.tool)) {
+    return {};
   }
 
   if (/lmChatOpenAi|openAi/i.test(n8n)) {

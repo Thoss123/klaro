@@ -9,6 +9,8 @@ import { validateWorkflowJsonWithSdk } from '@/lib/n8n-sdk-validate';
 import { buildN8nWorkflow, StepMapping } from '@/lib/workflow-generator';
 import { Workflow, StepConfig } from '@/lib/types';
 import { buildCentralCredMap } from '@/lib/central-credentials';
+import { AXANTILO_AI_TOOL, ensureAxantiloLlmCredential, isAxantiloAiTool } from '@/lib/axantilo-llm-credential';
+import { getRequestOrigin } from '@/lib/app-origin';
 
 // POST /api/n8n/workflows — deploy a workflow
 export async function POST(req: NextRequest) {
@@ -30,6 +32,14 @@ export async function POST(req: NextRequest) {
   // Auto-provision data layer if not yet set up (idempotent, fire-and-forget)
   ensureDataLayer(user.id, project_id).catch(() => {});
 
+  // Enthält der Workflow einen Schritt mit dem Axantilo-Chat-Model (axantilo_ai) → die
+  // per-Projekt-n8n-Credential dafür sicherstellen (idempotent). Muss VOR dem Mapping
+  // fertig sein, damit credMap['axantilo_ai'] unten gesetzt werden kann.
+  const needsAxantiloAiCred = (workflow.steps ?? []).some(s => isAxantiloAiTool(s.tool));
+  const axantiloAiCredId = needsAxantiloAiCred
+    ? await ensureAxantiloLlmCredential(supabase, user.id, project_id, getRequestOrigin(req))
+    : null;
+
   if (!skip_validate) {
     const validation = await validateWorkflowForDeploy(workflow, step_configs ?? {});
     if (!validation.valid) {
@@ -50,6 +60,7 @@ export async function POST(req: NextRequest) {
 
   // Central credentials (Resend SMTP, Twilio, …) come first — user_credentials can override.
   const credMap: Record<string, string> = { ...buildCentralCredMap() };
+  if (axantiloAiCredId) credMap[AXANTILO_AI_TOOL] = axantiloAiCredId;
   for (const c of creds || []) {
     if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
   }
@@ -204,6 +215,11 @@ export async function PATCH(req: NextRequest) {
       .eq('status', 'active');
 
     const credMap: Record<string, string> = { ...buildCentralCredMap() };
+    const needsAxantiloAiCred = (workflow.steps ?? []).some(s => isAxantiloAiTool(s.tool));
+    if (needsAxantiloAiCred) {
+      const axantiloAiCredId = await ensureAxantiloLlmCredential(supabase, user.id, wf.project_id, getRequestOrigin(req));
+      if (axantiloAiCredId) credMap[AXANTILO_AI_TOOL] = axantiloAiCredId;
+    }
     for (const c of creds || []) {
       if (c.n8n_credential_id) credMap[c.tool_name] = c.n8n_credential_id;
     }

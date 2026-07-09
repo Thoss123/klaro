@@ -6,6 +6,7 @@
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import { stepTypeFromCatalogEntry } from '@/lib/n8n-categories';
 import { shortLabel } from '@/lib/short-label';
+import { AXANTILO_AI_TOOL } from '@/lib/axantilo-llm-credential';
 import type { WorkflowEdge, WorkflowStep } from '@/lib/types';
 
 export type AiSlot = {
@@ -21,8 +22,10 @@ const LC = '@n8n/n8n-nodes-langchain.';
 /** Slot-Definitionen pro AI-Parent-Node (Chat Model*, Memory, Tool …). */
 const AI_PARENT_SLOTS: Record<string, AiSlot[]> = {
   [`${LC}agent`]: [
-    // Default-Chat-Model = Mistral Cloud (EU/DSGVO, Axantilos Standardmodell).
-    { slot: 'ai_languageModel', label: 'Chat Model', required: true, max: 1, defaultNode: `${LC}lmChatMistralCloud` },
+    // Default-Chat-Model = „Axantilo Chat Model" (lmChatOpenAi @ Axantilo-Proxy) — zentral
+    // gemetert, kein Nutzer-Zugang nötig. Siehe attachSubNode() für die Sonderbehandlung
+    // (tool/credentialType/Label/Modell-Parameter) und lib/axantilo-llm-credential.ts.
+    { slot: 'ai_languageModel', label: 'Chat Model', required: true, max: 1, defaultNode: `${LC}lmChatOpenAi` },
     { slot: 'ai_memory', label: 'Memory', required: false, max: 1, defaultNode: `${LC}memoryBufferWindow` },
     { slot: 'ai_tool', label: 'Tool', required: false, max: 8, defaultNode: `${LC}toolHttpRequest` },
   ],
@@ -95,13 +98,36 @@ export function subNodeCount(parent: WorkflowStep, slot: string): number {
   return parent.aiSubNodes?.[slot]?.length ?? 0;
 }
 
-/** Sub-Node an einen AI-Parent (Agent/Chain) andocken. */
+/** Mistral-Modell, das die Axantilo Chat Model-Sub-Node über den Proxy anspricht. */
+function axantiloDefaultModelId(): string {
+  return process.env.MISTRAL_CHAT_MODEL || 'mistral-small-latest';
+}
+
+/**
+ * `parameters.model` für die Axantilo Chat Model-Sub-Node (lmChatOpenAi) — Shape hängt vom
+ * n8n-typeVersion ab: ab 1.2 ist `model` ein resourceLocator-Objekt ({__rl,mode,value}),
+ * davor ein simpler String. responsesApiEnabled MUSS false sein — unser Proxy spricht nur
+ * Chat Completions, nicht OpenAIs Responses-API.
+ */
+function axantiloChatModelParameters(version: number): Record<string, unknown> {
+  const modelId = axantiloDefaultModelId();
+  const model = version >= 1.2 ? { __rl: true, mode: 'id' as const, value: modelId } : modelId;
+  return { model, options: { responsesApiEnabled: false } };
+}
+
+/**
+ * Sub-Node an einen AI-Parent (Agent/Chain) andocken.
+ * `isAxantiloDefault`: true, wenn dies der AUTOMATISCH angehängte Default-Chat-Model ist
+ * (ensureRequiredSubNodes → defaultEntryForSlot) — dann zeigt die Sub-Node auf Axantilos
+ * eigenen, gemeterten Proxy statt auf eine Nutzer-OpenAI-Credential.
+ */
 export function attachSubNode(
   steps: WorkflowStep[],
   edges: WorkflowEdge[],
   parentId: string,
   slot: string,
   entry: N8nCatalogIndexEntry,
+  opts?: { isAxantiloDefault?: boolean },
 ): { steps: WorkflowStep[]; edges: WorkflowEdge[]; subId: string } {
   const parent = steps.find(s => s.id === parentId);
   if (!parent) return { steps, edges, subId: '' };
@@ -112,15 +138,19 @@ export function attachSubNode(
   const existingIds = parent.aiSubNodes?.[slot] ?? [];
   if (existingIds.length >= slotDef.max) return { steps, edges, subId: '' };
 
+  const isAxantiloDefault =
+    !!opts?.isAxantiloDefault && slot === 'ai_languageModel' && entry.name === `${LC}lmChatOpenAi`;
+
   const subId = `sub-${slot.replace(/[^a-z]/gi, '')}-${Date.now()}`;
   const subStep: WorkflowStep = {
     id: subId,
-    label: shortLabel(entry.displayName, { n8nType: entry.name }),
+    label: isAxantiloDefault ? 'Axantilo Chat Model' : shortLabel(entry.displayName, { n8nType: entry.name }),
     type: stepTypeFromCatalogEntry(entry),
     n8nType: entry.name,
     n8nTypeVersion: entry.version,
-    tool: entry.name.split('.').pop(),
-    credentialType: entry.credentialTypes[0],
+    tool: isAxantiloDefault ? AXANTILO_AI_TOOL : entry.name.split('.').pop(),
+    credentialType: isAxantiloDefault ? 'openAiApi' : entry.credentialTypes[0],
+    ...(isAxantiloDefault ? { parameters: axantiloChatModelParameters(entry.version) } : {}),
     subNodeOf: { parentId, slot },
     note: `${subNodeLabel(slot)} für „${parent.label}"`,
   };
@@ -214,7 +244,8 @@ export function ensureRequiredSubNodes(
       if (subNodeCount(parent, slot.slot) > 0) continue;
       const entry = defaultEntryForSlot(slot.slot, index);
       if (!entry) continue;
-      const res = attachSubNode(nextSteps, nextEdges, parentId, slot.slot, entry);
+      // Auto-angehängt = Axantilo-Default (Chat Model → unser gemeterter Proxy).
+      const res = attachSubNode(nextSteps, nextEdges, parentId, slot.slot, entry, { isAxantiloDefault: true });
       if (res.subId) {
         nextSteps = res.steps;
         nextEdges = res.edges;

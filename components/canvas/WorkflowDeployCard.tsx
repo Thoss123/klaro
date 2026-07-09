@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Rocket, Maximize2 } from 'lucide-react';
 import { Workflow, WorkflowStep, StepConfig, WorkflowEdge } from '@/lib/types';
-import { buildParameters, configProgress, credentialToolName, isConfigured, requiresConfig } from '@/lib/workflow-deploy';
+import { buildParameters, configProgress, credentialToolName, isConfigured, mappingToolForStep, requiresConfig } from '@/lib/workflow-deploy';
 import type { StepMapping } from '@/lib/workflow-generator';
 import type { N8nCatalogIndexEntry } from '@/lib/n8n-catalog-types';
 import { stepTypeFromCatalogEntry } from '@/lib/n8n-categories';
@@ -253,7 +253,7 @@ export default function WorkflowDeployCard({
         n8n_type: n8nType,
         type_version: config?.n8nTypeVersion ?? step.n8nTypeVersion,
         credential_type: config?.credentialType || step.credentialType,
-        tool: n8nType?.split('.').pop(),
+        tool: mappingToolForStep(step, n8nType),
         ...(parameters ? { parameters } : {}),
       };
     });
