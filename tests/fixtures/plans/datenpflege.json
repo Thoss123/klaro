@@ -40,7 +40,7 @@
       "description": "Eindeutiger Treffer: automatisch übernehmen, sonst dem Inhaber vorlegen"
     },
     {
-      "label": "Freigabe beim Inhaber einholen",
+      "label": "Zusammenführung zur Prüfung freigeben",
       "tool": "gmail",
       "type": "human",
       "description": "Vorschlag zur Zusammenführung zur Freigabe an den Inhaber senden"
