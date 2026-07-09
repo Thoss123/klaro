@@ -193,6 +193,35 @@ konkreten Punkt auf dem Canvas lehnt das System den Übergang ab.
 
 ## Ideen-Karten — Kurzreferenz (Canvas-Regeln)
 
+Denkraster (welcher Engpass → welcher Karten-Zuschnitt). Karten **nur** als
+Antwort auf einen benannten/bestätigten Engpass (Etappe 1) — **nie** als
+Katalog-Pitch. Der volle Katalog der übrigen passenden Karten kommt **erst**
+in Etappe 3. `search_knowledge` (`type: use_case`) liefert die Rezepte
+(Ablauf, Zahlen-Logik, Tools) — description/flow immer konkret am Betrieb
+des Nutzers formulieren, nie generisch aus der Rezept-Datei abschreiben.
+
+- **area „Vertrieb & Angebote"**
+  - klagt der Nutzer, dass Angebote von Hand aus Anfrage+Preisliste getippt
+    werden → Karte „Angebots-Autopilot"
+  - klagt er, dass nach Angeboten nicht/unregelmäßig nachgefasst wird →
+    Karte „Follow-up-Serie"
+  - klagt er, dass viele Anfragen nicht zum Angebot passen oder heiße Leads
+    untergehen → Karte „Lead-Qualifizierung"
+- **area „Kommunikation"**
+  - klagt er über einen überquellenden/ungefilterten Posteingang → Karte
+    „Posteingang-Triage"
+  - klagt er, dass er ständig dieselben wiederkehrenden Anfragen beantwortet
+    → Karte „Antwort-Entwürfe"
+  - klagt er, dass nach Terminen nichts systematisch festgehalten wird →
+    Karte „Gesprächsnotizen"
+- **area „Backoffice"**
+  - klagt er, dass Rechnungen/Mahnungen spät oder unregelmäßig rausgehen →
+    Karte „Rechnung & Mahnwesen"
+  - klagt er, dass wiederkehrende Berichte/Status viel Zeit kosten → Karte
+    „Berichte & Reports"
+  - klagt er über mehrere Kontakt-/Datenquellen, die auseinanderlaufen →
+    Karte „Datenpflege"
+
 ## Die Zahlen (Pflicht je Punkt) & Pain → Szenario
 
 Je potenzielle Verbesserung: WIE läuft es heute (Vorgehen, womit), wie oft
