@@ -185,6 +185,21 @@ export function buildN8nWorkflow(
   const connections: Record<string, Record<string, N8nConnectionItem[][]>> = {};
   const edges = resolveWorkflowEdges(workflow.steps, workflow.edges);
 
+  // Eindeutige n8n-Node-Namen pro Schritt vorab bestimmen — n8n lehnt doppelte Node-Namen mit
+  // 400 ab (z.B. mehrere „Axantilo Chat Model"-Sub-Nodes bei mehreren KI-Schritten). Die Map
+  // wird sowohl bei der Node-Erstellung ALS AUCH beim Verkabeln genutzt, damit Connections
+  // konsistent auf die (ggf. umbenannten) Nodes zeigen.
+  const nameById = new Map<string, string>();
+  const usedNames = new Set<string>();
+  workflow.steps.forEach((step, i) => {
+    const base = sanitizeName(step.label, i);
+    let name = base;
+    let n = 2;
+    while (usedNames.has(name)) name = `${base} ${n++}`;
+    usedNames.add(name);
+    nameById.set(step.id, name);
+  });
+
   workflow.steps.forEach((step, i) => {
     const mapping = mappings.find(m => m.step_id === step.id);
 
@@ -207,7 +222,7 @@ export function buildN8nWorkflow(
     // Kritische Node-Parameter absichern (IF/Switch/Filter brauchen gültige Operatoren).
     parameters = ensureNodeParams(nodeType, parameters || {});
 
-    const nodeName = sanitizeName(step.label, i);
+    const nodeName = nameById.get(step.id)!;
     const x = 200 + i * 250;
     const y = 300;
 
@@ -236,10 +251,8 @@ export function buildN8nWorkflow(
     const sourceStep = workflow.steps.find(s => s.id === edge.source);
     const targetStep = workflow.steps.find(s => s.id === edge.target);
     if (!sourceStep || !targetStep) continue;
-    const sourceIdx = workflow.steps.indexOf(sourceStep);
-    const targetStepIdx = workflow.steps.indexOf(targetStep);
-    const sourceName = sanitizeName(sourceStep.label, sourceIdx);
-    const targetName = sanitizeName(targetStep.label, targetStepIdx);
+    const sourceName = nameById.get(sourceStep.id)!;
+    const targetName = nameById.get(targetStep.id)!;
 
     // LangChain-Sub-Connections (Chat Model/Memory/Tool → Agent)
     if (edge.connectionType) {
@@ -273,8 +286,8 @@ export function buildN8nWorkflow(
   if (!edges.length) {
     workflow.steps.forEach((step, i) => {
       if (i === 0) return;
-      const prevName = sanitizeName(workflow.steps[i - 1].label, i - 1);
-      const nodeName = sanitizeName(step.label, i);
+      const prevName = nameById.get(workflow.steps[i - 1].id)!;
+      const nodeName = nameById.get(step.id)!;
       if (!connections[prevName]) connections[prevName] = { main: [[]] };
       if (!connections[prevName].main[0]) connections[prevName].main[0] = [];
       connections[prevName].main[0].push({ node: nodeName, type: 'main', index: 0 });

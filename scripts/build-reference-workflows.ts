@@ -110,10 +110,18 @@ async function main() {
     const built: WorkflowT = { ...draft, steps: positioned, edges: withSubEdges };
 
     const validation = await validateWorkflowForDeploy(built);
-    if (!validation.valid) {
-      console.error(`✗ ${file}: Struktur-Validierung fehlgeschlagen:`, validation.errors);
+    // REF-Builds sind Struktur-Beweise: Fehler vom Typ „missing_resource" (Google-Sheet/CRM-
+    // Dokument noch nicht ausgewählt) sind erwartbar, weil kein echter Nutzer-Kontext existiert.
+    // Nur ECHTE Struktur-Fehler (Trigger fehlt, Verkabelung kaputt) blockieren den Deploy.
+    const blocking = validation.errors.filter(e => e.code !== 'missing_resource');
+    if (blocking.length) {
+      console.error(`✗ ${file}: Struktur-Validierung fehlgeschlagen:`, blocking);
       process.exitCode = 1;
       continue;
+    }
+    const skippedResource = validation.errors.filter(e => e.code === 'missing_resource');
+    if (skippedResource.length) {
+      console.warn(`  ${file}: ${skippedResource.length}× missing_resource (Dokument/Sheet — bei echtem Deploy vom Nutzer gewählt), REF-Build deployt trotzdem.`);
     }
     if (validation.warnings.length) {
       console.warn(`  ${file}: Warnungen —`, validation.warnings.map(w => w.message));
