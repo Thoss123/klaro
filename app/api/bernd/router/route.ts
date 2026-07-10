@@ -8,11 +8,15 @@ import { loadRecentMessages, persistBerndMessage, resolveProjectByChatId, verify
 import { routerToolsForMistral, runRouterTool } from '@/lib/bernd/router-tools';
 import type { BerndToolContext } from '@/lib/bernd/router-tools';
 import type { BerndMessage, RouterDirective } from '@/lib/bernd/types';
+import { getBerndConfig } from '@/lib/bernd/config';
 
 export const maxDuration = 90;
 
 const MAX_TOOL_ROUNDS = 4;
 const MEMORY_WINDOW = 15;
+
+/** Wird nur an den roleHint angehängt, wenn im Betriebsprofil noch keine Preislogik hinterlegt ist (Preisfrage kommt jetzt aus dem Chat, nicht mehr aus dem Wizard). */
+const PREISLOGIK_NACHFRAGE_HINWEIS = `Falls im Betriebsprofil noch keine Preislogik (Stundensatz) hinterlegt ist, frage den Nutzer EINMAL freundlich danach — kurz begründet (Bernd braucht es für Angebote/Rechnungen) — aber dräng nicht, wenn er ausweicht. Sobald er einen Wert nennt, speichere ihn über das Tool set_price_param.`;
 
 type MistralMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -134,7 +138,14 @@ export async function POST(req: NextRequest) {
   const client = new Mistral({ apiKey });
   const ctx: BerndToolContext = { supabase: caller.supabase, projectId, userId: caller.userId };
 
-  const roleHint = `Du bist Bernd, der digitale Handwerker-Mitarbeiter des Inhabers — er erreicht dich per Telegram (Text/Sprache/Foto). Antworte kurz und direkt im Chat-Ton. Du erkennst auch Konfig-Wünsche ("bei Rechnungsmails musst du dich nicht melden", "setz meinen Stundensatz auf 95 €", "pausier den Angebots-Autopilot") und führst sie SOFORT über das passende Konfig-Tool aus, statt nur zu antworten. Für Wissensfragen nutze answer_from_knowledge. Erfinde nichts.`;
+  const config = await getBerndConfig(caller.supabase, projectId);
+  const hatPreislogik = Boolean(
+    config?.preislogik && typeof config.preislogik.stundensatz === 'string' && config.preislogik.stundensatz.trim(),
+  );
+
+  const roleHint = `Du bist Bernd, der digitale Handwerker-Mitarbeiter des Inhabers — er erreicht dich per Telegram (Text/Sprache/Foto). Antworte kurz und direkt im Chat-Ton. Du erkennst auch Konfig-Wünsche ("bei Rechnungsmails musst du dich nicht melden", "setz meinen Stundensatz auf 95 €", "pausier den Angebots-Autopilot") und führst sie SOFORT über das passende Konfig-Tool aus, statt nur zu antworten. Für Wissensfragen nutze answer_from_knowledge. Erfinde nichts.${
+    hatPreislogik ? '' : `\n\n${PREISLOGIK_NACHFRAGE_HINWEIS}`
+  }`;
 
   const messages: MistralMessage[] = [
     { role: 'system', content: `${resolved.system}\n\n${roleHint}` },

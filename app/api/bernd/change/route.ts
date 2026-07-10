@@ -6,6 +6,7 @@ import { withRateLimitRetry } from '@/lib/agents/llm';
 import { canAfford, debitFromUsage } from '@/lib/billing/credits';
 import { configToolsForMistral, runConfigTool, type BerndToolContext } from '@/lib/bernd/config-tools';
 import { persistBerndMessage } from '@/lib/bernd/channel';
+import { getBerndConfig } from '@/lib/bernd/config';
 
 export const maxDuration = 90;
 
@@ -13,6 +14,9 @@ const MAX_TOOL_ROUNDS = 4;
 const DASHBOARD_CHAT_ID = 'dashboard';
 
 const SYSTEM_PROMPT = `Du bist der Änderungs-Assistent für Bernd. Der Inhaber will Bernd anpassen (Preise, Wissen, Textbausteine, bei welchen Mails er sich meldet, Flows an/aus). Frag bei Unklarheit nach, bevor du änderst; führe klare Änderungen via Tool aus und bestätige knapp.`;
+
+/** Wird nur angehängt, wenn im Betriebsprofil noch keine Preislogik hinterlegt ist (Preisfrage kommt jetzt aus dem Chat, nicht mehr aus dem Wizard). */
+const PREISLOGIK_NACHFRAGE_HINWEIS = `Falls im Betriebsprofil noch keine Preislogik (Stundensatz) hinterlegt ist, frage den Nutzer EINMAL freundlich danach — kurz begründet (Bernd braucht es für Angebote/Rechnungen) — aber dräng nicht, wenn er ausweicht. Sobald er einen Wert nennt, speichere ihn über das Tool set_price_param.`;
 
 type MistralMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -69,8 +73,14 @@ export async function POST(req: NextRequest) {
   const model = 'mistral-large-latest';
   const ctx: BerndToolContext = { supabase, projectId: projectId as string, userId: auth.userId };
 
+  const config = await getBerndConfig(supabase, projectId as string);
+  const hatPreislogik = Boolean(
+    config?.preislogik && typeof config.preislogik.stundensatz === 'string' && config.preislogik.stundensatz.trim(),
+  );
+  const systemPrompt = hatPreislogik ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\n${PREISLOGIK_NACHFRAGE_HINWEIS}`;
+
   const messages: MistralMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...(Array.isArray(history)
       ? history
           .filter((h) => h && typeof h.content === 'string' && (h.role === 'user' || h.role === 'assistant'))

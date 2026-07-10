@@ -28,7 +28,7 @@ const INTEGRATIONS: IntegrationItem[] = [
   { label: 'Gmail', icon: <SiGmail size={18} color="#EA4335" /> },
   { label: 'Outlook', domain: 'outlook.com' },
   { label: 'Google Docs', icon: <SiGoogledocs size={18} color="#4285F4" /> },
-  { label: 'WhatsApp Business', icon: <SiWhatsapp size={18} color="#25D366" /> },
+  { label: 'WhatsApp', icon: <SiWhatsapp size={18} color="#25D366" /> },
   { label: 'Herold.at', domain: 'herold.at' },
   { label: 'willhaben', domain: 'willhaben.at' },
 ];
@@ -74,6 +74,9 @@ export default function BerndLanding() {
               <a href="#multimodal">Sprache & Foto</a>
               <a href="#how">So funktioniert&apos;s</a>
               <a href="#pricing">Testphase</a>
+              <Link href="/bernd/login" className="nav-login">
+                Einloggen
+              </Link>
               <Link href="/bernd/onboarding" className="btn btn-live">
                 Bernd einrichten
               </Link>

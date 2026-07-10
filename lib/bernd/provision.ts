@@ -51,9 +51,13 @@ function buildCompanyBaseContent(args: {
     `- ${gewerk}`,
     '',
     '## Preislogik',
-    `- Stundensatz: ${toNumberString(wizardData.stundensatz, 'noch nicht angegeben')} €`,
-    `- Materialaufschlag: ${toNumberString(wizardData.materialaufschlag, 'noch nicht angegeben')} %`,
-    `- Anfahrtspauschale: ${toNumberString(wizardData.anfahrtspauschale, 'keine')} €`,
+    ...(wizardData.stundensatz?.trim()
+      ? [
+          `- Stundensatz: ${toNumberString(wizardData.stundensatz, 'noch nicht angegeben')} €`,
+          `- Materialaufschlag: ${toNumberString(wizardData.materialaufschlag, 'noch nicht angegeben')} %`,
+          `- Anfahrtspauschale: ${toNumberString(wizardData.anfahrtspauschale, 'keine')} €`,
+        ]
+      : ['- Preislogik: noch nicht hinterlegt — Bernd soll den Nutzer beim ersten passenden Anlass danach fragen.']),
     '',
     '## Prozesse',
     `- Auftragsarten: ${wizardData.auftragsarten || 'nicht angegeben'}`,

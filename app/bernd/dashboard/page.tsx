@@ -47,7 +47,7 @@ export default function BerndDashboardPage() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) {
-        router.push('/login');
+        router.push('/bernd/login');
         return;
       }
 

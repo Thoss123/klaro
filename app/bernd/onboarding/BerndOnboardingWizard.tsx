@@ -11,10 +11,14 @@ import { ensureDefaultProject, createProject } from '@/lib/supabase-chat';
 import { parseMultiValue, toggleMultiValue } from '@/lib/onboarding-multi';
 
 /**
- * Handwerker-Wizard für Bernd: strukturierte Fragen zu Gewerk, Preislogik, Tools und
+ * Handwerker-Wizard für Bernd: strukturierte Fragen zu Gewerk, Prozessen, Tools und
  * Zeitfressern, gefolgt von einem kurzen Freitext-Chat-Schritt. Struktur/Auth-Ablauf
  * angelehnt an components/onboarding/OnboardingWizard.tsx (eigenständige Kopie, da Bernd
  * andere Fragen + einen eigenen Provision-Endpoint statt Chat-Session braucht).
+ * Die Preislogik (Stundensatz etc.) wird bewusst NICHT im Wizard abgefragt (zu hohe
+ * Hemmschwelle) — Bernd fragt sie stattdessen im laufenden Chat (Dashboard/Telegram)
+ * einmalig nach, sobald das Betriebsprofil noch keine Preisdaten enthält
+ * (siehe app/api/bernd/change/route.ts, app/api/bernd/router/route.ts).
  */
 
 type WizardOption = { label: string; value: string };
@@ -58,16 +62,16 @@ const ANGEBOTS_PROZESS_OPTIONS: WizardOption[] = [
 
 const RECHNUNGS_PROZESS_OPTIONS: WizardOption[] = [
   { label: 'Rechnung direkt nach Auftragsabschluss', value: 'Direkt nach Abschluss' },
-  { label: 'Rechnung erst, wenn Zeit dafür ist (verzögert)', value: 'Verzoegert wenn Zeit ist' },
-  { label: 'Anzahlung + Schlussrechnung bei größeren Projekten', value: 'Anzahlung plus Schlussrechnung' },
-  { label: 'Mahnungen schreibe ich kaum/nie', value: 'Kaum Mahnungen' },
+  { label: 'Rechnung, sobald ich dazu komme', value: 'Verzoegert wenn Zeit ist' },
+  { label: 'Anzahlung + Schlussrechnung', value: 'Anzahlung plus Schlussrechnung' },
+  { label: 'Mahnungen sind bei mir eher selten', value: 'Kaum Mahnungen' },
 ];
 
 const TOOLS_OPTIONS: WizardOption[] = [
   { label: 'Gmail', value: 'gmail' },
   { label: 'Outlook', value: 'outlook' },
   { label: 'Google Docs/Sheets', value: 'google_docs' },
-  { label: 'WhatsApp Business', value: 'whatsapp' },
+  { label: 'WhatsApp', value: 'whatsapp' },
   { label: 'Excel/Word-Vorlagen', value: 'excel_word' },
   { label: 'Eigene Handwerkersoftware/CRM', value: 'crm' },
   { label: 'Noch keine festen Tools', value: 'keine' },
@@ -91,7 +95,7 @@ const ZEITFRESSER_OPTIONS: WizardOption[] = [
   { label: 'Material-/Lieferschein-Ablage', value: 'Material Ablage' },
 ];
 
-const TOTAL_STEPS = 10; // 8 Wizard-Fragen + Chat-Schritt + Auth-Schritt
+const TOTAL_STEPS = 9; // 7 Wizard-Fragen + Chat-Schritt + Auth-Schritt (Preislogik jetzt im laufenden Chat abgefragt, nicht im Wizard)
 
 function isCustomOptionValue(value: string | undefined, options: WizardOption[], otherValue: string): boolean {
   if (!value || value === otherValue) return false;
@@ -165,7 +169,7 @@ export default function BerndOnboardingWizard() {
     const supabase = createSupabaseBrowserClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      router.push('/login');
+      router.push('/bernd/login');
       return;
     }
     try {
@@ -205,7 +209,7 @@ export default function BerndOnboardingWizard() {
   const handleCancelOnboardingToLogin = () => {
     localStorage.removeItem('pending_bernd_onboarding');
     setExistingAccount(null);
-    router.push('/login');
+    router.push('/bernd/login');
   };
 
   const currentQuestion = () => {
@@ -262,17 +266,6 @@ export default function BerndOnboardingWizard() {
         );
       case 5:
         return (
-          <PreislogikStep
-            stundensatz={data.stundensatz}
-            materialaufschlag={data.materialaufschlag}
-            anfahrtspauschale={data.anfahrtspauschale}
-            onChange={(field, v) => updateData(field, v)}
-            onNext={nextStep}
-            onBack={prevStep}
-          />
-        );
-      case 6:
-        return (
           <QuestionStep
             title="Welche Tools nutzt du bereits?"
             subtitle="E-Mail-Anbieter, CRM, Vorlagen — mehrere Antworten möglich."
@@ -284,7 +277,7 @@ export default function BerndOnboardingWizard() {
             mode="multi"
           />
         );
-      case 7:
+      case 6:
         return (
           <QuestionStep
             title="Wie kommunizierst du mit Kunden?"
@@ -297,7 +290,7 @@ export default function BerndOnboardingWizard() {
             mode="multi"
           />
         );
-      case 8:
+      case 7:
         return (
           <QuestionStep
             title="Was frisst bei dir am meisten Zeit?"
@@ -310,7 +303,7 @@ export default function BerndOnboardingWizard() {
             mode="multi"
           />
         );
-      case 9:
+      case 8:
         return (
           <ChatNotesStep
             value={chatNotes}
@@ -319,7 +312,7 @@ export default function BerndOnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 10:
+      case 9:
         if (isProvisioning) {
           return (
             <div className="flex flex-col items-center gap-4 text-center">
@@ -423,90 +416,6 @@ export default function BerndOnboardingWizard() {
           </AnimatePresence>
         </div>
       </div>
-    </div>
-  );
-}
-
-function PreislogikStep({
-  stundensatz,
-  materialaufschlag,
-  anfahrtspauschale,
-  onChange,
-  onNext,
-  onBack,
-}: {
-  stundensatz?: string;
-  materialaufschlag?: string;
-  anfahrtspauschale?: string;
-  onChange: (field: 'stundensatz' | 'materialaufschlag' | 'anfahrtspauschale', v: string) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  const ready = Boolean(stundensatz?.trim());
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex justify-center mb-[-1rem]">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm"
-        >
-          <ArrowLeft size={16} /> Zurück
-        </button>
-      </div>
-      <div className="text-center">
-        <h2 className="text-3xl font-bold text-gray-900 leading-tight mb-2">Wie kalkulierst du deine Preise?</h2>
-        <p className="text-gray-500 text-base max-w-md mx-auto">
-          Diese Werte nutzt Bernd direkt in Angeboten und Rechnungen.
-        </p>
-      </div>
-      <div className="flex flex-col gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Stundensatz (€)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={stundensatz || ''}
-            onChange={(e) => onChange('stundensatz', e.target.value)}
-            placeholder="z. B. 65"
-            className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Materialaufschlag (%)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={materialaufschlag || ''}
-            onChange={(e) => onChange('materialaufschlag', e.target.value)}
-            placeholder="z. B. 15"
-            className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Anfahrtspauschale (€, optional)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={anfahrtspauschale || ''}
-            onChange={(e) => onChange('anfahrtspauschale', e.target.value)}
-            placeholder="z. B. 20"
-            className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && ready) onNext();
-            }}
-          />
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!ready}
-        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Weiter <ArrowRight size={20} />
-      </button>
     </div>
   );
 }
