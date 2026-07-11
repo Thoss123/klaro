@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Save, Loader2 } from 'lucide-react';
+import { FileText, Save, Loader2, BookOpen, Check } from 'lucide-react';
+import { Card, CardHeader, EmptyState, PRIMARY_BTN } from '@/components/bernd/ui';
 
 interface WissenViewProps {
   projectId: string;
@@ -14,7 +15,7 @@ interface FileMeta {
 }
 
 const PATH_LABELS: Record<string, string> = {
-  'rules/company_base.md': 'Firmen-Basiswissen (Fakten, Preise, No-Gos)',
+  'rules/company_base.md': 'Firmen-Basiswissen',
 };
 
 function labelForPath(path: string): string {
@@ -26,7 +27,7 @@ function labelForPath(path: string): string {
 
 /**
  * "Bernds Wissen": listet + editiert workspace_files (company_base.md, persona,
- * Textbausteine). Lesbar mit version/updated_by, Speichern via PUT /api/bernd/knowledge
+ * Textbausteine). Lesbar mit version/updated_at, Speichern via PUT /api/bernd/knowledge
  * (Architekturplan §5 Screen 3b).
  */
 export function WissenView({ projectId }: WissenViewProps) {
@@ -40,8 +41,6 @@ export function WissenView({ projectId }: WissenViewProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Datei-Liste laden (Neuladen via reloadKey nach dem Speichern). Async-Loader im
-  // Effect-Body — so wird setState nicht synchron aus einer externen Funktion gerufen.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -67,7 +66,6 @@ export function WissenView({ projectId }: WissenViewProps) {
     };
   }, [projectId, reloadKey]);
 
-  // „Gespeichert."-Hinweis nach 4s ausblenden (kein Date.now() im Render).
   useEffect(() => {
     if (!justSaved) return;
     const t = setTimeout(() => setJustSaved(false), 4000);
@@ -120,70 +118,88 @@ export function WissenView({ projectId }: WissenViewProps) {
 
   const selectedMeta = files.find((f) => f.path === selectedPath);
 
-  if (loading) {
-    return <p className="text-sm text-gray-400">Lade Wissen…</p>;
-  }
-
-  if (files.length === 0) {
-    return <p className="text-sm text-gray-400">Bernd hat noch kein Wissen hinterlegt.</p>;
-  }
-
   return (
-    <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
-      <div className="flex flex-col gap-1">
-        {files.map((f) => (
-          <button
-            key={f.path}
-            onClick={() => setSelectedPath(f.path)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-              selectedPath === f.path
-                ? 'bg-indigo-50 text-indigo-700 font-semibold'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <FileText size={14} className="shrink-0" />
-            <span className="truncate">{labelForPath(f.path)}</span>
-          </button>
-        ))}
-      </div>
+    <Card>
+      <CardHeader icon={BookOpen} title="Bernds Wissen" subtitle="Was Bernd über deinen Betrieb weiß" />
 
-      <div className="flex flex-col gap-3">
-        {selectedMeta && (
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Version {selectedMeta.version}</span>
-            <span>
-              Zuletzt geändert {new Date(selectedMeta.updated_at).toLocaleString('de-AT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-            </span>
+      {loading ? (
+        <div className="px-5 py-6 text-sm text-slate-400">Lade Wissen…</div>
+      ) : files.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title="Noch kein Wissen hinterlegt"
+          hint="Nach dem Onboarding legt Bernd hier Firmenwissen, Preise und Textbausteine ab — alles jederzeit bearbeitbar."
+        />
+      ) : (
+        <div className="grid gap-0 sm:grid-cols-[240px_1fr]">
+          {/* Datei-Liste */}
+          <div className="flex flex-col gap-1 border-b border-slate-100 p-3 sm:border-b-0 sm:border-r">
+            {files.map((f) => {
+              const active = selectedPath === f.path;
+              return (
+                <button
+                  key={f.path}
+                  onClick={() => setSelectedPath(f.path)}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                    active
+                      ? 'bg-indigo-50 font-semibold text-indigo-700'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <FileText size={15} className={`shrink-0 ${active ? 'text-indigo-500' : 'text-slate-400'}`} />
+                  <span className="truncate">{labelForPath(f.path)}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
 
-        {loadingContent ? (
-          <p className="text-sm text-gray-400">Lade Datei…</p>
-        ) : (
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={16}
-            className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-800 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-        )}
+          {/* Editor */}
+          <div className="flex flex-col gap-3 p-4">
+            {selectedMeta && (
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                  Version {selectedMeta.version}
+                </span>
+                <span>
+                  Zuletzt geändert{' '}
+                  {new Date(selectedMeta.updated_at).toLocaleString('de-AT', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+            {loadingContent ? (
+              <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+            ) : (
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={16}
+                spellCheck={false}
+                className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50/40 p-4 font-mono text-[13px] leading-relaxed text-slate-800 transition-colors focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+            )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSave}
-            disabled={saving || loadingContent}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Speichern
-          </button>
-          {justSaved && (
-            <span className="text-xs text-green-600 font-medium">Gespeichert.</span>
-          )}
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <div className="flex items-center gap-3">
+              <button onClick={handleSave} disabled={saving || loadingContent} className={PRIMARY_BTN}>
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                Speichern
+              </button>
+              {justSaved && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                  <Check size={14} /> Gespeichert
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Card>
   );
 }

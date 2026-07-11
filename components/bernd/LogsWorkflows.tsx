@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Loader2, HelpCircle, PlayCircle, PauseCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, HelpCircle, PlayCircle, PauseCircle, ListChecks } from 'lucide-react';
+import { Card, EmptyState, Pill } from '@/components/bernd/ui';
 
 interface LogsWorkflowsProps {
   projectId: string;
@@ -24,11 +25,14 @@ interface FlowSummary {
   runs: HumanRun[];
 }
 
-const STATUS_META: Record<HumanRun['status'], { label: string; className: string; icon: typeof CheckCircle2 }> = {
-  ok: { label: 'lief erfolgreich', className: 'text-green-600', icon: CheckCircle2 },
-  fehler: { label: 'ist fehlgeschlagen', className: 'text-red-600', icon: XCircle },
-  läuft: { label: 'läuft gerade', className: 'text-amber-600', icon: Loader2 },
-  unbekannt: { label: 'Status unbekannt', className: 'text-gray-400', icon: HelpCircle },
+const STATUS_META: Record<
+  HumanRun['status'],
+  { label: string; className: string; icon: typeof CheckCircle2 }
+> = {
+  ok: { label: 'lief erfolgreich', className: 'text-emerald-500', icon: CheckCircle2 },
+  fehler: { label: 'ist fehlgeschlagen', className: 'text-red-500', icon: XCircle },
+  läuft: { label: 'läuft gerade', className: 'text-amber-500', icon: Loader2 },
+  unbekannt: { label: 'Status unbekannt', className: 'text-slate-400', icon: HelpCircle },
 };
 
 function formatWhen(when: string): string {
@@ -70,53 +74,70 @@ export function LogsWorkflows({ projectId }: LogsWorkflowsProps) {
   }, [projectId]);
 
   if (loading) {
-    return <p className="text-sm text-gray-400">Lade Flows & Ausführungen…</p>;
+    return (
+      <Card className="px-5 py-6 text-sm text-slate-400">Lade Flows &amp; Ausführungen…</Card>
+    );
   }
 
   if (error) {
-    return <p className="text-sm text-red-600">{error}</p>;
+    return <Card className="px-5 py-6 text-sm text-red-600">{error}</Card>;
   }
 
   if (flows.length === 0) {
-    return <p className="text-sm text-gray-400">Noch keine Flows eingerichtet.</p>;
+    return (
+      <Card>
+        <EmptyState
+          icon={ListChecks}
+          title="Noch keine Flows eingerichtet"
+          hint="Sobald Bernd Abläufe für dich übernimmt, findest du hier jede Ausführung mit Status und Zeitpunkt."
+        />
+      </Card>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {flows.map((flow) => (
-        <section key={flow.workflow_id} className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-900">{flow.name}</h3>
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                flow.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
-              }`}
-            >
-              {flow.active ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-              {flow.active ? 'Aktiv' : 'Pausiert'}
-            </span>
+        <Card key={flow.workflow_id} className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                <ListChecks size={15} />
+              </span>
+              <h3 className="truncate text-sm font-semibold text-slate-900">{flow.name}</h3>
+            </div>
+            {flow.active ? (
+              <Pill tone="green" icon={PlayCircle}>
+                Aktiv
+              </Pill>
+            ) : (
+              <Pill tone="slate" icon={PauseCircle}>
+                Pausiert
+              </Pill>
+            )}
           </div>
 
           {flow.runs.length === 0 ? (
-            <p className="text-sm text-gray-400">Noch keine Ausführungen.</p>
+            <p className="px-5 py-4 text-sm text-slate-400">Noch keine Ausführungen.</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="divide-y divide-slate-50">
               {flow.runs.map((run, i) => {
                 const meta = STATUS_META[run.status];
                 const Icon = meta.icon;
                 return (
-                  <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                    <Icon size={14} className={`shrink-0 ${meta.className} ${run.status === 'läuft' ? 'animate-spin' : ''}`} />
-                    <span className="flex-1">
-                      {run.error ?? meta.label}
-                    </span>
-                    <span className="text-xs text-gray-400">{formatWhen(run.when)}</span>
+                  <li key={i} className="flex items-center gap-3 px-5 py-3">
+                    <Icon
+                      size={16}
+                      className={`shrink-0 ${meta.className} ${run.status === 'läuft' ? 'animate-spin' : ''}`}
+                    />
+                    <span className="flex-1 text-sm text-slate-600">{run.error ?? meta.label}</span>
+                    <span className="shrink-0 text-xs text-slate-400">{formatWhen(run.when)}</span>
                   </li>
                 );
               })}
             </ul>
           )}
-        </section>
+        </Card>
       ))}
     </div>
   );

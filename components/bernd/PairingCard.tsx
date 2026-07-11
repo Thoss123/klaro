@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { MessageCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Card } from '@/components/bernd/ui';
 
 interface PairingCardProps {
   projectId: string;
@@ -22,8 +23,8 @@ function botUsername(): string {
 /**
  * Telegram-Pairing-Karte fürs Bernd-Dashboard (Architekturplan §5, Punkt 4): zeigt den
  * Deep-Link `t.me/<bot>?start=<code>` und lädt/erzeugt den Code über `/api/bernd/pair`.
- * Pollt kurz nach dem Öffnen, damit der Status nach dem Koppeln in Telegram automatisch
- * auf „verbunden" wechselt, ohne dass der Nutzer manuell neu laden muss.
+ * Pollt kurz nach dem Öffnen, damit der Status nach dem Koppeln automatisch auf
+ * „verbunden" wechselt. Bewusst prominent — das ist der Schlüsselschritt für neue Nutzer.
  */
 export function PairingCard({ projectId }: PairingCardProps) {
   const [status, setStatus] = useState<PairStatus | null>(null);
@@ -61,16 +62,14 @@ export function PairingCard({ projectId }: PairingCardProps) {
     }
   };
 
-  // Lädt den Pairing-Status beim Mount/Projektwechsel — echter Datenfetch-Side-Effect,
-  // kein Render-Zeit-Ableitungsfall.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Kurzes Polling nach dem Öffnen: sobald der Nutzer in Telegram "Start" tippt,
-  // soll die Karte ohne manuelles Neuladen auf "verbunden" wechseln.
+  // Kurzes Polling: sobald der Nutzer in Telegram "Start" tippt, wechselt die Karte
+  // ohne manuelles Neuladen auf "verbunden".
   useEffect(() => {
     if (loading || status?.linked) return;
     const interval = setInterval(async () => {
@@ -88,48 +87,72 @@ export function PairingCard({ projectId }: PairingCardProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-400">
-        <Loader2 size={14} className="animate-spin" /> Lade Pairing-Status…
-      </div>
+      <Card className="flex items-center gap-2 px-5 py-4 text-sm text-slate-400">
+        <Loader2 size={15} className="animate-spin" /> Verbindung wird geprüft…
+      </Card>
     );
   }
 
+  // Verbunden: ruhige, bestätigende Karte.
   if (status?.linked) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-        <CheckCircle2 size={18} /> Telegram ist mit deinem Betrieb verbunden.
-      </div>
+      <Card className="flex items-center gap-3 border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-white px-5 py-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/30">
+          <CheckCircle2 size={20} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-emerald-900">Telegram ist verbunden</p>
+          <p className="text-xs text-emerald-700/80">
+            Schreib, sprich oder fotografiere Bernd direkt im Chat — er antwortet dir dort.
+          </p>
+        </div>
+      </Card>
     );
   }
 
   const deepLink = status?.code ? `https://t.me/${botUsername()}?start=${status.code}` : undefined;
 
+  // Nicht verbunden: prominenter Call-to-Action mit Telegram-Akzent.
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-        <MessageCircle size={16} className="text-indigo-600" /> Telegram koppeln
+    <Card className="relative overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-[#229ED9]/10 blur-2xl"
+      />
+      <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#229ED9] text-white shadow-sm shadow-[#229ED9]/30">
+            <Send size={20} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Bernd mit Telegram verbinden</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
+              Tippe den Button, öffne den Chat und drücke <span className="font-medium text-slate-600">„Start&ldquo;</span>.
+              Danach arbeitet ihr direkt über Telegram zusammen.
+            </p>
+            {error && <p className="mt-1.5 text-sm text-red-600">{error}</p>}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
+          {deepLink && (
+            <a
+              href={deepLink}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#229ED9]/30 transition-all hover:bg-[#1b8ec2] active:scale-[0.98]"
+            >
+              <Send size={16} /> In Telegram öffnen
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={requestNewCode}
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition-colors hover:text-slate-600"
+          >
+            <RefreshCw size={12} /> Neuer Code
+          </button>
+        </div>
       </div>
-      <p className="text-sm text-gray-500">
-        Öffne den Link in Telegram und tippe „Start” — danach erreichst du Bernd direkt im Chat.
-      </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {deepLink && (
-        <a
-          href={deepLink}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-        >
-          <MessageCircle size={16} /> Mit Telegram verbinden
-        </a>
-      )}
-      <button
-        type="button"
-        onClick={requestNewCode}
-        className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors self-start"
-      >
-        Neuen Code erzeugen
-      </button>
-    </div>
+    </Card>
   );
 }

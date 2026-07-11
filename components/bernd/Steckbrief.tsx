@@ -1,11 +1,12 @@
 "use client"
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Activity } from 'lucide-react';
+import { Sparkles, Activity, Radio, Inbox } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { getTemplateManifest } from '@/lib/bernd/templates';
 import type { BerndConfig } from '@/lib/bernd/types';
 import { ChannelBadgeList, type ChannelBadgeData } from '@/components/bernd/ChannelBadge';
+import { Card, CardHeader, EmptyState, StatusDot } from '@/components/bernd/ui';
 
 interface SteckbriefProps {
   projectId: string;
@@ -25,11 +26,26 @@ const STATUS_LABEL: Record<LatestActivity['status'], string> = {
   unbekannt: 'Status unbekannt',
 };
 
-const STATUS_DOT: Record<LatestActivity['status'], string> = {
-  ok: 'bg-green-500',
-  fehler: 'bg-red-500',
-  läuft: 'bg-amber-500',
-  unbekannt: 'bg-gray-300',
+const STATUS_DOT: Record<LatestActivity['status'], 'green' | 'red' | 'amber' | 'slate'> = {
+  ok: 'green',
+  fehler: 'red',
+  läuft: 'amber',
+  unbekannt: 'slate',
+};
+
+// Menschliche Einzeiler je Anwendungsfall (statt der technischen RAG-use_case-Slugs
+// aus dem Template-Manifest). Fallback: keine Beschreibung statt kryptischem Slug.
+const TEMPLATE_DESCRIPTION: Record<string, string> = {
+  'angebot-autopilot': 'Erstellt Angebote aus deinen Ansagen und schickt sie nach Freigabe raus.',
+  'rechnung-mahnwesen': 'Schreibt Rechnungen und fasst offene Zahlungen automatisch nach.',
+  'followup-serie': 'Fasst bei offenen Angeboten nach — nach 3, 7 und 14 Tagen.',
+  'lead-followup': 'Meldet sich bei neuen Anfragen und bleibt für dich dran.',
+  'email-triage-draft': 'Sortiert dein Postfach und legt fertige Antwort-Entwürfe bereit.',
+  'email-autopilot': 'Beantwortet Standard-Mails selbstständig als Entwurf.',
+  'email-learning-engine': 'Lernt aus deinen Korrekturen und wird mit der Zeit besser.',
+  'whatsapp-control': 'Freigaben und Rückfragen direkt per Chat.',
+  'faq-chatbot': 'Beantwortet Kundenfragen automatisch aus deinem Firmenwissen.',
+  'ai-webhook': 'Erledigt einzelne KI-Aufgaben auf Zuruf.',
 };
 
 /**
@@ -49,7 +65,10 @@ export function Steckbrief({ projectId, config }: SteckbriefProps) {
         const res = await fetch(`/api/bernd/logs?projectId=${encodeURIComponent(projectId)}`);
         if (!res.ok) throw new Error('logs fetch failed');
         const data = await res.json();
-        const flows = (data.flows ?? []) as Array<{ name: string; runs: Array<{ status: LatestActivity['status']; when: string }> }>;
+        const flows = (data.flows ?? []) as Array<{
+          name: string;
+          runs: Array<{ status: LatestActivity['status']; when: string }>;
+        }>;
         const latest: LatestActivity[] = flows
           .filter((f) => f.runs.length > 0)
           .map((f) => ({ flow_label: f.name, status: f.runs[0].status, when: f.runs[0].when }));
@@ -93,60 +112,89 @@ export function Steckbrief({ projectId, config }: SteckbriefProps) {
   const activeTemplates = config.active_templates ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
-      <section>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Was Bernd kann</h3>
+    <div className="flex flex-col gap-5">
+      {/* Was Bernd kann */}
+      <Card>
+        <CardHeader
+          icon={Sparkles}
+          title="Was Bernd kann"
+          subtitle="Aktivierte Anwendungsfälle"
+          action={
+            activeTemplates.length > 0 ? (
+              <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600">
+                {activeTemplates.length}
+              </span>
+            ) : undefined
+          }
+        />
         {activeTemplates.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine Anwendungsfälle aktiviert.</p>
+          <EmptyState
+            icon={Sparkles}
+            title="Noch keine Anwendungsfälle aktiv"
+            hint="Sobald du Bernd eingerichtet hast, erscheinen hier seine Fähigkeiten."
+          />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <div className="grid gap-2.5 p-4 sm:grid-cols-2">
             {activeTemplates.map((t) => {
               const manifest = getTemplateManifest(t.slug);
+              const description = TEMPLATE_DESCRIPTION[t.slug];
               return (
-                <li
+                <div
                   key={t.slug}
-                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800"
+                  className="group flex items-start gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 transition-colors hover:border-indigo-200 hover:bg-indigo-50/40"
                 >
-                  <CheckCircle2 size={16} className="text-indigo-600 shrink-0" />
-                  {manifest?.label ?? t.slug}
-                </li>
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/60">
+                    <Sparkles size={15} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">{manifest?.label ?? t.slug}</p>
+                    {description && (
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
+                    )}
+                  </div>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
-      </section>
+      </Card>
 
-      <section>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Was gerade läuft</h3>
+      {/* Was gerade läuft */}
+      <Card>
+        <CardHeader icon={Activity} title="Was gerade läuft" subtitle="Letzte Aktivität je Ablauf" />
         {loadingActivity ? (
-          <p className="text-sm text-gray-400">Lade Aktivität…</p>
+          <div className="px-5 py-6 text-sm text-slate-400">Lade Aktivität…</div>
         ) : activity.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine Ausführungen.</p>
+          <EmptyState icon={Inbox} title="Noch keine Ausführungen" hint="Sobald Bernd loslegt, siehst du es hier." />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="divide-y divide-slate-100">
             {activity.map((a, i) => (
-              <li
-                key={`${a.flow_label}-${i}`}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700"
-              >
-                <span className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />
-                <Activity size={14} className="text-gray-400 shrink-0" />
-                <span className="flex-1">
-                  <span className="font-medium text-gray-900">{a.flow_label}</span> {STATUS_LABEL[a.status]}
+              <li key={`${a.flow_label}-${i}`} className="flex items-center gap-3 px-5 py-3">
+                <StatusDot color={STATUS_DOT[a.status]} pulse={a.status === 'läuft'} />
+                <span className="flex-1 text-sm text-slate-600">
+                  <span className="font-semibold text-slate-800">{a.flow_label}</span> {STATUS_LABEL[a.status]}
                 </span>
-                <span className="text-xs text-gray-400">
-                  {new Date(a.when).toLocaleString('de-AT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                <span className="text-xs text-slate-400">
+                  {new Date(a.when).toLocaleString('de-AT', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
-      <section>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Kanäle</h3>
-        <ChannelBadgeList channels={channels} />
-      </section>
+      {/* Kanäle */}
+      <Card>
+        <CardHeader icon={Radio} title="Kanäle" subtitle="So erreichst du Bernd" />
+        <div className="p-4">
+          <ChannelBadgeList channels={channels} />
+        </div>
+      </Card>
     </div>
   );
 }
