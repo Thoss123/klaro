@@ -162,12 +162,12 @@ export default function BerndOnboardingWizard() {
         throw new Error(body?.error || `Provisionierung fehlgeschlagen (${res.status})`);
       }
       localStorage.removeItem('pending_bernd_onboarding');
-      router.push('/bernd/dashboard');
+      router.push('/bernd/chat');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Bernd konnte nicht eingerichtet werden.';
       setProvisionError(msg);
-      // Fail-open: trotzdem weiter zum Dashboard — dort kann nachjustiert/erneut versucht werden.
-      router.push('/bernd/dashboard');
+      // Fail-open: trotzdem weiter ins Erstgespräch — von dort kann nachjustiert werden.
+      router.push('/bernd/chat');
     } finally {
       setIsProvisioning(false);
     }
@@ -186,7 +186,7 @@ export default function BerndOnboardingWizard() {
       await runProvision(userId, projectId, data, chatNotes);
     } catch (e) {
       console.error('Bernd-Onboarding-Persistierung fehlgeschlagen:', e);
-      router.push('/bernd/dashboard');
+      router.push('/bernd/chat');
     }
   };
 

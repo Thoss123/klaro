@@ -7,16 +7,56 @@ import { canAfford, debitFromUsage } from '@/lib/billing/credits';
 import { configToolsForMistral, runConfigTool, type BerndToolContext } from '@/lib/bernd/config-tools';
 import { persistBerndMessage } from '@/lib/bernd/channel';
 import { getBerndConfig } from '@/lib/bernd/config';
+import { getTemplateManifest } from '@/lib/bernd/templates';
+import type { BerndConfig } from '@/lib/bernd/types';
 
 export const maxDuration = 90;
 
 const MAX_TOOL_ROUNDS = 4;
 const DASHBOARD_CHAT_ID = 'dashboard';
+const WELCOME_CHAT_ID = 'welcome';
+
+/** Sentinel: erste (verdeckte) Nachricht der Willkommens-Chat-Seite — löst nur den Gruß aus. */
+const WELCOME_KICKOFF = '__welcome_kickoff__';
 
 const SYSTEM_PROMPT = `Du bist der Änderungs-Assistent für Bernd. Der Inhaber will Bernd anpassen (Preise, Wissen, Textbausteine, bei welchen Mails er sich meldet, Flows an/aus). Frag bei Unklarheit nach, bevor du änderst; führe klare Änderungen via Tool aus und bestätige knapp.`;
 
 /** Wird nur angehängt, wenn im Betriebsprofil noch keine Preislogik hinterlegt ist (Preisfrage kommt jetzt aus dem Chat, nicht mehr aus dem Wizard). */
 const PREISLOGIK_NACHFRAGE_HINWEIS = `Falls im Betriebsprofil noch keine Preislogik (Stundensatz) hinterlegt ist, frage den Nutzer EINMAL freundlich danach — kurz begründet (Bernd braucht es für Angebote/Rechnungen) — aber dräng nicht, wenn er ausweicht. Sobald er einen Wert nennt, speichere ihn über das Tool set_price_param.`;
+
+const GEWERK_LABEL: Record<string, string> = {
+  elektriker: 'Elektriker',
+  maler: 'Maler',
+  shk: 'SHK (Sanitär/Heizung/Klima)',
+  tischler: 'Tischler',
+  sonstiges: 'Handwerksbetrieb',
+};
+
+/**
+ * Willkommens-/Einrichtungs-Modus: Bernds allererste Unterhaltung direkt nach dem Onboarding.
+ * Er stellt sich vor, fasst zusammen was eingerichtet wurde, erklärt die Telegram-Steuerung
+ * und schließt die Einrichtung ab (z.B. Preise). Personalisiert mit Gewerk + aktiven Flows.
+ */
+function buildWelcomePrompt(config: BerndConfig | null): string {
+  const gewerk = config?.gewerk ? GEWERK_LABEL[config.gewerk] ?? config.gewerk : 'Handwerksbetrieb';
+  const flowLabels = (config?.active_templates ?? [])
+    .map((t) => getTemplateManifest(t.slug)?.label ?? t.slug)
+    .filter(Boolean);
+  const flowList = flowLabels.length > 0 ? flowLabels.join(', ') : 'die passenden Standard-Abläufe';
+
+  return `Du bist Bernd, der neue digitale Mitarbeiter für einen Handwerksbetrieb (Gewerk: ${gewerk}). Der Inhaber hat dich gerade eingerichtet — das ist EURE ALLERERSTE Unterhaltung. Sprich per „du", locker, herzlich und ohne Fachchinesisch.
+
+Für den Betrieb wurde aktiviert: ${flowList}.
+
+In deiner ERSTEN Nachricht:
+1. Stell dich kurz vor (1 Satz).
+2. Fasse in 2-3 Sätzen zusammen, was du ab jetzt für den Betrieb übernimmst — bezogen auf das oben Aktivierte.
+3. Erkläre einfach, dass der Inhaber dich über Telegram steuert: per Text, per Sprachnachricht von der Baustelle oder per Foto vom Lieferschein. Weise darauf hin, dass er dich mit einem Klick oben („In Telegram öffnen") koppeln kann.
+4. Lade ihn ein, dir Rückfragen zu stellen.
+Halte diese erste Nachricht kompakt und einladend (keine Aufzählungszeichen-Wüste).
+
+Danach beantwortest du Rückfragen und schließt die Einrichtung ab — Änderungen an Preisen, Wissen oder Melde-Regeln führst du direkt über die passenden Tools aus und bestätigst knapp.`;
+}
 
 type MistralMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -45,11 +85,15 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return accessDenied(auth);
 
   const body = await req.json().catch(() => ({}));
-  const { projectId, message, history } = body as {
+  const { projectId, message, history, mode } = body as {
     projectId?: string;
     message?: string;
     history?: HistoryTurn[];
+    mode?: 'change' | 'welcome';
   };
+  const isWelcome = mode === 'welcome';
+  const isKickoff = isWelcome && message === WELCOME_KICKOFF;
+  const chatId = isWelcome ? WELCOME_CHAT_ID : DASHBOARD_CHAT_ID;
 
   const owner = await assertProjectOwner(supabase, auth.userId, projectId ?? '');
   if (!owner.ok) return accessDenied(owner);
@@ -77,7 +121,11 @@ export async function POST(req: NextRequest) {
   const hatPreislogik = Boolean(
     config?.preislogik && typeof config.preislogik.stundensatz === 'string' && config.preislogik.stundensatz.trim(),
   );
-  const systemPrompt = hatPreislogik ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\n${PREISLOGIK_NACHFRAGE_HINWEIS}`;
+  // Die Chat-Bubbles rendern kein Markdown → Bernd soll reinen Fließtext schreiben.
+  const PLAIN_TEXT = 'Antworte in reinem, natürlichem Fließtext — KEINE Markdown-Formatierung (keine **Sternchen** für Fett, keine #-Überschriften, keine "-"-Aufzählungszeichen).';
+  const basePrompt = isWelcome ? buildWelcomePrompt(config) : SYSTEM_PROMPT;
+  const withPrice = hatPreislogik ? basePrompt : `${basePrompt}\n\n${PREISLOGIK_NACHFRAGE_HINWEIS}`;
+  const systemPrompt = `${withPrice}\n\n${PLAIN_TEXT}`;
 
   const messages: MistralMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -89,15 +137,18 @@ export async function POST(req: NextRequest) {
     { role: 'user', content: message },
   ];
 
-  await persistBerndMessage(supabase, {
-    project_id: projectId as string,
-    chat_id: DASHBOARD_CHAT_ID,
-    direction: 'in',
-    role: 'user',
-    content: message,
-    media_kind: 'text',
-    meta: {},
-  });
+  // Den verdeckten Willkommens-Kickoff nicht als echte Nutzer-Nachricht protokollieren.
+  if (!isKickoff) {
+    await persistBerndMessage(supabase, {
+      project_id: projectId as string,
+      chat_id: chatId,
+      direction: 'in',
+      role: 'user',
+      content: message,
+      media_kind: 'text',
+      meta: {},
+    });
+  }
 
   const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   const toolsUsed: string[] = [];
@@ -172,7 +223,7 @@ export async function POST(req: NextRequest) {
 
     await persistBerndMessage(supabase, {
       project_id: projectId as string,
-      chat_id: DASHBOARD_CHAT_ID,
+      chat_id: chatId,
       direction: 'out',
       role: 'assistant',
       content: outText,
