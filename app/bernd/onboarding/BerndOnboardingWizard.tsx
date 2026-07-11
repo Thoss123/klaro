@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
@@ -135,7 +135,15 @@ export default function BerndOnboardingWizard() {
     localStorage.setItem('pending_bernd_onboarding', JSON.stringify({ data, chatNotes }));
   }, [data, chatNotes]);
 
-  const runProvision = async (userId: string, projectId: string) => {
+  // wizardData/notes werden explizit übergeben (statt aus dem `data`/`chatNotes`-State
+  // gelesen) — beim Resume nach einem Google-OAuth-Redirect (siehe unten) ist der frisch
+  // aus localStorage geparste Payload sonst wegen React-State-Timing noch nicht im State.
+  const runProvision = async (
+    userId: string,
+    projectId: string,
+    wizardData: BerndWizardData,
+    notes: string,
+  ) => {
     setProvisionError(null);
     setIsProvisioning(true);
     try {
@@ -144,9 +152,9 @@ export default function BerndOnboardingWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          gewerk: data.gewerk || 'sonstiges',
-          wizardData: data,
-          chatNotes: chatNotes.trim() || undefined,
+          gewerk: wizardData.gewerk || 'sonstiges',
+          wizardData,
+          chatNotes: notes.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -175,12 +183,42 @@ export default function BerndOnboardingWizard() {
     try {
       const userId = session.user.id;
       const projectId = await ensureDefaultProject(userId);
-      await runProvision(userId, projectId);
+      await runProvision(userId, projectId, data, chatNotes);
     } catch (e) {
       console.error('Bernd-Onboarding-Persistierung fehlgeschlagen:', e);
       router.push('/bernd/dashboard');
     }
   };
+
+  // Google-OAuth ist ein voller Seiten-Reload — der komplette React-State (Wizard-
+  // Antworten, aktueller Schritt) geht dabei verloren. Ohne dieses Resume würde der
+  // AuthForm-Schritt in der Wizard einfach neu von Vorne starten und NIE provisionieren
+  // (kein Projekt/keine bernd_configs-Zeile), obwohl der Account schon existiert — genau
+  // das Muster, das ein Login danach fälschlich wieder ins leere Onboarding schickt.
+  const didResume = useRef(false);
+  useEffect(() => {
+    if (didResume.current) return;
+    const pending = typeof window !== 'undefined' ? localStorage.getItem('pending_bernd_onboarding') : null;
+    if (!pending) return;
+    didResume.current = true;
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      try {
+        const payload = JSON.parse(pending) as { data?: BerndWizardData; chatNotes?: string };
+        const resumedData = payload.data ?? {};
+        const resumedNotes = payload.chatNotes ?? '';
+        setData(resumedData);
+        setChatNotes(resumedNotes);
+        setStep(TOTAL_STEPS);
+        const projectId = await ensureDefaultProject(session.user.id);
+        await runProvision(session.user.id, projectId, resumedData, resumedNotes);
+      } catch (e) {
+        console.error('Bernd-Onboarding-Resume nach OAuth fehlgeschlagen:', e);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStartNewProjectWithOnboarding = async () => {
     if (!existingAccount) return;
@@ -197,7 +235,7 @@ export default function BerndOnboardingWizard() {
       if (!session) throw new Error('Anmeldung fehlgeschlagen.');
       const projectName = data.gewerk ? `Bernd — ${data.gewerk}` : 'Bernd';
       const projectId = await createProject(session.user.id, projectName);
-      await runProvision(session.user.id, projectId);
+      await runProvision(session.user.id, projectId, data, chatNotes);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen.';
       setExistingAccountError(msg);
