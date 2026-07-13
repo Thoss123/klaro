@@ -3,15 +3,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, IdCard, BookOpen, MessagesSquare, ListChecks, HardHat } from 'lucide-react';
+import { LogOut, IdCard, BookOpen, MessagesSquare, ListChecks, HardHat, ClipboardCheck, MessageCircle } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { loadProjects } from '@/lib/supabase-chat';
 import { Steckbrief } from '@/components/bernd/Steckbrief';
 import { WissenView } from '@/components/bernd/WissenView';
 import { AenderungsChat } from '@/components/bernd/AenderungsChat';
 import { LogsWorkflows } from '@/components/bernd/LogsWorkflows';
+import { ApprovalsView } from '@/components/bernd/ApprovalsView';
 import { PairingCard } from '@/components/bernd/PairingCard';
-import { StatusDot } from '@/components/bernd/ui';
+import { StatusDot, PRIMARY_BTN } from '@/components/bernd/ui';
 import type { BerndConfig } from '@/lib/bernd/types';
 
 /**
@@ -23,10 +24,11 @@ import type { BerndConfig } from '@/lib/bernd/types';
  * gleitendem Indikator, weiche Karten. Bewusst schlicht, Usability zuerst.
  */
 
-type TabKey = 'steckbrief' | 'wissen' | 'aendern' | 'logs';
+type TabKey = 'steckbrief' | 'freigaben' | 'wissen' | 'aendern' | 'logs';
 
 const TABS: { key: TabKey; label: string; icon: typeof IdCard }[] = [
   { key: 'steckbrief', label: 'Steckbrief', icon: IdCard },
+  { key: 'freigaben', label: 'Freigaben', icon: ClipboardCheck },
   { key: 'wissen', label: 'Wissen', icon: BookOpen },
   { key: 'aendern', label: 'Ändern', icon: MessagesSquare },
   { key: 'logs', label: 'Logs', icon: ListChecks },
@@ -40,6 +42,13 @@ const STATUS_META: Record<
   paused: { label: 'Pausiert', dot: 'amber', pulse: false },
   draft: { label: 'In Einrichtung', dot: 'slate', pulse: false },
 };
+
+/** "seit 3. Juli, 14:32" — für die Statuszeile im Hero (aktiv seit …). */
+function formatSince(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('de-AT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+}
 
 const GEWERK_LABEL: Record<string, string> = {
   elektriker: 'Elektriker',
@@ -172,6 +181,21 @@ export default function BerndDashboardPage() {
               </p>
             </div>
           </div>
+
+          {/* ── Statuszeile: aktiv-seit / Setup-Hinweis / pausiert ── */}
+          <div className="relative mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <p className="text-sm text-slate-500">
+              {config.status === 'active' &&
+                `Bernd ist aktiv seit ${formatSince(config.updated_at || config.created_at)}`}
+              {config.status === 'paused' && 'Bernd ist pausiert — keine automatischen Abläufe laufen gerade.'}
+              {config.status === 'draft' && 'In Einrichtung — das Setup-Gespräch ist noch nicht abgeschlossen.'}
+            </p>
+            {config.status === 'draft' && (
+              <button onClick={() => router.push('/bernd/chat')} className={PRIMARY_BTN}>
+                <MessageCircle size={15} /> Gespräch fortsetzen
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Segmentierte Tabs (gleitender Indikator) ── */}
@@ -223,6 +247,7 @@ export default function BerndDashboardPage() {
                   <Steckbrief projectId={projectId} config={config} />
                 </div>
               )}
+              {activeTab === 'freigaben' && <ApprovalsView projectId={projectId} />}
               {activeTab === 'wissen' && <WissenView projectId={projectId} />}
               {activeTab === 'aendern' && <AenderungsChat projectId={projectId} />}
               {activeTab === 'logs' && <LogsWorkflows projectId={projectId} />}

@@ -27,3 +27,12 @@
 - Chat client (`app/chat/page.tsx`): check `response.ok` before body; uploads `app/api/attachments/route.ts` → `chat-uploads`; hidden kickoff `lib/hidden-chat.ts`; shared `ChatInput` for coach + workflow editor; dev-only chat export via `POST /api/dev/export-chat` (`lib/dev/chat-export.ts`) — button in dev bar.
 - Marketing landing `components/landing-v2/`; vertical `app/immobilienmakler/page.tsx`; Umsetzung UI: `WorkflowDeployCard`, `WorkflowDeployModal`, `WorkflowFlowCanvas`, `lib/n8n-catalog.ts`, `lib/n8n-mcp-bridge.ts`, `lib/n8n-mcp-sync.ts`, `lib/workflow-setup-coach.ts`, `lib/n8n-workflow-validate.ts`, `/api/n8n/mcp`, `/api/n8n/validate`, `/api/n8n/sync`, `StepConfigPanel`, `N8nNodePicker`; pre-deploy `validate_workflow`, MCP workflow test, activate/deactivate via MCP `publish_workflow`/`unpublish_workflow` when configured.
 - `roadmap.md` is SSOT for launch planning; v1.1+ = Sprint 3 agent orchestration (`lib/agent-orchestration.ts`: Supervisor, Workflow QA, Topic Research); Sprint 4 includes voice mode; Coach Advisor is v1.2+ backlog — Supervisor aligns canvas/workflow topic, not proactive coach steering.
+
+
+<claude-mem-context>
+# Memory Context
+
+# [aitrainer/aitrainer-bernd] recent context, 2026-07-13 2:06pm GMT+2
+
+No previous sessions found.
+</claude-mem-context>

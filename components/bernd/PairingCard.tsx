@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Send, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/bernd/ui';
 
 interface PairingCardProps {
   projectId: string;
+  /** Feuert einmalig, sobald der Status auf "verbunden" kippt (z.B. für Setup-Chat-Einbettung). */
+  onLinked?: () => void;
 }
 
 interface PairStatus {
@@ -26,10 +28,11 @@ function botUsername(): string {
  * Pollt kurz nach dem Öffnen, damit der Status nach dem Koppeln automatisch auf
  * „verbunden" wechselt. Bewusst prominent — das ist der Schlüsselschritt für neue Nutzer.
  */
-export function PairingCard({ projectId }: PairingCardProps) {
+export function PairingCard({ projectId, onLinked }: PairingCardProps) {
   const [status, setStatus] = useState<PairStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const notifiedLinkedRef = useRef(false);
 
   const loadStatus = async () => {
     try {
@@ -84,6 +87,14 @@ export function PairingCard({ projectId }: PairingCardProps) {
     }, 4000);
     return () => clearInterval(interval);
   }, [projectId, loading, status?.linked]);
+
+  // Einmalige Benachrichtigung nach außen, sobald der Status auf "verbunden" kippt.
+  useEffect(() => {
+    if (status?.linked && !notifiedLinkedRef.current) {
+      notifiedLinkedRef.current = true;
+      onLinked?.();
+    }
+  }, [status?.linked, onLinked]);
 
   if (loading) {
     return (

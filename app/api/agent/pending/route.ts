@@ -87,14 +87,24 @@ export async function PATCH(req: NextRequest) {
   if (typeof status === 'string') patch.status = status;
   if (payload !== undefined) patch.payload = payload;
 
-  const { data, error } = await caller.supabase
-    .from('agent_pending_actions')
-    .update(patch)
-    .eq('id', id)
-    .eq('project_id', project_id)
-    .select()
-    .single();
+  // Race-Guard: "Freigeben"/"Ablehnen" (Dashboard-Buttons, siehe ApprovalsView.tsx) dürfen
+  // eine offene Freigabe nur auflösen, solange sie noch pending ist — dieselbe Zeile kann
+  // sonst gleichzeitig per Telegram beantwortet werden ("erste Antwort gewinnt").
+  const resolvesOpenAction = status === 'approved' || status === 'cancelled';
 
-  if (error || !data) return NextResponse.json({ error: error?.message ?? 'update failed' }, { status: 500 });
+  let query = caller.supabase.from('agent_pending_actions').update(patch).eq('id', id).eq('project_id', project_id);
+  if (resolvesOpenAction) query = query.eq('status', 'pending');
+
+  const { data, error } = await query.select().maybeSingle();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) {
+    return NextResponse.json(
+      resolvesOpenAction
+        ? { error: 'Freigabe nicht mehr offen — evtl. bereits über einen anderen Kanal beantwortet.' }
+        : { error: 'update failed' },
+      { status: resolvesOpenAction ? 409 : 500 },
+    );
+  }
   return NextResponse.json({ action: data });
 }

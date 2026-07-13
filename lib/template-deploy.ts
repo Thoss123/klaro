@@ -65,7 +65,10 @@ export function projectSuffix(projectId: string): string {
   return projectId.replace(/-/g, '').slice(0, 8);
 }
 
-async function findCredentialByTool(
+/** Aktive n8n-Credential-ID eines Users für ein Tool nachschlagen (`user_credentials`). Auch
+ *  vom Gate (`lib/bernd/gate.ts` via die Deploy-Route) genutzt, um den Verbindungsstatus zu
+ *  ermitteln, ohne die Lookup-Logik zu duplizieren. */
+export async function findCredentialByTool(
   supabase: SupabaseClient,
   projectId: string,
   toolName: string,

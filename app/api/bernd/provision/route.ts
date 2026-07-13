@@ -10,11 +10,14 @@ export const maxDuration = 90;
 /**
  * POST /api/bernd/provision { projectId, gewerk, wizardData, chatNotes? }
  *
- * Richtet eine komplette Bernd-Instanz aus dem Onboarding-Wizard ein (Firmenwissen,
- * Persona, Kern-Flows aus den golden Templates, Bernd-Config). Cookie-Auth + Projekt-
- * Ownership wie die übrigen `/api/bernd/*`-Routen; `appBaseUrl` kommt aus der
- * Request-Origin (nicht aus Build-Env), damit Webhook-/Callback-URLs auch in Preview-
- * Deployments korrekt sind (siehe lib/app-origin.ts).
+ * Richtet den Startzustand einer Bernd-Instanz aus dem Onboarding-Wizard ein: Firmenwissen +
+ * Persona in den Arbeitsbereich schreiben, `bernd_configs` im Status 'draft' anlegen und
+ * `setup_state` mit dem Wizard-Vorwissen vorbefüllen (siehe `lib/bernd/provision.ts`). Deployt
+ * NICHTS — das übernimmt erst der "Bernd einstellen"-Klick am Ende des Setup-Chats
+ * (`POST /api/bernd/deploy`), nachdem das Completion-Gate erfüllt ist. Cookie-Auth + Projekt-
+ * Ownership wie die übrigen `/api/bernd/*`-Routen; `appBaseUrl` kommt aus der Request-Origin
+ * (nicht aus Build-Env), damit Callback-URLs auch in Preview-Deployments korrekt sind (siehe
+ * lib/app-origin.ts).
  */
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest) {
     });
     if (!result.ok) {
       return NextResponse.json(
-        { error: result.error || 'Provisionierung fehlgeschlagen', deployed: result.deployed, config: result.config },
+        { error: result.error || 'Provisionierung fehlgeschlagen', config: result.config },
         { status: 500 },
       );
     }

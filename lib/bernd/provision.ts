@@ -1,32 +1,58 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ensureBaseRules, personaPath, writeWorkspaceFile } from '@/lib/workspace';
-import { loadWorkflowTemplate } from '@/lib/template-loader';
-import { upsertBerndConfig } from '@/lib/bernd/config';
-import { BERND_TEMPLATES, getTemplateManifest } from '@/lib/bernd/templates';
-import type { ActiveTemplate, BerndConfig } from '@/lib/bernd/types';
+import { projectSuffix } from '@/lib/template-deploy';
+import { upsertBerndConfig, upsertBerndSetupState } from '@/lib/bernd/config';
+import { getTemplateManifest } from '@/lib/bernd/templates';
+import { parseMultiValue } from '@/lib/onboarding-multi';
+import type { BerndConfig, SetupScope } from '@/lib/bernd/types';
 import type { BerndWizardData } from '@/app/bernd/onboarding/BerndOnboardingWizard';
 
 /**
- * Provisionierung einer Bernd-Instanz aus dem Onboarding-Wizard (Architekturplan §3/§5.2).
- * Baut die Kern-Flows aus den golden Templates (Auswahl + Parametrisierung, keine
- * Freigenerierung), schreibt das Firmenwissen/Persona in den Arbeitsbereich und legt die
- * strukturierte `bernd_configs`-Zeile an — idempotent pro (project_id, Template-Name).
+ * Provisionierung einer Bernd-Instanz aus dem Onboarding-Wizard (Architekturplan §3/§5.2,
+ * WP5 überarbeitet). Schreibt NUR NOCH Firmenwissen/Persona in den Arbeitsbereich und legt
+ * `bernd_configs` im Status 'draft' an, vorbefüllt mit `setup_state` aus dem Wizard-Vorwissen —
+ * deployt NICHTS mehr.
  *
- * Deploy ist fail-open: schlägt n8n fehl (MOCK aus, VPS down, ...), werden Regeln + Config
- * trotzdem geschrieben, damit das Onboarding nie hart abbricht — der Nutzer landet im
- * Dashboard und kann dort nachjustieren/erneut deployen.
+ * Der frühere Auto-Deploy hier (`deployOneTemplate`) rief `loadWorkflowTemplate` OHNE
+ * `mailProvider` auf, sodass jedes golden Template an ungefüllten `{{TRIGGER_NODE}}`/
+ * `{{SEND_NODE}}`-Slots warf und `active_templates` immer leer blieb — und umging den fähigen
+ * Deploy-Pfad (`lib/template-deploy.ts#deployTemplateWorkflow`), den der Coach bereits nutzt.
+ * Das echte Deployment passiert jetzt ausschließlich über den "Bernd einstellen"-Klick am Ende
+ * des Setup-Chats (`app/api/bernd/deploy/route.ts`), der zuerst das Completion-Gate prüft
+ * (`lib/bernd/gate.ts`) und danach `deployTemplateWorkflow` für jeden im Setup-Chat GEWÄHLTEN
+ * Scope aufruft — nie mehr für alle Kern-Flows blind.
+ *
+ * Rules+Config werden hier weiterhin IMMER geschrieben (fail-open) — es gibt an dieser Stelle
+ * aber nichts mehr, das an n8n scheitern könnte, da kein n8n-Call mehr stattfindet.
  */
 
-const KERN_FLOW_SLUGS = ['angebot-autopilot', 'rechnung-mahnwesen', 'followup-serie', 'email-triage-draft'] as const;
+/** Golden-Flow-Slugs, die Bernd grundsätzlich anbietet (Doku/Referenz für den Setup-Chat und
+ *  `lib/bernd/scopes.ts#SCOPE_TO_SLUG`) — Deploy passiert nur noch über die im Setup-Chat
+ *  gewählten Scopes, siehe `app/api/bernd/deploy/route.ts`. */
+export const KERN_FLOW_SLUGS = ['angebot-autopilot', 'rechnung-mahnwesen', 'followup-serie', 'email-triage-draft'] as const;
 
-/** n8n-Basis-URL ohne /api/v1 für Webhook-URLs (analog lib/deploy-agent-workflow.ts). */
-function n8nWebhookBase(): string {
-  return (process.env.N8N_API_URL || '').replace(/\/api\/v1\/?$/, '');
-}
+/**
+ * Wizard-Zeitfresser-Freitextwerte (siehe `ZEITFRESSER_OPTIONS` in `BerndOnboardingWizard.tsx`)
+ * → Scope-ID aus `lib/bernd/scopes.ts` (SCOPE_TO_SLUG-Keys). Nur eindeutige Treffer werden als
+ * "vorgeschlagen" vorbefüllt — Zeitfresser ohne golden-Flow-Entsprechung (Terminkoordination,
+ * Telefon während der Arbeit, Material-/Lieferschein-Ablage) bleiben unberücksichtigt.
+ */
+const ZEITFRESSER_TO_SCOPE: Record<string, string> = {
+  'Angebote schreiben': 'angebot',
+  'Rechnungen und Mahnwesen': 'rechnung',
+  'Kunden nachfassen': 'followup',
+  'Mails beantworten': 'email_triage',
+};
 
-/** Kurzer, stabiler Suffix pro Projekt für kollisionsfreie Webhook-Pfade. */
-function projectSuffix(projectId: string): string {
-  return projectId.replace(/-/g, '').slice(0, 8);
+/** Aus dem Wizard-Zeitfresser-Freitext vorgeschlagene Scopes ableiten (status "vorgeschlagen") —
+ *  das Vorwissen, das der Setup-Chat dem Nutzer direkt bestätigen lässt statt neu zu fragen. */
+function zeitfresserToProposedScopes(zeitfresser?: string): SetupScope[] {
+  const ids = new Set<string>();
+  for (const value of parseMultiValue(zeitfresser)) {
+    const scopeId = ZEITFRESSER_TO_SCOPE[value];
+    if (scopeId) ids.add(scopeId);
+  }
+  return Array.from(ids, (id) => ({ id, status: 'vorgeschlagen' as const }));
 }
 
 function toNumberString(value: string | undefined, fallback: string): string {
@@ -99,29 +125,36 @@ export interface ProvisionArgs {
   appBaseUrl: string;
 }
 
-export interface DeployedTemplate {
-  slug: string;
-  n8nId: string;
-  active: boolean;
-}
-
 export interface ProvisionResult {
   ok: boolean;
-  deployed: DeployedTemplate[];
   config: BerndConfig | null;
   error?: string;
 }
 
-/** Skalare für ein Template aus Wizard-Daten + gemeinsamen Werten zusammenstellen. */
-function buildScalars(args: {
+export interface ScalarsForSlugArgs {
+  /** Slug des golden Templates in knowledge/templates/workflows/<slug>.json. */
   slug: string;
   gewerk: string;
-  wizardData: BerndWizardData;
+  /** Workspace-Pfad der Persona-Regel-Datei (siehe `lib/workspace.ts#personaPath`). */
   personaFile: string;
   appBaseUrl: string;
   projectId: string;
-}): Record<string, string> {
-  const { slug, gewerk, wizardData, personaFile, appBaseUrl, projectId } = args;
+  /** Freiform-Overrides (z.B. aus setup_state.ablauf-Antworten) — gewinnen gegen die
+   *  generischen Defaults unten. */
+  overrides?: Record<string, string>;
+}
+
+/**
+ * Skalare für ein golden Template zusammenstellen — generisch nach Slug + Manifest-Schema
+ * (`lib/bernd/templates.ts#getTemplateManifest`), damit sowohl `provisionBernd` als auch die
+ * Deploy-Route (`app/api/bernd/deploy/route.ts`) dieselbe Slot-Logik nutzen, statt sie zweimal
+ * zu pflegen. Nur Skalare befüllen, die das jeweilige Template-Manifest für diesen Flow
+ * vorsieht — überzählige Skalare sind harmlos (werden von
+ * `lib/template-loader.ts#applySlots` ignoriert, wenn kein `{{KEY}}` im golden JSON existiert),
+ * ein fehlender, im JSON tatsächlich genutzter Skalar lässt den Loader dagegen werfen.
+ */
+export function buildScalarsForSlug(args: ScalarsForSlugArgs): Record<string, string> {
+  const { slug, gewerk, personaFile, appBaseUrl, projectId, overrides = {} } = args;
   const suffix = projectSuffix(projectId);
   const manifest = getTemplateManifest(slug);
 
@@ -130,12 +163,11 @@ function buildScalars(args: {
     PROJECT_ID: projectId,
     PERSONA_PATH: personaFile,
     GEWERK: gewerk,
-    STUNDENSATZ: toNumberString(wizardData.stundensatz, '0'),
-    MATERIALAUFSCHLAG: toNumberString(wizardData.materialaufschlag, '0'),
-    ANFAHRTSPAUSCHALE: toNumberString(wizardData.anfahrtspauschale, '0'),
+    STUNDENSATZ: '0',
+    MATERIALAUFSCHLAG: '0',
+    ANFAHRTSPAUSCHALE: '0',
   };
 
-  // Nur Skalare befüllen, die das Template-Manifest tatsächlich für diesen Flow vorsieht.
   const schemaKeys = new Set((manifest?.scalarsSchema ?? []).map((s) => s.key));
   const extra: Record<string, string> = {};
   if (schemaKeys.has('PREISLISTE_TABLE')) extra.PREISLISTE_TABLE = 'preisliste';
@@ -143,71 +175,22 @@ function buildScalars(args: {
   if (schemaKeys.has('INVOICE_TABLE')) extra.INVOICE_TABLE = 'rechnungen';
   if (schemaKeys.has('INVOICE_DOC_TEMPLATE_ID')) extra.INVOICE_DOC_TEMPLATE_ID = '';
   if (schemaKeys.has('OWNER_WHATSAPP')) extra.OWNER_WHATSAPP = '';
-  if (schemaKeys.has('TWILIO_WHATSAPP_FROM')) extra.TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM?.trim() || '+14155238886';
+  if (schemaKeys.has('TWILIO_WHATSAPP_FROM')) {
+    extra.TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM?.trim() || '+14155238886';
+  }
   if (schemaKeys.has('OFFER_APPROVAL_WEBHOOK_PATH')) extra.OFFER_APPROVAL_WEBHOOK_PATH = `angebot-freigabe-${suffix}`;
   if (schemaKeys.has('ORDER_DONE_WEBHOOK_PATH')) extra.ORDER_DONE_WEBHOOK_PATH = `auftrag-fertig-${suffix}`;
+  if (schemaKeys.has('EMAIL_SEND_WEBHOOK_PATH')) extra.EMAIL_SEND_WEBHOOK_PATH = `email-send-${suffix}`;
 
-  return { ...common, ...extra };
-}
-
-/** Welche Kern-Templates deployt werden — abhängig davon, welche Tools der Betrieb hat. */
-function selectTemplateSlugs(wizardData: BerndWizardData): string[] {
-  const tools = new Set(
-    (wizardData.tools || '')
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean),
-  );
-  const hasMail = tools.has('gmail') || tools.has('outlook') || tools.size === 0;
-  // Ohne festes Mail-Tool ("keine") trotzdem alle Kern-Flows anbieten — Deploy ist fail-open
-  // und der Nutzer verbindet sein Postfach ggf. später im Dashboard nach.
-  void hasMail;
-  return KERN_FLOW_SLUGS.filter((slug) => BERND_TEMPLATES.some((t) => t.slug === slug));
-}
-
-/** Baut + deployt einen einzelnen Kern-Flow idempotent (pro (project_id, name)); wirft bei Fehler. */
-async function deployOneTemplate(
-  supabase: SupabaseClient,
-  args: {
-    slug: string;
-    userId: string;
-    projectId: string;
-    scalars: Record<string, string>;
-  },
-): Promise<DeployedTemplate> {
-  const { createN8nWorkflow } = await import('@/lib/n8n');
-  const { workflow } = loadWorkflowTemplate(args.slug, { scalars: args.scalars });
-  const name = String(workflow.name ?? args.slug);
-
-  const { data: existing } = await supabase
-    .from('workflows')
-    .select('n8n_workflow_id')
-    .eq('project_id', args.projectId)
-    .eq('name', name)
-    .maybeSingle();
-
-  if (existing?.n8n_workflow_id) {
-    return { slug: args.slug, n8nId: existing.n8n_workflow_id as string, active: false };
-  }
-
-  const created = await createN8nWorkflow(workflow as object);
-  const { error: insErr } = await supabase.from('workflows').insert({
-    user_id: args.userId,
-    project_id: args.projectId,
-    name,
-    n8n_workflow_id: created.id,
-    status: 'inactive', // Onboarding deployt inaktiv — Aktivierung folgt im Dashboard/nach Tool-Connect.
-  });
-  if (insErr) {
-    throw new Error(`DB-Eintrag für "${args.slug}" fehlgeschlagen: ${insErr.message}`);
-  }
-  return { slug: args.slug, n8nId: created.id, active: false };
+  return { ...common, ...extra, ...overrides };
 }
 
 /**
- * Provisioniert eine komplette Bernd-Instanz: Firmenwissen + Persona schreiben, Kern-Flows
- * aus den golden Templates parametrisiert deployen (inaktiv), Bernd-Config anlegen.
- * Rules+Config werden IMMER geschrieben (fail-open), auch wenn der Deploy-Schritt scheitert.
+ * Provisioniert eine neue Bernd-Instanz beim Onboarding-Abschluss: Firmenwissen + Persona in
+ * den Arbeitsbereich schreiben, `bernd_configs` im Status 'draft' anlegen und `setup_state` mit
+ * dem Vorwissen aus dem Wizard vorbefüllen (Gewerk + aus den Zeitfressern abgeleitete
+ * vorgeschlagene Scopes) — der Setup-Chat (WP2) baut direkt darauf auf, statt bei null
+ * anzufangen. Deployt nichts (siehe Datei-Kommentar oben).
  */
 export async function provisionBernd(
   supabase: SupabaseClient,
@@ -220,9 +203,9 @@ export async function provisionBernd(
     appBaseUrl: string;
   },
 ): Promise<ProvisionResult> {
-  const { userId, projectId, gewerk, wizardData, chatNotes, appBaseUrl } = args;
+  const { userId, projectId, gewerk, wizardData, chatNotes } = args;
 
-  // (a) Firmenwissen + Persona schreiben — passiert immer, unabhängig vom Deploy-Erfolg.
+  // (a) Firmenwissen + Persona schreiben.
   await ensureBaseRules(supabase, { userId, projectId });
   const companyBaseContent = buildCompanyBaseContent({ gewerk, wizardData, chatNotes });
   await writeWorkspaceFile(supabase, {
@@ -242,34 +225,7 @@ export async function provisionBernd(
     updatedBy: 'bernd_onboarding',
   });
 
-  // (b)+(c) Kern-Flows auswählen, parametrisieren, deployen — best-effort.
-  const deployed: DeployedTemplate[] = [];
-  let deployError: string | undefined;
-  const slugsToTry = selectTemplateSlugs(wizardData);
-
-  for (const slug of slugsToTry) {
-    try {
-      const scalars = buildScalars({ slug, gewerk, wizardData, personaFile, appBaseUrl, projectId });
-      const result = await deployOneTemplate(supabase, { slug, userId, projectId, scalars });
-      deployed.push(result);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[bernd/provision] Deploy von "${slug}" fehlgeschlagen:`, msg);
-      deployError = deployError ? `${deployError}; ${slug}: ${msg}` : `${slug}: ${msg}`;
-    }
-  }
-
-  // (d) Bernd-Config anlegen — Preislogik, Tools, aktive Templates, Steckbrief.
-  const activeTemplates: ActiveTemplate[] = deployed.map((d) => ({
-    slug: d.slug,
-    n8n_workflow_id: d.n8nId,
-    scalars: buildScalars({ slug: d.slug, gewerk, wizardData, personaFile, appBaseUrl, projectId }),
-  }));
-
-  const kannListe = deployed
-    .map((d) => getTemplateManifest(d.slug)?.label ?? d.slug)
-    .filter(Boolean);
-
+  // (b) Bernd-Config anlegen — Status draft, Preislogik/Tools als reiner Anzeige-Stand.
   const config = await upsertBerndConfig(supabase, {
     userId,
     projectId,
@@ -288,19 +244,23 @@ export async function provisionBernd(
           .map((t) => t.trim())
           .filter(Boolean),
       },
-      active_templates: activeTemplates,
-      steckbrief: { kann: kannListe },
     },
   });
 
-  return {
-    ok: Boolean(config),
-    deployed,
-    config,
-    error: config ? deployError : 'Bernd-Config konnte nicht gespeichert werden',
-  };
-}
+  if (!config) {
+    return { ok: false, config: null, error: 'Bernd-Config konnte nicht gespeichert werden' };
+  }
 
-// Webhook-Basis wird aktuell nicht direkt exportiert benötigt, aber für spätere Nutzung
-// (z.B. Steckbrief-Anzeige der Webhook-URLs) hier zentral verfügbar halten.
-export { n8nWebhookBase };
+  // (c) setup_state mit dem Wizard-Vorwissen vorbefüllen — der Setup-Chat (WP2) liest das
+  // direkt wieder aus, statt den Nutzer erneut nach schon Bekanntem zu fragen.
+  await upsertBerndSetupState(supabase, {
+    userId,
+    projectId,
+    patch: {
+      profil: { gewerk },
+      scopes: zeitfresserToProposedScopes(wizardData.zeitfresser),
+    },
+  });
+
+  return { ok: true, config };
+}

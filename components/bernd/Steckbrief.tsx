@@ -1,9 +1,10 @@
 "use client"
 
 import React, { useEffect, useState } from 'react';
-import { Sparkles, Activity, Radio, Inbox } from 'lucide-react';
+import { Sparkles, Activity, Radio, Inbox, Building2, Target, ShieldCheck, ListTodo } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { getTemplateManifest } from '@/lib/bernd/templates';
+import { SCOPE_LABELS } from '@/lib/bernd/scopes';
 import type { BerndConfig } from '@/lib/bernd/types';
 import { ChannelBadgeList, type ChannelBadgeData } from '@/components/bernd/ChannelBadge';
 import { Card, CardHeader, EmptyState, StatusDot } from '@/components/bernd/ui';
@@ -111,8 +112,103 @@ export function Steckbrief({ projectId, config }: SteckbriefProps) {
 
   const activeTemplates = config.active_templates ?? [];
 
+  const setupState = config.setup_state ?? {};
+  const profil = setupState.profil ?? {};
+  const gewaehlteScopes = (setupState.scopes ?? []).filter((s) => s.status === 'gewaehlt');
+  const regeln = setupState.regeln ?? [];
+  const ziele = setupState.ziele ?? [];
+  const hasSetupOverview =
+    Object.values(profil).some(Boolean) || gewaehlteScopes.length > 0 || regeln.length > 0 || ziele.length > 0;
+
   return (
     <div className="flex flex-col gap-5">
+      {/* Betrieb & Setup — Zusammenfassung aus dem Setup-Chat (setup_state) */}
+      {hasSetupOverview && (
+        <Card>
+          <CardHeader icon={Building2} title="Betrieb & Setup" subtitle="Was Bernd aus dem Gespräch mitgenommen hat" />
+          <div className="grid gap-4 p-4 sm:grid-cols-2">
+            {Object.values(profil).some(Boolean) && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <Building2 size={13} /> Betrieb
+                </p>
+                <dl className="flex flex-col gap-1.5 text-sm">
+                  {profil.firmenname && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-400">Firma</dt>
+                      <dd className="text-right font-medium text-slate-700">{profil.firmenname}</dd>
+                    </div>
+                  )}
+                  {profil.standort && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-400">Standort</dt>
+                      <dd className="text-right font-medium text-slate-700">{profil.standort}</dd>
+                    </div>
+                  )}
+                  {profil.mitarbeiter && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-400">Mitarbeiter</dt>
+                      <dd className="text-right font-medium text-slate-700">{profil.mitarbeiter}</dd>
+                    </div>
+                  )}
+                  {profil.ton && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-400">Ton</dt>
+                      <dd className="text-right font-medium text-slate-700">{profil.ton}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
+            {gewaehlteScopes.length > 0 && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <ListTodo size={13} /> Gewählte Aufgaben
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {gewaehlteScopes.map((scope) => (
+                    <li key={scope.id} className="text-sm text-slate-700">
+                      {SCOPE_LABELS[scope.id] ?? scope.id}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {regeln.length > 0 && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <ShieldCheck size={13} /> Regeln
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {regeln.map((regel, i) => (
+                    <li key={i} className="text-sm text-slate-700">
+                      {regel}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {ziele.length > 0 && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <Target size={13} /> Ziele
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {ziele.map((ziel, i) => (
+                    <li key={i} className="text-sm text-slate-700">
+                      {ziel}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Was Bernd kann */}
       <Card>
         <CardHeader

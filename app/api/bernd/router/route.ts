@@ -274,34 +274,51 @@ async function handleHitl(
   let directives: RouterDirective[];
 
   if (isConfirm) {
-    // Referenzierte Action verifizieren: noch pending? (race mit einer zweiten Zeile ausschließen)
-    const { data: fresh } = await supabase
+    // Race-Guard wie in app/api/agent/pending/route.ts#PATCH: das UPDATE selbst trägt
+    // `.eq('status', 'pending')` — ein reines SELECT-dann-UPDATE (TOCTOU) würde eine
+    // zeitgleiche Freigabe/Absage über das Dashboard (PATCH /api/agent/pending) überschreiben
+    // können ("beide Kanäle gewinnen" statt "erster Kanal gewinnt").
+    const { data: resolved } = await supabase
       .from('agent_pending_actions')
-      .select('*')
+      .update({ status: 'approved', updated_at: new Date().toISOString() })
       .eq('id', pending.id)
       .eq('status', 'pending')
+      .select()
       .maybeSingle();
 
-    if (!fresh) {
+    if (!resolved) {
       replyText = 'Der Entwurf ist nicht mehr offen — evtl. schon erledigt. Sag mir gern, was als Nächstes ansteht.';
       directives = [{ kind: 'reply', text: replyText }];
     } else {
-      await supabase
-        .from('agent_pending_actions')
-        .update({ status: 'approved', updated_at: new Date().toISOString() })
-        .eq('id', pending.id);
       replyText = 'Alles klar, wird versendet. ✅';
       directives = [
-        { kind: 'trigger_flow', flow_slug: typeof pending.payload?.flow_slug === 'string' ? pending.payload.flow_slug as string : undefined, args: { pending_action_id: pending.id } },
+        {
+          kind: 'trigger_flow',
+          flow_slug: typeof pending.payload?.flow_slug === 'string' ? (pending.payload.flow_slug as string) : undefined,
+          // Voller freigegebener Payload für den n8n-Send-Webhook (siehe app/api/bernd/hitl-request/route.ts).
+          args: {
+            pending_action_id: pending.id,
+            approved: true,
+            draft: typeof pending.payload?.draft === 'string' ? pending.payload.draft : undefined,
+            subject: typeof pending.payload?.subject === 'string' ? pending.payload.subject : undefined,
+            mail_ref: typeof pending.payload?.mail_ref === 'string' ? pending.payload.mail_ref : undefined,
+          },
+        },
         { kind: 'reply', text: replyText },
       ];
     }
   } else if (isCancel) {
-    await supabase
+    // Gleicher Race-Guard wie oben — eine bereits woanders aufgelöste Action wird nicht erneut angefasst.
+    const { data: resolved } = await supabase
       .from('agent_pending_actions')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', pending.id);
-    replyText = 'Abgebrochen — der Entwurf wird nicht gesendet.';
+      .eq('id', pending.id)
+      .eq('status', 'pending')
+      .select()
+      .maybeSingle();
+    replyText = resolved
+      ? 'Abgebrochen — der Entwurf wird nicht gesendet.'
+      : 'Der Entwurf ist nicht mehr offen — evtl. schon erledigt.';
     directives = [{ kind: 'reply', text: replyText }];
   } else {
     // Revision: Feedback in den Payload aufnehmen; die inhaltliche Überarbeitung passiert

@@ -118,7 +118,9 @@ export const BERND_TEMPLATES: BerndTemplateManifestEntry[] = [
     slug: 'email-triage-draft',
     label: 'E-Mail Triage & Antwort-Entwurf',
     useCase: 'eingehende-mails-beantworten, anfragen-automatisieren',
-    requiredTools: ['gmail', 'twilio'],
+    // Freigabe läuft ab jetzt über Telegram-HITL (POST /api/bernd/hitl-request) statt über den
+    // WhatsApp-Steuerkanal (whatsapp-control) — daher kein Twilio mehr als Pflicht-Tool.
+    requiredTools: ['gmail'],
     scalarsSchema: [
       ...COMMON_SCALARS,
       { key: 'OWNER_WHATSAPP', label: 'WhatsApp-Nummer des Inhabers (nackt)', example: '+436601234567' },
@@ -126,6 +128,11 @@ export const BERND_TEMPLATES: BerndTemplateManifestEntry[] = [
         key: 'TWILIO_WHATSAPP_FROM',
         label: 'Twilio-WhatsApp-Absendernummer',
         example: '+14155238886',
+      },
+      {
+        key: 'EMAIL_SEND_WEBHOOK_PATH',
+        label: 'Webhook-Pfad für freigegebenen Versand',
+        example: 'email-send-a1b2c3d4',
       },
     ],
   },

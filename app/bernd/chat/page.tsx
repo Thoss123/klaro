@@ -1,27 +1,49 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { HardHat, ArrowRight } from 'lucide-react';
+import { HardHat, ArrowRight, ChevronDown, ChevronUp, IdCard } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { loadProjects } from '@/lib/supabase-chat';
-import { AenderungsChat } from '@/components/bernd/AenderungsChat';
-import { PairingCard } from '@/components/bernd/PairingCard';
-import type { BerndConfig } from '@/lib/bernd/types';
+import { SetupChat } from '@/components/bernd/SetupChat';
+import { ProfilCanvas } from '@/components/bernd/ProfilCanvas';
+import type { BerndConfig, BerndSetupState } from '@/lib/bernd/types';
 
 /**
- * Erstgespräch nach dem Onboarding (Bernd „lernt sich kennen" / erklärt sich / schließt die
- * Einrichtung ab) — DAS ist der erste Anlaufpunkt direkt nach dem Wizard, nicht das Dashboard.
- * Erst nach diesem Chat geht es (per „Weiter zum Dashboard") in den Dauerbetrieb.
+ * Setup-Chat-Seite (v2-Onboarding, Architekturplan §WP3 Aufgabe 3): 70/30-Layout — links
+ * das Einstellungsgespräch mit Bernd (`SetupChat`), rechts das lebende Profil (`ProfilCanvas`)
+ * mit der „Bereit zum Start"-Checkliste. Ersetzt den alten Welcome-Chat-Modus
+ * (PairingCard + AenderungsChat mode="welcome") — Telegram-Verbindung läuft jetzt inline im
+ * Chat über `<getcredential tool="telegram"/>`.
  *
  * Auflösung wie im Dashboard: erstes Projekt mit `bernd_configs`; fehlt eine Config ganz,
  * geht es zurück ins Onboarding (dann wurde noch nicht provisioniert).
  */
+
+interface Connections {
+  email: boolean;
+  telegram: boolean;
+}
+
 export default function BerndChatPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [gewerk, setGewerk] = useState<string | null>(null);
+  const [config, setConfig] = useState<BerndConfig | null>(null);
+  const [connections, setConnections] = useState<Connections>({ email: false, telegram: false });
+  const [canvasOpen, setCanvasOpen] = useState(false);
+
+  const loadConnections = useCallback(async (pid: string) => {
+    try {
+      const res = await fetch(`/api/bernd/connections?projectId=${encodeURIComponent(pid)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as Connections;
+      setConnections({ email: Boolean(data.email), telegram: Boolean(data.telegram) });
+    } catch {
+      // Verbindungsstatus ist rein additiv fürs Gate — ein fehlgeschlagenes Nachladen blockiert
+      // den Chat nicht, das Gate bleibt einfach konservativ (nicht verbunden) bis zum nächsten Poll.
+    }
+  }, []);
 
   const didInit = useRef(false);
   useEffect(() => {
@@ -44,25 +66,26 @@ export default function BerndChatPage() {
           return;
         }
         let foundProjectId: string | null = null;
-        let foundGewerk: string | null = null;
+        let foundConfig: BerndConfig | null = null;
         for (const project of projects) {
           const { data } = await supabase
             .from('bernd_configs')
-            .select('project_id, gewerk')
+            .select('*')
             .eq('project_id', project.id)
             .maybeSingle();
           if (data) {
-            foundProjectId = (data as Pick<BerndConfig, 'project_id'>).project_id;
-            foundGewerk = (data as Pick<BerndConfig, 'gewerk'>).gewerk;
+            foundProjectId = project.id;
+            foundConfig = data as BerndConfig;
             break;
           }
         }
-        if (!foundProjectId) {
+        if (!foundProjectId || !foundConfig) {
           router.push('/bernd/onboarding');
           return;
         }
         setProjectId(foundProjectId);
-        setGewerk(foundGewerk);
+        setConfig(foundConfig);
+        await loadConnections(foundProjectId);
       } catch (err) {
         console.error('Bernd-Chat init fehlgeschlagen', err);
         router.push('/bernd/onboarding');
@@ -72,9 +95,28 @@ export default function BerndChatPage() {
     };
 
     init();
+  }, [router, loadConnections]);
+
+  // Bereits aktiv? Dann gehört der Nutzer ins Dashboard, nicht zurück ins Setup-Gespräch.
+  useEffect(() => {
+    if (config?.status === 'active') {
+      router.push('/bernd/dashboard');
+    }
+  }, [config?.status, router]);
+
+  const handleStateChange = useCallback((state: BerndSetupState) => {
+    setConfig((prev) => (prev ? { ...prev, setup_state: state } : prev));
+  }, []);
+
+  const handleConnectionChange = useCallback((tool: 'email' | 'telegram') => {
+    setConnections((prev) => ({ ...prev, [tool]: true }));
+  }, []);
+
+  const handleDeployed = useCallback(() => {
+    router.push('/bernd/dashboard');
   }, [router]);
 
-  if (loading || !projectId) {
+  if (loading || !projectId || !config) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 text-slate-400">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
@@ -85,20 +127,20 @@ export default function BerndChatPage() {
     );
   }
 
+  const setupState = config.setup_state ?? {};
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-slate-100/60 font-sans">
-      <div className="mx-auto max-w-2xl px-5 py-8 sm:px-6">
-        {/* Kopf: Bernd + Weiter-zum-Dashboard */}
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6">
+        {/* Kopf */}
         <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-600/25">
               <HardHat size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Bernd ist startklar</h1>
-              <p className="text-sm text-slate-500">
-                Lern ihn kurz kennen{gewerk ? ' und schließ die Einrichtung ab' : ''}.
-              </p>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Bernd wird eingerichtet</h1>
+              <p className="text-sm text-slate-500">Erzähl ihm von deinem Betrieb — er richtet sich live ein.</p>
             </div>
           </div>
           <button
@@ -109,26 +151,56 @@ export default function BerndChatPage() {
           </button>
         </div>
 
-        {/* Telegram zuerst — der wichtigste Einrichtungsschritt */}
-        <div className="mb-5">
-          <PairingCard projectId={projectId} />
+        {/* Mobil: Profil-Canvas als einklappbare Sektion über dem Chat */}
+        <div className="mb-4 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setCanvasOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm"
+          >
+            <span className="flex items-center gap-2">
+              <IdCard size={16} className="text-indigo-600" /> Bernds Profil
+            </span>
+            {canvasOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {canvasOpen && (
+            <div className="mt-3">
+              <ProfilCanvas
+                state={setupState}
+                emailConnected={connections.email}
+                telegramConnected={connections.telegram}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Erstgespräch (Bernd begrüßt von selbst) */}
-        <AenderungsChat
-          projectId={projectId}
-          mode="welcome"
-          kickoff
-          title="Willkommen — ich bin Bernd"
-          subtitle="Dein neuer digitaler Mitarbeiter"
-        />
+        {/* 70/30-Layout ab lg: Chat links, Profil rechts */}
+        <div className="grid gap-5 lg:grid-cols-[2fr_1fr] lg:items-start">
+          <SetupChat
+            projectId={projectId}
+            initialState={setupState}
+            emailConnected={connections.email}
+            telegramConnected={connections.telegram}
+            onStateChange={handleStateChange}
+            onConnectionChange={handleConnectionChange}
+            onDeployed={handleDeployed}
+          />
+
+          <div className="hidden lg:block">
+            <ProfilCanvas
+              state={setupState}
+              emailConnected={connections.email}
+              telegramConnected={connections.telegram}
+            />
+          </div>
+        </div>
 
         {/* Weiter-zum-Dashboard (mobil unten, immer erreichbar) */}
         <button
           onClick={() => router.push('/bernd/dashboard')}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-indigo-500 to-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/25 transition-all hover:from-indigo-500 hover:to-indigo-700 active:scale-[0.99] sm:hidden"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 transition-all active:scale-[0.99] sm:hidden"
         >
-          Weiter zum Dashboard <ArrowRight size={16} />
+          Zum Dashboard <ArrowRight size={16} />
         </button>
       </div>
     </div>

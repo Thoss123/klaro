@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServiceClient } from '@/lib/supabase';
 import { resolveProjectByChatId, verifyPairing } from '@/lib/bernd/channel';
 import { tgDownloadBase64, tgSendChatAction, tgSendMessage } from '@/lib/bernd/telegram';
+import { getBerndConfig } from '@/lib/bernd/config';
+import { dispatchDirectives } from '@/lib/bernd/telegram-dispatch';
+import type { RouterDirective } from '@/lib/bernd/types';
 
 export const maxDuration = 90;
 
@@ -136,13 +139,22 @@ async function handleUpdate(req: NextRequest): Promise<void> {
       },
       body: JSON.stringify({ chat_id: chatId, text, media_kind: mediaKind, project_id: projectId }),
     });
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as { text?: string; directives?: RouterDirective[] };
     const replyText = typeof data?.text === 'string' && data.text.trim() ? data.text : null;
     if (replyText) {
       await tgSendMessage(chatId, replyText);
     } else {
       console.error('[bernd/telegram] Router lieferte keinen Text:', res.status, data);
       await tgSendMessage(chatId, 'Da ist gerade etwas schiefgelaufen — magst du es nochmal versuchen?');
+    }
+
+    // ── Directives ausführen, die der Router zurückgibt (z.B. trigger_flow nach HITL-Freigabe) ──
+    if (Array.isArray(data.directives) && data.directives.length) {
+      const config = await getBerndConfig(supabase, projectId);
+      const hints = await dispatchDirectives({ directives: data.directives, config, chatId, projectId });
+      if (hints.length) {
+        await tgSendMessage(chatId, hints.join('\n'));
+      }
     }
   } catch (e: unknown) {
     console.error('[bernd/telegram] Router-Call failed:', e instanceof Error ? e.message : String(e));

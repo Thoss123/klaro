@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { writeWorkspaceFile } from '@/lib/workspace';
-import type { ActiveTemplate, BerndConfig, NotifyRules } from '@/lib/bernd/types';
+import type { ActiveTemplate, BerndConfig, BerndSetupState, NotifyRules, SetupScope } from '@/lib/bernd/types';
 
 /**
  * Geteilte Konfig-Mutations-Schicht für Bernd (DI-Muster wie `lib/workspace.ts`: jede
@@ -26,7 +26,12 @@ export async function getBerndConfig(
     console.error('[bernd/config] getBerndConfig failed:', error.message);
     return null;
   }
-  return (data as BerndConfig | null) ?? null;
+  if (!data) return null;
+
+  // Spalte ist NOT NULL DEFAULT '{}' (20260712000000_bernd_setup_state.sql) — Normalisierung
+  // nur zur Absicherung, falls eine Zeile die Migration je mit explizitem `null` umgeht.
+  const config = data as BerndConfig;
+  return { ...config, setup_state: config.setup_state ?? {} };
 }
 
 /**
@@ -161,4 +166,97 @@ export async function updateBerndKnowledge(
     content: args.content,
     updatedBy: args.updatedBy,
   });
+}
+
+// ── setup_state (v2-Onboarding) ────────────────────────────────────────────
+
+/** Scope-Liste nach `id` mergen — ein neuer Status im Patch überschreibt den alten. */
+function mergeScopes(existing: SetupScope[], patch: SetupScope[]): SetupScope[] {
+  const byId = new Map(existing.map((scope) => [scope.id, scope]));
+  for (const scope of patch) {
+    byId.set(scope.id, scope);
+  }
+  return Array.from(byId.values());
+}
+
+/** Ablauf-Antworten pro Scope mergen (scope-id → Frage → Antwort), Frage-Ebene mitgemerged. */
+function mergeAblauf(
+  existing: Record<string, Record<string, string>>,
+  patch: Record<string, Record<string, string>>,
+): Record<string, Record<string, string>> {
+  const merged: Record<string, Record<string, string>> = { ...existing };
+  for (const [scopeId, fragen] of Object.entries(patch)) {
+    merged[scopeId] = { ...merged[scopeId], ...fragen };
+  }
+  return merged;
+}
+
+/** Strings dedupliziert anhängen (Reihenfolge: bestehende zuerst, neue danach). */
+function mergeUnique(existing: string[], patch: string[]): string[] {
+  const seen = new Set(existing);
+  const appended = patch.filter((value) => !seen.has(value));
+  return [...existing, ...appended];
+}
+
+/** Wissen-Referenzen pro Typ mergen (typ → Dateipfade), Pfade dedupliziert angehängt. */
+function mergeWissen(
+  existing: Record<string, string[]>,
+  patch: Record<string, string[]>,
+): Record<string, string[]> {
+  const merged: Record<string, string[]> = { ...existing };
+  for (const [typ, pfade] of Object.entries(patch)) {
+    merged[typ] = mergeUnique(merged[typ] ?? [], pfade);
+  }
+  return merged;
+}
+
+/**
+ * `setup_state` deep-ish mergen: Objekt-Felder (profil/ablauf/fortschritt/wissen/einschaetzung)
+ * werden feldweise gemerged statt überschrieben, Listen (ziele/regeln/zukunft) dedupliziert
+ * angehängt, `scopes` per `id` gemerged (neuer Status gewinnt). Alles andere (z.B.
+ * `zusammenfassung_bestaetigt`) verhält sich wie ein flacher Patch.
+ */
+function mergeSetupState(existing: BerndSetupState, patch: Partial<BerndSetupState>): BerndSetupState {
+  return {
+    ...existing,
+    ...(patch.profil !== undefined ? { profil: { ...existing.profil, ...patch.profil } } : {}),
+    scopes: mergeScopes(existing.scopes ?? [], patch.scopes ?? []),
+    ...(patch.ablauf !== undefined ? { ablauf: mergeAblauf(existing.ablauf ?? {}, patch.ablauf) } : {}),
+    ziele: mergeUnique(existing.ziele ?? [], patch.ziele ?? []),
+    regeln: mergeUnique(existing.regeln ?? [], patch.regeln ?? []),
+    ...(patch.einschaetzung !== undefined
+      ? { einschaetzung: { ...existing.einschaetzung, ...patch.einschaetzung } }
+      : {}),
+    ...(patch.fortschritt !== undefined
+      ? { fortschritt: { ...existing.fortschritt, ...patch.fortschritt } }
+      : {}),
+    ...(patch.wissen !== undefined ? { wissen: mergeWissen(existing.wissen ?? {}, patch.wissen) } : {}),
+    zukunft: mergeUnique(existing.zukunft ?? [], patch.zukunft ?? []),
+    ...(patch.zusammenfassung_bestaetigt !== undefined
+      ? { zusammenfassung_bestaetigt: patch.zusammenfassung_bestaetigt }
+      : {}),
+  };
+}
+
+/**
+ * Lebendes Setup-Profil (`setup_state`) mergen und persistieren — genutzt vom Setup-Chat-
+ * Tag-Parser (WP2), der pro erkanntem Tag (`<profil>`, `<scope>`, `<ablauf>`, ...) einen
+ * kleinen Patch schickt. Lädt den bestehenden Stand, merged ihn (siehe `mergeSetupState`)
+ * und schreibt via `upsertBerndConfig` zurück (onConflict `project_id`, wie alle anderen
+ * Config-Mutationen in dieser Datei).
+ */
+export async function upsertBerndSetupState(
+  supabase: SupabaseClient,
+  args: { userId: string; projectId: string; patch: Partial<BerndSetupState> },
+): Promise<BerndSetupState | null> {
+  const existing = await getBerndConfig(supabase, args.projectId);
+  const setup_state = mergeSetupState(existing?.setup_state ?? {}, args.patch);
+
+  const updated = await upsertBerndConfig(supabase, {
+    userId: args.userId,
+    projectId: args.projectId,
+    patch: { setup_state },
+  });
+
+  return updated?.setup_state ?? null;
 }

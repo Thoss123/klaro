@@ -24,6 +24,47 @@ export interface ActiveTemplate {
   scalars?: Record<string, string>;
 }
 
+/** Status einer im Setup-Chat vorgeschlagenen/gewählten Scope (Zeitfresser). */
+export type ScopeStatus = 'vorgeschlagen' | 'gewaehlt' | 'abgelehnt';
+
+/** Eine Scope-Auswahl im lebenden Setup-Profil (Setup-Chat → Profil-Canvas). */
+export interface SetupScope {
+  /** Scope-ID, siehe `SCOPE_TO_SLUG` in `lib/bernd/scopes.ts` (z.B. "email_triage"). */
+  id: string;
+  status: ScopeStatus;
+}
+
+/**
+ * Lebendes Setup-Profil während des v2-Onboardings (Tabelle `bernd_configs`, Spalte
+ * `setup_state`). Wird vom Setup-Chat-Tag-Parser (WP2) inkrementell befüllt und vom
+ * Profil-Canvas (WP3) live gerendert; beim "Bernd einstellen"-Deployment (WP5) auf die
+ * operativen `BerndConfig`-Felder abgebildet und danach eingefroren. Credentials (Gmail,
+ * Telegram) werden bewusst NICHT hier gehalten — die kommen live aus `user_credentials`
+ * bzw. `bernd_channel_links`, damit der Verbindungsstatus nie veraltet im JSONB einfriert.
+ */
+export interface BerndSetupState {
+  /** Firmen-/Betriebsbild, wie es der Setup-Chat aus `<profil>`-Tags gesammelt hat. */
+  profil?: { gewerk?: string; firmenname?: string; mitarbeiter?: string; standort?: string; ton?: string };
+  /** Zeitfresser-Scopes, die vorgeschlagen bzw. vom Nutzer gewählt/abgelehnt wurden. */
+  scopes?: SetupScope[];
+  /** Ablauf-Pflichtfragen je Scope: scope-id → Frage → Antwort. */
+  ablauf?: Record<string, Record<string, string>>;
+  /** Freitext-Ziele, die der Nutzer im Setup-Chat genannt hat. */
+  ziele?: string[];
+  /** Freigabe-/Verhaltensregeln (z.B. "alles erst zur Freigabe"). */
+  regeln?: string[];
+  /** Kurze Coach-Einschätzungen je Thema (z.B. "betrieb" → Zusammenfassung). */
+  einschaetzung?: Record<string, string>;
+  /** Fortschritts-Prozente je Onboarding-Block, für die Profil-Canvas-Fortschrittsanzeige. */
+  fortschritt?: { betrieb?: number; aufgaben?: number; wissen?: number; regeln?: number };
+  /** Hochgeladene Wissens-Referenzen: Typ (z.B. "stilproben") → Workspace-Dateipfade. */
+  wissen?: Record<string, string[]>;
+  /** Optionale Zukunfts-Ideen (weitere Scopes/Automationen), noch nicht Teil des Deployments. */
+  zukunft?: string[];
+  /** Ob der Nutzer die finale Klartext-Zusammenfassung vor "Bernd einstellen" bestätigt hat. */
+  zusammenfassung_bestaetigt?: boolean;
+}
+
 /** Bernd-Instanz-Konfiguration eines Betriebs, 1:1 zu `projects` (Tabelle `bernd_configs`). */
 export interface BerndConfig {
   project_id: string;
@@ -39,6 +80,8 @@ export interface BerndConfig {
   active_templates: ActiveTemplate[];
   /** Generierte Kann-Liste/Kanäle fürs Dashboard (Steckbrief-Bereich). */
   steckbrief: Record<string, unknown>;
+  /** Lebendes Setup-Profil aus dem v2-Onboarding-Chat (siehe `BerndSetupState`). */
+  setup_state: BerndSetupState;
   created_at: string;
   updated_at: string;
 }

@@ -4,11 +4,16 @@ import { requireUser, assertProjectOwner, accessDenied } from '@/lib/access-cont
 import { getExecutions } from '@/lib/n8n';
 
 /**
- * GET /api/bernd/logs?projectId=<id>
+ * GET /api/bernd/logs?projectId=<id>[&include=messages]
  *
  * Listet die deployten Workflows eines Projekts + je Flow die letzten Executions
  * (lib/n8n.ts getExecutions), humanisiert für die Dashboard-Ansicht "Logs & Workflows"
  * (Architekturplan §5 Screen 3d): kein roher Node-Graph, nur { flow_label, status, when, error }.
+ *
+ * Mit `include=messages` liefert die Route zusätzlich `activity`: eine gemischte, nach Zeit
+ * sortierte Aktivitäten-Leiste aus `bernd_messages` (Router-Konversation, beide Richtungen)
+ * und den zuletzt ABGESCHLOSSENEN Freigaben (`agent_pending_actions` status sent/cancelled) —
+ * additive Erweiterung fürs Dashboard-Cockpit (WP7), ohne den bestehenden Vertrag zu ändern.
  */
 
 interface HumanRun {
@@ -26,6 +31,24 @@ interface FlowSummary {
   last_execution_at: string | null;
   execution_count: number;
   runs: HumanRun[];
+}
+
+interface ActivityEvent {
+  kind: 'message' | 'approval';
+  who: string;
+  what: string;
+  when: string;
+}
+
+const ACTIVITY_LIMIT = 25;
+const ACTIVITY_TEXT_PREVIEW = 140;
+
+function approvalSubject(payload: unknown): string {
+  if (payload && typeof payload === 'object' && 'subject' in payload) {
+    const subject = (payload as { subject?: unknown }).subject;
+    if (typeof subject === 'string' && subject.trim()) return ` – ${subject.trim()}`;
+  }
+  return '';
 }
 
 function humanizeStatus(status: string): HumanRun['status'] {
@@ -92,5 +115,59 @@ export async function GET(req: NextRequest) {
     }),
   );
 
-  return NextResponse.json({ flows });
+  if (req.nextUrl.searchParams.get('include') !== 'messages') {
+    return NextResponse.json({ flows });
+  }
+
+  const [messagesRes, approvalsRes] = await Promise.all([
+    supabase
+      .from('bernd_messages')
+      .select('id, direction, content, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(ACTIVITY_LIMIT),
+    supabase
+      .from('agent_pending_actions')
+      .select('id, payload, status, updated_at')
+      .eq('project_id', projectId)
+      .in('status', ['sent', 'cancelled'])
+      .order('updated_at', { ascending: false })
+      .limit(ACTIVITY_LIMIT),
+  ]);
+
+  const messageRows = (messagesRes.data ?? []) as Array<{
+    id: string;
+    direction: string;
+    content: string | null;
+    created_at: string;
+  }>;
+  const approvalRows = (approvalsRes.data ?? []) as Array<{
+    id: string;
+    payload: unknown;
+    status: string;
+    updated_at: string;
+  }>;
+
+  const messageEvents: ActivityEvent[] = messageRows.map((m) => ({
+    kind: 'message',
+    who: m.direction === 'in' ? 'Betrieb' : 'Bernd',
+    what: (m.content ?? '').slice(0, ACTIVITY_TEXT_PREVIEW),
+    when: m.created_at,
+  }));
+
+  const approvalEvents: ActivityEvent[] = approvalRows.map((a) => ({
+    kind: 'approval',
+    who: 'Bernd',
+    what:
+      a.status === 'sent'
+        ? `Freigabe gesendet${approvalSubject(a.payload)}`
+        : `Freigabe abgelehnt${approvalSubject(a.payload)}`,
+    when: a.updated_at,
+  }));
+
+  const activity = [...messageEvents, ...approvalEvents]
+    .sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime())
+    .slice(0, ACTIVITY_LIMIT);
+
+  return NextResponse.json({ flows, activity });
 }
