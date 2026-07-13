@@ -123,12 +123,6 @@ export const BERND_TEMPLATES: BerndTemplateManifestEntry[] = [
     requiredTools: ['gmail'],
     scalarsSchema: [
       ...COMMON_SCALARS,
-      { key: 'OWNER_WHATSAPP', label: 'WhatsApp-Nummer des Inhabers (nackt)', example: '+436601234567' },
-      {
-        key: 'TWILIO_WHATSAPP_FROM',
-        label: 'Twilio-WhatsApp-Absendernummer',
-        example: '+14155238886',
-      },
       {
         key: 'EMAIL_SEND_WEBHOOK_PATH',
         label: 'Webhook-Pfad für freigegebenen Versand',

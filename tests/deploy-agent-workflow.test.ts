@@ -58,6 +58,10 @@ describe('buildEmailAutomation', () => {
     const raw = JSON.stringify(control.workflow);
     expect(raw).toContain('wa-712db8db');            // control webhook path
     expect(raw).toContain('learn-712db8db');         // learning webhook (from send route)
+
+    const triage = (await buildEmailAutomation(supabaseWithMailCred(null), { ...BASE_ARGS, mailProvider: 'gmail' }))
+      .find((b) => b.slug === 'email-triage-draft')!;
+    expect(JSON.stringify(triage.workflow)).toContain('email-send-712db8db');
   });
 
   it('binds central credentials to http/twilio and the mail credential when connected', async () => {
@@ -69,8 +73,10 @@ describe('buildEmailAutomation', () => {
     expect((byName['KI: Kategorisieren'].credentials as Record<string, { id: string }>).httpHeaderAuth.id).toBe('wtok-1');
     // Gmail-Trigger → das verbundene Mail-Konto des Users.
     expect((byName['Neue E-Mail'].credentials as Record<string, { id: string }>).gmailOAuth2.id).toBe('gmailcred-9');
-    // Twilio → zentrale Credential.
-    expect((byName['WhatsApp: Entwurf zur Freigabe'].credentials as Record<string, { id: string }>).twilioApi.id).toBe('tw-1');
+    // Telegram-HITL und reine Hinweise nutzen die zentrale Machine-Auth.
+    expect((byName['Bernd: Freigabe anfragen'].credentials as Record<string, { id: string }>).httpHeaderAuth.id).toBe('wtok-1');
+    expect((byName['Bernd: Rechnungs-Info'].credentials as Record<string, { id: string }>).httpHeaderAuth.id).toBe('wtok-1');
+    expect(JSON.stringify(triage.workflow)).not.toContain('n8n-nodes-base.twilio');
     // Kalender: verbunden → Node aktiviert + Credential gebunden.
     expect(byName['Kalender lesen'].disabled).toBe(false);
     expect((byName['Kalender lesen'].credentials as Record<string, { id: string }>).googleCalendarOAuth2Api.id).toBe('gmailcred-9');

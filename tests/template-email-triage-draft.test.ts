@@ -14,6 +14,7 @@ const COMMON = {
   PERSONA_PATH: 'rules/persona_thomas.md',
   OWNER_WHATSAPP: '+491234567',
   TWILIO_WHATSAPP_FROM: '+14155238886',
+  EMAIL_SEND_WEBHOOK_PATH: 'email-send-test',
 };
 
 describe('email-triage-draft template (golden)', () => {
@@ -50,9 +51,17 @@ describe('email-triage-draft template (golden)', () => {
     expect(sw.main[7][0].node).toBe('KI: Entwurf schreiben');   // other
 
     // Termin-Route endet wie die anderen Entwurf-Wege in der Freigabe.
-    expect((workflow.connections?.['KI: Termin-Entwurf'] as { main: Array<Array<{ node: string }>> }).main[0][0].node).toBe('Freigabe anlegen');
+    expect((workflow.connections?.['KI: Termin-Entwurf'] as { main: Array<Array<{ node: string }>> }).main[0][0].node).toBe('Bernd: Freigabe anfragen');
     // Kalender-Node ist disabled ausgeliefert (User verbindet Calendar, dann 1 Klick).
     expect(workflow.nodes.find((n) => n.name === 'Kalender lesen')?.disabled).toBe(true);
+
+    // Freigabe, Versand und Revision laufen vollständig über Telegram-HITL.
+    expect(raw).toContain('/api/bernd/hitl-request');
+    expect(raw).toContain('/api/bernd/notify');
+    expect(raw).toContain('email-send-test');
+    expect(raw).toContain('Revisions-Kontext bauen');
+    expect(raw).not.toContain('n8n-nodes-base.twilio');
+    expect(raw).not.toContain('OWNER_WHATSAPP');
   });
 
   it('resolves outlook as an alternative provider', () => {

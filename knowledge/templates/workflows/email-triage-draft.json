@@ -6,8 +6,8 @@
       "type": "{{TRIGGER_NODE}}",
       "typeVersion": 1,
       "position": [
-        -260,
-        460
+        0,
+        384
       ],
       "parameters": {
         "pollTimes": {
@@ -27,8 +27,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -40,
-        460
+        224,
+        384
       ],
       "parameters": {
         "method": "POST",
@@ -46,13 +46,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        180,
-        460
+        448,
+        384
       ],
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "const VALID = [\"lead_inquiry\",\"scheduling\",\"support_faq\",\"vendor_billing\",\"system_alerts\",\"newsletters\",\"spam_marketing\",\"other\"];\nconst PROMPT_BY_CATEGORY = {\n  lead_inquiry: 'email/draft_lead_inquiry',\n  support_faq: 'email/draft_support_faq',\n  other: 'email/draft_other',\n};\nreturn $input.all().map(item => {\n  let category = 'other', urgency = 'medium', reason = '';\n  try {\n    const parsed = JSON.parse(item.json.text);\n    if (parsed && VALID.includes(parsed.category)) category = parsed.category;\n    if (['low','medium','high'].includes(parsed?.urgency)) urgency = parsed.urgency;\n    if (typeof parsed?.reason === 'string') reason = parsed.reason;\n  } catch (e) { /* ungültiges LLM-JSON -> sicherer Fallback \"other\" */ }\n  return { json: { category, urgency, reason, prompt_key: PROMPT_BY_CATEGORY[category] || null } };\n});"
+        "jsCode": "const VALID = [\"lead_inquiry\",\"scheduling\",\"support_faq\",\"vendor_billing\",\"system_alerts\",\"newsletters\",\"spam_marketing\",\"other\"];\nconst PROMPT_BY_CATEGORY = {\n  lead_inquiry: 'email/draft_lead_inquiry',\n  support_faq: 'email/draft_support_faq',\n  other: 'email/draft_other',\n};\nreturn $input.all().map(item => {\n  let category = 'other', urgency = 'medium', reason = '';\n  try {\n    const parsed = JSON.parse(item.json.text);\n    if (parsed && VALID.includes(parsed.category)) category = parsed.category;\n    if (['low','medium','high'].includes(parsed?.urgency)) urgency = parsed.urgency;\n    if (typeof parsed?.reason === 'string') reason = parsed.reason;\n  } catch (e) { /* ungueltiges LLM-JSON -> sicherer Fallback \"other\" */ }\n  return { json: { category, urgency, reason, prompt_key: PROMPT_BY_CATEGORY[category] || null } };\n});"
       }
     },
     {
@@ -60,22 +58,20 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        420,
-        460
+        672,
+        288
       ],
       "parameters": {
-        "mode": "rules",
         "rules": {
           "values": [
             {
               "outputKey": "lead_inquiry",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -86,18 +82,18 @@
                     },
                     "rightValue": "lead_inquiry"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "scheduling",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -108,18 +104,18 @@
                     },
                     "rightValue": "scheduling"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "support_faq",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -130,18 +126,18 @@
                     },
                     "rightValue": "support_faq"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "vendor_billing",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -152,18 +148,18 @@
                     },
                     "rightValue": "vendor_billing"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "system_alerts",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -174,18 +170,18 @@
                     },
                     "rightValue": "system_alerts"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "newsletters",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -196,18 +192,18 @@
                     },
                     "rightValue": "newsletters"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "spam_marketing",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -218,18 +214,18 @@
                     },
                     "rightValue": "spam_marketing"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             },
             {
               "outputKey": "other",
-              "renameOutput": true,
               "conditions": {
-                "combinator": "and",
                 "options": {
                   "caseSensitive": false,
                   "leftValue": "",
-                  "typeValidation": "strict"
+                  "typeValidation": "strict",
+                  "version": 1
                 },
                 "conditions": [
                   {
@@ -240,7 +236,8 @@
                     },
                     "rightValue": "other"
                   }
-                ]
+                ],
+                "combinator": "and"
               }
             }
           ]
@@ -255,8 +252,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        720,
-        120
+        1344,
+        0
       ],
       "parameters": {
         "method": "POST",
@@ -270,18 +267,33 @@
       }
     },
     {
+      "name": "Bernd: Freigabe anfragen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        96
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/bernd/hitl-request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', kind: 'draft_approval', payload: { subject: ($('Neue E-Mail').item.json.subject || ''), draft: ($json.text || ''), mail_ref: ($('Neue E-Mail').item.json.id || ''), flow_slug: 'email-triage-draft' } }) }}",
+        "options": {}
+      }
+    },
+    {
       "name": "Kalender lesen",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1.3,
       "position": [
-        720,
-        320
+        896,
+        192
       ],
-      "disabled": true,
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true,
       "parameters": {
-        "resource": "event",
         "operation": "getAll",
         "calendar": {
           "__rl": true,
@@ -290,25 +302,23 @@
         },
         "limit": 20,
         "options": {
-          "timeMin": "={{ $now.toISO() }}",
-          "timeMax": "={{ $now.plus(7, 'days').toISO() }}",
-          "singleEvents": true,
           "orderBy": "startTime"
         }
-      }
+      },
+      "disabled": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
     },
     {
       "name": "Kalender-Kontext bauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        940,
-        320
+        1120,
+        192
       ],
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "const events = $input.all().map(i => i.json).filter(e => e && (e.start || e.summary));\nlet kalender_kontext;\nif (!events.length) {\n  kalender_kontext = 'Kein Kalender-Zugriff oder keine Termine in den nächsten 7 Tagen gefunden — schlage KEINE konkreten Slots vor, sondern frage nach 2-3 Wunschterminen.';\n} else {\n  kalender_kontext = 'Belegte Termine der nächsten 7 Tage (heute ist ' + new Date().toISOString().slice(0, 10) + '). Schlage 2-3 freie Fenster innerhalb der Öffnungszeiten vor, die NICHT kollidieren:\\n'\n    + events.map(e => '- ' + (e.start?.dateTime || e.start?.date || '?') + ' bis ' + (e.end?.dateTime || e.end?.date || '?') + ': ' + (e.summary || 'belegt')).join('\\n');\n}\nreturn [{ json: { kalender_kontext } }];"
+        "jsCode": "const events = $input.all().map(i => i.json).filter(e => e && (e.start || e.summary));\nlet kalender_kontext;\nif (!events.length) {\n  kalender_kontext = 'Kein Kalender-Zugriff oder keine Termine in den naechsten 7 Tagen gefunden — schlage KEINE konkreten Slots vor, sondern frage nach 2-3 Wunschterminen.';\n} else {\n  kalender_kontext = 'Belegte Termine der naechsten 7 Tage (heute ist ' + new Date().toISOString().slice(0, 10) + '). Schlage 2-3 freie Fenster innerhalb der Oeffnungszeiten vor, die NICHT kollidieren:\n'\n    + events.map(e => '- ' + (e.start?.dateTime || e.start?.date || '?') + ' bis ' + (e.end?.dateTime || e.end?.date || '?') + ': ' + (e.summary || 'belegt')).join('\n');\n}\nreturn [{ json: { kalender_kontext } }];"
       }
     },
     {
@@ -316,8 +326,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1160,
-        320
+        1344,
+        192
       ],
       "parameters": {
         "method": "POST",
@@ -331,47 +341,12 @@
       }
     },
     {
-      "name": "Freigabe anlegen",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1400,
-        220
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "{{APP_BASE_URL}}/api/agent/pending",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', contact: 'whatsapp:{{OWNER_WHATSAPP}}', payload: { draft: $json.text, first_draft: $json.text, feedback_log: [], category: $('Kategorie parsen').item.json.category, original_email: ($('Neue E-Mail').item.json.textPlain || $('Neue E-Mail').item.json.snippet || ''), send_target: ($('Neue E-Mail').item.json.from || ''), subject: ($('Neue E-Mail').item.json.subject || ''), provider: 'gmail', persona: '{{PERSONA_PATH}}' } }) }}",
-        "options": {}
-      }
-    },
-    {
-      "name": "WhatsApp: Entwurf zur Freigabe",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        1640,
-        220
-      ],
-      "parameters": {
-        "from": "{{TWILIO_WHATSAPP_FROM}}",
-        "to": "{{OWNER_WHATSAPP}}",
-        "toWhatsapp": true,
-        "message": "=📧 Neuer Entwurf ({{ $('Kategorie parsen').item.json.category }}) für: {{ $('Neue E-Mail').item.json.from }}\nBetreff: {{ $('Neue E-Mail').item.json.subject }}\n\n{{ $('Freigabe anlegen').item.json.action.payload.draft }}\n\n— Antworte SENDEN zum Abschicken, oder schreib, was geändert werden soll.",
-        "options": {}
-      }
-    },
-    {
       "name": "KI: Rechnungs-Info",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        720,
-        560
+        896,
+        384
       ],
       "parameters": {
         "method": "POST",
@@ -385,36 +360,20 @@
       }
     },
     {
-      "name": "WhatsApp: Rechnungs-Info",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        960,
-        560
-      ],
-      "parameters": {
-        "from": "{{TWILIO_WHATSAPP_FROM}}",
-        "to": "{{OWNER_WHATSAPP}}",
-        "toWhatsapp": true,
-        "message": "=💰 Eingangsrechnung/Beleg:\n{{ $json.text }}\n\n(Nur zur Info — Mail bleibt im Postfach, keine Antwort nötig.)",
-        "options": {}
-      }
-    },
-    {
       "name": "Wichtig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        720,
-        720
+        896,
+        672
       ],
       "parameters": {
         "conditions": {
-          "combinator": "and",
           "options": {
             "caseSensitive": false,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "loose",
+            "version": 1
           },
           "conditions": [
             {
@@ -425,23 +384,9 @@
               },
               "rightValue": "high"
             }
-          ]
-        }
-      }
-    },
-    {
-      "name": "WhatsApp: System-Alert",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        960,
-        680
-      ],
-      "parameters": {
-        "from": "{{TWILIO_WHATSAPP_FROM}}",
-        "to": "{{OWNER_WHATSAPP}}",
-        "toWhatsapp": true,
-        "message": "=⚠️ System-Alert ({{ $('Kategorie parsen').item.json.reason }}):\n{{ $('Neue E-Mail').item.json.subject }}\nVon: {{ $('Neue E-Mail').item.json.from }}",
+          ],
+          "combinator": "and"
+        },
         "options": {}
       }
     },
@@ -450,8 +395,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        960,
-        800
+        1120,
+        768
       ],
       "parameters": {}
     },
@@ -460,32 +405,237 @@
       "type": "{{SEND_NODE}}",
       "typeVersion": 2,
       "position": [
-        720,
-        920
+        896,
+        960
       ],
-      "onError": "continueRegularOutput",
       "parameters": {
-        "resource": "message",
         "operation": "markAsRead",
         "messageId": "={{ $('Neue E-Mail').item.json.id }}"
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "name": "Archivieren",
       "type": "{{SEND_NODE}}",
       "typeVersion": 2,
       "position": [
-        960,
-        920
+        1120,
+        960
       ],
-      "onError": "continueRegularOutput",
       "parameters": {
-        "resource": "message",
         "operation": "removeLabels",
         "messageId": "={{ $('Neue E-Mail').item.json.id }}",
         "labelIds": [
           "INBOX"
         ]
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Versand-Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        1280
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{EMAIL_SEND_WEBHOOK_PATH}}",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "name": "Freigabe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        1280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.approved }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Antwort senden",
+      "type": "{{SEND_NODE}}",
+      "typeVersion": 2,
+      "position": [
+        448,
+        1184
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "reply",
+        "messageId": "={{ $json.body.mail_ref }}",
+        "emailType": "text",
+        "message": "={{ $json.body.draft }}",
+        "options": {
+          "appendAttribution": false,
+          "replyToSenderOnly": true
+        }
+      }
+    },
+    {
+      "name": "Freigabe als gesendet markieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        1184
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Versand-Webhook').item.json.body.pending_action_id, project_id: '{{PROJECT_ID}}', status: 'sent' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Offene Freigabe laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        1376
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ '{{APP_BASE_URL}}/api/agent/pending?project_id={{PROJECT_ID}}&status=pending&contact=' + encodeURIComponent($json.body.chat_id || '') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "name": "Revisions-Kontext bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        1376
+      ],
+      "parameters": {
+        "jsCode": "// Pending-Zeile (GET /api/agent/pending) + Webhook-Body zu einem kompakten Kontext mergen.\nconst hook = $('Versand-Webhook').item.json.body || {};\nconst action = $json.action || $json || {};\nconst payload = action.payload || {};\nconst feedback = Array.isArray(payload.feedback_log) ? payload.feedback_log : [];\nconst texts = feedback.map(f => (f && typeof f.text === 'string') ? f.text : '').filter(Boolean);\nreturn [{ json: {\n  pending_id: action.id || hook.pending_action_id || '',\n  subject: payload.subject || '',\n  mail_ref: payload.mail_ref || '',\n  prev_draft: payload.draft || '',\n  feedback_all: texts.join('\\n- ') || '(kein Feedback-Text uebermittelt)',\n} }];"
+      }
+    },
+    {
+      "name": "KI: Entwurf ueberarbeiten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        1376
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/agent/llm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', prompt_key: 'email/revise', persona_path: '{{PERSONA_PATH}}', user: 'Bisheriger Entwurf:\\n' + $json.prev_draft + '\\n\\nFeedback des Chefs:\\n- ' + $json.feedback_all + '\\n\\nBetreff: ' + $json.subject }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Alte Freigabe schliessen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        1376
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "{{APP_BASE_URL}}/api/agent/pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Revisions-Kontext bauen').item.json.pending_id, project_id: '{{PROJECT_ID}}', status: 'cancelled' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Neue Freigabe anfragen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        1376
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/bernd/hitl-request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', kind: 'draft_approval', payload: { subject: $('Revisions-Kontext bauen').item.json.subject, draft: ($('KI: Entwurf ueberarbeiten').item.json.text || ''), mail_ref: $('Revisions-Kontext bauen').item.json.mail_ref, flow_slug: 'email-triage-draft' } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Bernd: Rechnungs-Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        384
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/bernd/notify",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', kind: 'vendor_billing', text: 'Eingangsrechnung/Beleg:\\n' + ($json.text || '') + '\\n\\n(Nur zur Info - Mail bleibt im Postfach, keine Antwort noetig.)' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "name": "Bernd: System-Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        576
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "{{APP_BASE_URL}}/api/bernd/notify",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: '{{PROJECT_ID}}', kind: 'system_alert', text: 'System-Alert (' + ($('Kategorie parsen').item.json.reason || 'wichtig') + '):\\n' + ($('Neue E-Mail').item.json.subject || '') + '\\nVon: ' + ($('Neue E-Mail').item.json.from || '') }) }}",
+        "options": {}
       }
     }
   ],
@@ -517,83 +667,6 @@
         [
           {
             "node": "Switch",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "KI: Entwurf schreiben": {
-      "main": [
-        [
-          {
-            "node": "Freigabe anlegen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kalender lesen": {
-      "main": [
-        [
-          {
-            "node": "Kalender-Kontext bauen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kalender-Kontext bauen": {
-      "main": [
-        [
-          {
-            "node": "KI: Termin-Entwurf",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "KI: Termin-Entwurf": {
-      "main": [
-        [
-          {
-            "node": "Freigabe anlegen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Freigabe anlegen": {
-      "main": [
-        [
-          {
-            "node": "WhatsApp: Entwurf zur Freigabe",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "KI: Rechnungs-Info": {
-      "main": [
-        [
-          {
-            "node": "WhatsApp: Rechnungs-Info",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Als gelesen markieren": {
-      "main": [
-        [
-          {
-            "node": "Archivieren",
             "type": "main",
             "index": 0
           }
@@ -660,11 +733,55 @@
         ]
       ]
     },
+    "KI: Entwurf schreiben": {
+      "main": [
+        [
+          {
+            "node": "Bernd: Freigabe anfragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kalender lesen": {
+      "main": [
+        [
+          {
+            "node": "Kalender-Kontext bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kalender-Kontext bauen": {
+      "main": [
+        [
+          {
+            "node": "KI: Termin-Entwurf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Termin-Entwurf": {
+      "main": [
+        [
+          {
+            "node": "Bernd: Freigabe anfragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Wichtig?": {
       "main": [
         [
           {
-            "node": "WhatsApp: System-Alert",
+            "node": "Bernd: System-Alert",
             "type": "main",
             "index": 0
           }
@@ -672,6 +789,112 @@
         [
           {
             "node": "Alert ignoriert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Als gelesen markieren": {
+      "main": [
+        [
+          {
+            "node": "Archivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand-Webhook": {
+      "main": [
+        [
+          {
+            "node": "Freigabe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freigabe?": {
+      "main": [
+        [
+          {
+            "node": "Antwort senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Offene Freigabe laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort senden": {
+      "main": [
+        [
+          {
+            "node": "Freigabe als gesendet markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offene Freigabe laden": {
+      "main": [
+        [
+          {
+            "node": "Revisions-Kontext bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revisions-Kontext bauen": {
+      "main": [
+        [
+          {
+            "node": "KI: Entwurf ueberarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Entwurf ueberarbeiten": {
+      "main": [
+        [
+          {
+            "node": "Alte Freigabe schliessen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alte Freigabe schliessen": {
+      "main": [
+        [
+          {
+            "node": "Neue Freigabe anfragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI: Rechnungs-Info": {
+      "main": [
+        [
+          {
+            "node": "Bernd: Rechnungs-Info",
             "type": "main",
             "index": 0
           }

@@ -144,6 +144,7 @@ export async function buildEmailAutomation(
   const suffix = projectSuffix(args.projectId);
   const controlPath = `wa-${suffix}`;
   const learningPath = `learn-${suffix}`;
+  const emailSendPath = `email-send-${suffix}`;
   const persona = args.personaPath || 'rules/persona_default.md';
   const { workspaceToken, twilio } = centralCredIds();
   const mailCredId = await findMailCredential(supabase, args.projectId, args.mailProvider);
@@ -158,6 +159,7 @@ export async function buildEmailAutomation(
     CONTROL_WEBHOOK_PATH: controlPath,
     LEARNING_WEBHOOK_PATH: learningPath,
     LEARNING_WEBHOOK_URL: `${n8nWebhookBase()}/webhook/${learningPath}`,
+    EMAIL_SEND_WEBHOOK_PATH: emailSendPath,
   };
 
   // Draft-Modus (Default): nur der eigenständige Autopilot — kein Steuerkanal, kein Twilio.
