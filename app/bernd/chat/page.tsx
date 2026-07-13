@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { HardHat, ArrowRight, ChevronDown, ChevronUp, IdCard } from 'lucide-react';
+import { HardHat, IdCard, X } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { loadProjects } from '@/lib/supabase-chat';
 import { SetupChat } from '@/components/bernd/SetupChat';
@@ -130,52 +130,30 @@ export default function BerndChatPage() {
   const setupState = config.setup_state ?? {};
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-slate-100/60 font-sans">
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6">
-        {/* Kopf */}
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-600/25">
-              <HardHat size={22} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Bernd wird eingerichtet</h1>
-              <p className="text-sm text-slate-500">Erzähl ihm von deinem Betrieb — er richtet sich live ein.</p>
+    <div className="relative flex h-[100dvh] min-h-0 overflow-hidden bg-white font-sans">
+      <main className="flex min-w-0 flex-1 flex-col bg-white xl:max-w-[600px] xl:border-r xl:border-slate-200">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
+              <HardHat size={18} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-semibold text-slate-900">Bernd einrichten</h1>
+              <p className="truncate text-xs text-slate-500">Einstellungsgespräch</p>
             </div>
           </div>
           <button
-            onClick={() => router.push('/bernd/dashboard')}
-            className="hidden shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-indigo-300 hover:text-indigo-700 sm:inline-flex"
-          >
-            Zum Dashboard <ArrowRight size={15} />
-          </button>
-        </div>
-
-        {/* Mobil: Profil-Canvas als einklappbare Sektion über dem Chat */}
-        <div className="mb-4 lg:hidden">
-          <button
             type="button"
-            onClick={() => setCanvasOpen((v) => !v)}
-            className="flex w-full items-center justify-between rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm"
+            onClick={() => setCanvasOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 xl:hidden"
+            aria-label="Bernds Profil öffnen"
+            title="Bernds Profil"
           >
-            <span className="flex items-center gap-2">
-              <IdCard size={16} className="text-indigo-600" /> Bernds Profil
-            </span>
-            {canvasOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <IdCard size={18} />
           </button>
-          {canvasOpen && (
-            <div className="mt-3">
-              <ProfilCanvas
-                state={setupState}
-                emailConnected={connections.email}
-                telegramConnected={connections.telegram}
-              />
-            </div>
-          )}
-        </div>
+        </header>
 
-        {/* 70/30-Layout ab lg: Chat links, Profil rechts */}
-        <div className="grid gap-5 lg:grid-cols-[2fr_1fr] lg:items-start">
+        <div className="min-h-0 flex-1">
           <SetupChat
             projectId={projectId}
             initialState={setupState}
@@ -185,24 +163,48 @@ export default function BerndChatPage() {
             onConnectionChange={handleConnectionChange}
             onDeployed={handleDeployed}
           />
+        </div>
+      </main>
 
-          <div className="hidden lg:block">
+      <aside className="hidden min-w-0 flex-1 overflow-y-auto bg-slate-50 xl:block">
+        <div className="mx-auto max-w-2xl px-8 py-8 2xl:px-12">
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase text-slate-400">Live-Profil</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Was Bernd bereits weiß</h2>
+          </div>
+          <ProfilCanvas
+            state={setupState}
+            emailConnected={connections.email}
+            telegramConnected={connections.telegram}
+          />
+        </div>
+      </aside>
+
+      {canvasOpen && (
+        <aside className="absolute inset-0 z-30 flex flex-col bg-slate-50 xl:hidden">
+          <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
+            <div className="flex items-center gap-2.5">
+              <IdCard size={18} className="text-indigo-600" />
+              <span className="text-sm font-semibold text-slate-900">Bernds Profil</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCanvasOpen(false)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+              aria-label="Profil schließen"
+            >
+              <X size={19} />
+            </button>
+          </header>
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
             <ProfilCanvas
               state={setupState}
               emailConnected={connections.email}
               telegramConnected={connections.telegram}
             />
           </div>
-        </div>
-
-        {/* Weiter-zum-Dashboard (mobil unten, immer erreichbar) */}
-        <button
-          onClick={() => router.push('/bernd/dashboard')}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 transition-all active:scale-[0.99] sm:hidden"
-        >
-          Zum Dashboard <ArrowRight size={16} />
-        </button>
-      </div>
+        </aside>
+      )}
     </div>
   );
 }

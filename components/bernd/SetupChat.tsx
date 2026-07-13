@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, HardHat, RefreshCw, PartyPopper } from 'lucide-react';
-import { Card, CardHeader, PRIMARY_BTN } from '@/components/bernd/ui';
+import { ArrowUp, Loader2, RefreshCw, PartyPopper, User } from 'lucide-react';
 import { ConnectButton } from '@/components/bernd/ConnectButton';
 import { UploadSlot } from '@/components/bernd/UploadSlot';
 import OptionsCard, { parseOptionsTag } from '@/components/chat/OptionsCard';
@@ -264,11 +263,11 @@ export function SetupChat({
     void send(last.message, last.hidden);
   };
 
-  // Quick-reply-Optionen: aus dem letzten Assistant-Item, solange nicht gerade gesendet wird
-  // und die Karte nicht explizit weggeklickt wurde (Muster wie app/chat/page.tsx).
+  // Inline-Elemente wie OAuth oder Wissen werden nach der Assistant-Bubble angehängt. Deshalb
+  // muss hier die jüngste Assistant-Bubble gesucht werden und nicht bloß das letzte Chat-Item.
   const activeOptions = useMemo(() => {
     if (sending) return null;
-    const last = items[items.length - 1];
+    const last = items.findLast((item): item is BubbleItem => item.kind === 'bubble' && item.role === 'assistant');
     if (!last || last.kind !== 'bubble' || last.role !== 'assistant' || last.id === dismissedOptionsId) return null;
     const parsed = parseOptionsTag(last.raw ?? last.display);
     return parsed ? { options: parsed, itemId: last.id } : null;
@@ -323,23 +322,18 @@ export function SetupChat({
   };
 
   return (
-    <Card className="flex flex-col overflow-hidden">
-      <CardHeader
-        icon={HardHat}
-        title="Einstellungsgespräch mit Bernd"
-        subtitle="Erzähl ihm von deinem Betrieb — er richtet sich live ein"
-      />
-
-      <div className="flex min-h-[24rem] flex-1 flex-col gap-3 overflow-y-auto bg-slate-50/40 p-4">
+    <section className="flex h-full min-h-0 flex-col bg-white">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
         {items.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center py-10 text-sm text-slate-400">
+          <div className="flex flex-1 items-center justify-center py-16 text-sm text-slate-400">
             <Loader2 size={15} className="mr-2 animate-spin" /> Bernd meldet sich gleich…
           </div>
         ) : (
           items.map((item) => {
             if (item.kind === 'connect') {
               return (
-                <div key={item.id} className="self-start pl-9">
+                <div key={item.id} className="self-start">
                   <ConnectButton
                     projectId={projectId}
                     tool={item.tool}
@@ -351,7 +345,7 @@ export function SetupChat({
             }
             if (item.kind === 'upload') {
               return (
-                <div key={item.id} className="self-start pl-9">
+                <div key={item.id} className="self-start">
                   <UploadSlot
                     projectId={projectId}
                     typ={item.typ}
@@ -371,22 +365,21 @@ export function SetupChat({
               );
             }
             return item.role === 'user' ? (
-              <div
-                key={item.id}
-                className="max-w-[85%] self-end rounded-2xl rounded-br-md bg-gradient-to-b from-indigo-500 to-indigo-600 px-4 py-2.5 text-sm text-white shadow-sm shadow-indigo-600/20"
-              >
-                {item.display}
+              <div key={item.id} className="flex max-w-[88%] items-end gap-2 self-end">
+                <div className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-indigo-600 px-4 py-2.5 text-sm leading-relaxed text-white">
+                  {item.display}
+                </div>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                  <User size={14} />
+                </span>
               </div>
             ) : (
-              <div key={item.id} className="flex max-w-[90%] items-end gap-2 self-start">
-                <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/70">
-                  <HardHat size={14} />
-                </span>
+              <div key={item.id} className="group max-w-[92%] self-start">
                 <div
-                  className={`whitespace-pre-line rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm shadow-sm ${
+                  className={`whitespace-pre-wrap text-sm leading-7 ${
                     item.failed
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-slate-200/70 bg-white text-slate-700'
+                      ? 'border-l-2 border-red-300 pl-3 text-red-700'
+                      : 'text-slate-800'
                   }`}
                 >
                   {item.display || (item.streaming ? '…' : '')}
@@ -405,16 +398,23 @@ export function SetupChat({
           })
         )}
         {sending && !items.some((i) => i.kind === 'bubble' && i.streaming) && (
-          <div className="flex items-center gap-2 self-start pl-9 text-xs text-slate-400">
+          <div className="flex items-center gap-2 self-start text-xs text-slate-400">
             <Loader2 size={13} className="animate-spin" /> Bernd denkt nach…
           </div>
         )}
         <div ref={bottomRef} />
+        </div>
       </div>
 
-      {readyToDeploy && (
-        <div className="border-t border-slate-100 p-3">
-          <button type="button" onClick={handleDeploy} disabled={deploying} className={`${PRIMARY_BTN} w-full`}>
+      <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="mx-auto w-full max-w-2xl">
+          {readyToDeploy && (
+            <button
+              type="button"
+              onClick={handleDeploy}
+              disabled={deploying}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
             {deploying ? (
               <>
                 <Loader2 size={16} className="animate-spin" /> Bernd wird eingestellt…
@@ -424,52 +424,53 @@ export function SetupChat({
                 <PartyPopper size={16} /> Bernd einstellen
               </>
             )}
-          </button>
-        </div>
-      )}
-
-      <div className="border-t border-slate-100 p-3">
-        {error && <p className="mb-2 px-1 text-xs text-red-600">{error}</p>}
-        {activeOptions ? (
-          <OptionsCard
-            options={activeOptions.options}
-            onSelect={(label) => {
-              setDismissedOptionsId(activeOptions.itemId);
-              void send(label);
-            }}
-            onCustomSubmit={(text) => {
-              setDismissedOptionsId(activeOptions.itemId);
-              void send(text);
-            }}
-            onDismiss={() => setDismissedOptionsId(activeOptions.itemId)}
-          />
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void send(input);
-                }
-              }}
-              placeholder="Antworte Bernd…"
-              disabled={sending}
-              className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={() => void send(input)}
-              disabled={sending || !input.trim()}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-600/25 transition-all hover:from-indigo-500 hover:to-indigo-700 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-              aria-label="Senden"
-            >
-              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>
-          </div>
-        )}
-      </div>
-    </Card>
+          )}
+
+          {error && <p className="mb-2 px-1 text-xs text-red-600">{error}</p>}
+          {activeOptions ? (
+            <OptionsCard
+              options={activeOptions.options}
+              onSelect={(label) => {
+                setDismissedOptionsId(activeOptions.itemId);
+                void send(label);
+              }}
+              onCustomSubmit={(text) => {
+                setDismissedOptionsId(activeOptions.itemId);
+                void send(text);
+              }}
+              onDismiss={() => setDismissedOptionsId(activeOptions.itemId)}
+            />
+          ) : (
+            <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void send(input);
+                  }
+                }}
+                placeholder="Bernd antworten …"
+                disabled={sending}
+                rows={1}
+                className="min-h-10 max-h-32 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => void send(input)}
+                disabled={sending || !input.trim()}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:pointer-events-none disabled:bg-slate-200 disabled:text-slate-400"
+                aria-label="Senden"
+                title="Senden"
+              >
+                {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={17} />}
+              </button>
+            </div>
+          )}
+        </div>
+      </footer>
+    </section>
   );
 }
