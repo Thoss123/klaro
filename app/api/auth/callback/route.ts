@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getRequestOrigin } from '@/lib/app-origin'
+import { AUTH_ALLOWLIST_MESSAGE, isEmailAllowedForAuth } from '@/lib/auth-allowlist'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -32,6 +33,16 @@ export async function GET(request: Request) {
     )
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!isEmailAllowedForAuth(user?.email)) {
+        await supabase.auth.signOut()
+        const deniedPath = next.startsWith('/bernd') ? '/bernd/login' : '/login'
+        return NextResponse.redirect(
+          `${origin}${deniedPath}?${new URLSearchParams({ auth: 'denied', message: AUTH_ALLOWLIST_MESSAGE }).toString()}`,
+        )
+      }
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

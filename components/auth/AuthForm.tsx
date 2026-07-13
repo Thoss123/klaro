@@ -33,7 +33,13 @@ export default function AuthForm({
   const [token, setToken] = useState('');
   const [mode, setMode] = useState<'login' | 'signup' | 'verify'>(defaultMode);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('auth') === 'denied'
+      ? 'Die Testphase ist aktuell geschlossen. Melde dich bitte mit der freigegebenen E-Mail-Adresse an.'
+      : null;
+  });
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const getSupabase = () => {
@@ -41,6 +47,17 @@ export default function AuthForm({
       supabaseRef.current = createSupabaseBrowserClient();
     }
     return supabaseRef.current;
+  };
+
+  const ensureAuthAllowed = async (candidateEmail: string) => {
+    const res = await fetch(`/api/auth/access?email=${encodeURIComponent(candidateEmail)}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return;
+    const body = (await res.json().catch(() => null)) as { allowed?: boolean; message?: string } | null;
+    if (body && body.allowed === false) {
+      throw new Error(body.message || 'Diese E-Mail-Adresse ist aktuell nicht freigegeben.');
+    }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -53,6 +70,7 @@ export default function AuthForm({
       const origin = getBrowserOrigin();
       const callbackUrl = authCallbackUrl(origin, window.location.pathname + window.location.search);
       if (mode === 'signup') {
+        await ensureAuthAllowed(email);
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -73,6 +91,7 @@ export default function AuthForm({
           setMode('verify');
         }
       } else if (mode === 'login') {
+        await ensureAuthAllowed(email);
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
