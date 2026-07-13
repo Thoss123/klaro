@@ -11,6 +11,9 @@ import { buildSetupSystemPrompt } from '@/lib/bernd/setup-prompt';
 import { parseSetupTags, tagsToPatch, type SetupTag } from '@/lib/bernd/setup-tags';
 import { COMPANY_BASE_PATH, readWorkspaceFile } from '@/lib/workspace';
 import type { BerndConfig, BerndSetupState } from '@/lib/bernd/types';
+import { stripInternalTags } from '@/lib/strip-internal-tags';
+import { SCOPE_LABELS } from '@/lib/bernd/scopes';
+import { detectBerndMailProvider } from '@/lib/bernd/mail-provider';
 
 export const maxDuration = 60;
 
@@ -61,9 +64,20 @@ async function buildVorwissen(
 
   const gewerk = config.gewerk ? GEWERK_LABEL[config.gewerk] ?? config.gewerk : 'unbekannt';
   const lines: string[] = [`- Gewerk: ${gewerk}`];
+  const profile = config.setup_state?.profil;
+  if (profile?.firmenname) lines.push(`- Unternehmen: ${profile.firmenname}`);
+  if (profile?.ansprechpartner) lines.push(`- Ansprechpartner: ${profile.ansprechpartner}`);
+  if (profile?.rolle) lines.push(`- Rolle: ${profile.rolle}`);
+  if (profile?.mitarbeiter) lines.push(`- Teamgröße: ${profile.mitarbeiter}`);
+  if (profile?.website) lines.push(`- Website: ${profile.website}`);
 
   const genutzt = asStringArray((config.tools as Record<string, unknown> | null)?.genutzt);
   if (genutzt.length > 0) lines.push(`- Bereits genutzte Tools: ${genutzt.join(', ')}`);
+  const mailProvider = detectBerndMailProvider(config.tools, config.setup_state);
+  if (mailProvider) lines.push(`- E-Mail-Anbieter: ${mailProvider === 'outlook' ? 'Outlook' : mailProvider === 'gmail' ? 'Gmail' : 'Anderer Anbieter'}`);
+
+  const selectedScope = (config.setup_state?.scopes ?? []).find((scope) => scope.status === 'gewaehlt');
+  if (selectedScope) lines.push(`- Verbindlicher Startbereich: ${SCOPE_LABELS[selectedScope.id] ?? selectedScope.id}`);
 
   const kanaele = asStringArray((config.tools as Record<string, unknown> | null)?.kommunikationskanaele);
   if (kanaele.length > 0) lines.push(`- Kommunikationskanäle mit Kunden: ${kanaele.join(', ')}`);
@@ -79,6 +93,11 @@ async function buildVorwissen(
   if (zeitfresserMatch?.[1] && zeitfresserMatch[1].trim() !== 'nicht angegeben') {
     lines.push(`- Zeitfresser laut Wizard: ${zeitfresserMatch[1].trim()}`);
   }
+  const concernsMatch = companyBase.match(/## Bedenken vor der Einrichtung\s*\n- ([^\n]+)/);
+  if (concernsMatch?.[1]) lines.push(`- Genannte Bedenken: ${concernsMatch[1].trim()}`);
+
+  const strategy = await readWorkspaceFile(supabase, projectId, 'rules/strategy.md');
+  if (strategy.trim()) lines.push(`- Vorbereitete Strategie (Auszug): ${strategy.trim().slice(0, 1800)}`);
 
   return lines.length > 1 ? lines.join('\n') : 'Noch kein verwertbares Vorwissen aus dem Onboarding-Wizard vorhanden.';
 }
@@ -216,13 +235,14 @@ export async function POST(req: NextRequest) {
         }
 
         const outText = cleanText || 'Dazu habe ich gerade keine Antwort gefunden.';
+        const persistedText = stripInternalTags(outText).trim() || outText;
 
         await persistBerndMessage(supabase, {
           project_id: pid,
           chat_id: SETUP_CHAT_ID,
           direction: 'out',
           role: 'assistant',
-          content: outText,
+          content: persistedText,
           media_kind: 'text',
           meta: { tags: tags.map((t) => t.type) },
         });

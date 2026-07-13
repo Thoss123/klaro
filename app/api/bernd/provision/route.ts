@@ -5,7 +5,7 @@ import { getRequestOrigin } from '@/lib/app-origin';
 import { provisionBernd } from '@/lib/bernd/provision';
 import type { BerndWizardData } from '@/app/bernd/onboarding/BerndOnboardingWizard';
 
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 /**
  * POST /api/bernd/provision { projectId, gewerk, wizardData, chatNotes? }

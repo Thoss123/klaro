@@ -26,6 +26,8 @@ type WizardOption = { label: string; value: string };
 /** Wizard-Feldschema — Feldnamen entsprechen 1:1 dem an /api/bernd/provision gesendeten Payload. */
 export type BerndWizardData = {
   gewerk?: string;
+  unternehmensgroesse?: string;
+  rolle_im_unternehmen?: string;
   auftragsarten?: string; // multi
   angebots_prozess?: string;
   rechnungs_prozess?: string;
@@ -35,6 +37,11 @@ export type BerndWizardData = {
   tools?: string; // multi (Tools/CRM/E-Mail)
   kommunikationskanaele?: string; // multi
   zeitfresser?: string; // multi
+  start_scope?: 'email_triage' | 'angebot' | 'rechnung' | 'followup';
+  bedenken?: string; // multi
+  vorname?: string;
+  firmenname?: string;
+  firmen_website?: string;
 };
 
 const GEWERK_OPTIONS: WizardOption[] = [
@@ -53,18 +60,18 @@ const AUFTRAGSARTEN_OPTIONS: WizardOption[] = [
   { label: 'Kleinaufträge/Reparaturen', value: 'Kleinauftraege' },
 ];
 
-const ANGEBOTS_PROZESS_OPTIONS: WizardOption[] = [
-  { label: 'Besichtigung vor Ort, dann Angebot am Schreibtisch', value: 'Besichtigung dann Angebot am Schreibtisch' },
-  { label: 'Angebot direkt bei der Besichtigung', value: 'Angebot direkt vor Ort' },
-  { label: 'Angebot per Telefon/E-Mail ohne Besichtigung', value: 'Angebot ohne Besichtigung' },
-  { label: 'Unterschiedlich, je nach Auftrag', value: 'Unterschiedlich je Auftrag' },
+const TEAM_OPTIONS: WizardOption[] = [
+  { label: 'Nur ich', value: 'solo' },
+  { label: '2 bis 5 Personen', value: 'small' },
+  { label: '6 bis 20 Personen', value: 'medium' },
+  { label: 'Mehr als 20 Personen', value: 'large' },
 ];
 
-const RECHNUNGS_PROZESS_OPTIONS: WizardOption[] = [
-  { label: 'Rechnung direkt nach Auftragsabschluss', value: 'Direkt nach Abschluss' },
-  { label: 'Rechnung, sobald ich dazu komme', value: 'Verzoegert wenn Zeit ist' },
-  { label: 'Anzahlung + Schlussrechnung', value: 'Anzahlung plus Schlussrechnung' },
-  { label: 'Mahnungen sind bei mir eher selten', value: 'Kaum Mahnungen' },
+const ROLE_OPTIONS: WizardOption[] = [
+  { label: 'Inhaber oder Geschäftsführung', value: 'inhaber' },
+  { label: 'Büro oder Verwaltung', value: 'verwaltung' },
+  { label: 'Projekt- oder Bauleitung', value: 'projektleitung' },
+  { label: 'Mitarbeiter im Betrieb', value: 'mitarbeiter' },
 ];
 
 const TOOLS_OPTIONS: WizardOption[] = [
@@ -85,17 +92,23 @@ const KOMMUNIKATION_OPTIONS: WizardOption[] = [
   { label: 'Persönlich vor Ort', value: 'Persoenlich' },
 ];
 
-const ZEITFRESSER_OPTIONS: WizardOption[] = [
-  { label: 'Angebote schreiben', value: 'Angebote schreiben' },
-  { label: 'Rechnungen & Mahnwesen', value: 'Rechnungen und Mahnwesen' },
-  { label: 'Terminkoordination', value: 'Terminkoordination' },
-  { label: 'Telefon während der Arbeit', value: 'Telefon waehrend Arbeit' },
-  { label: 'Kunden nachfassen', value: 'Kunden nachfassen' },
-  { label: 'Mails beantworten', value: 'Mails beantworten' },
-  { label: 'Material-/Lieferschein-Ablage', value: 'Material Ablage' },
+const START_SCOPE_OPTIONS: WizardOption[] = [
+  { label: 'Kunden-E-Mails bearbeiten und beantworten', value: 'email_triage' },
+  { label: 'Angebote vorbereiten', value: 'angebot' },
+  { label: 'Rechnungen und Mahnungen vorbereiten', value: 'rechnung' },
+  { label: 'Bei offenen Angeboten nachfassen', value: 'followup' },
 ];
 
-const TOTAL_STEPS = 9; // 7 Wizard-Fragen + Chat-Schritt + Auth-Schritt (Preislogik jetzt im laufenden Chat abgefragt, nicht im Wizard)
+const CONCERN_OPTIONS: WizardOption[] = [
+  { label: 'Ich möchte die Kontrolle behalten', value: 'kontrolle' },
+  { label: 'Datenschutz und Zugriff auf meine Daten', value: 'datenschutz' },
+  { label: 'Die Einrichtung könnte zu technisch sein', value: 'technik' },
+  { label: 'Ich habe wenig Zeit für die Einrichtung', value: 'zeit' },
+  { label: 'Ich weiß noch nicht, ob sich das lohnt', value: 'nutzen' },
+  { label: 'Aktuell keine besonderen Bedenken', value: 'keine' },
+];
+
+const TOTAL_STEPS = 12;
 
 function isCustomOptionValue(value: string | undefined, options: WizardOption[], otherValue: string): boolean {
   if (!value || value === otherValue) return false;
@@ -231,7 +244,7 @@ export default function BerndOnboardingWizard() {
       if (error) throw error;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Anmeldung fehlgeschlagen.');
-      const projectName = data.gewerk ? `Bernd — ${data.gewerk}` : 'Bernd';
+      const projectName = data.firmenname?.trim() || (data.gewerk ? `Bernd — ${data.gewerk}` : 'Bernd');
       const projectId = await createProject(session.user.id, projectName);
       await runProvision(session.user.id, projectId, data, chatNotes);
     } catch (e) {
@@ -266,6 +279,30 @@ export default function BerndOnboardingWizard() {
       case 2:
         return (
           <QuestionStep
+            title="Wie viele Personen arbeiten im Betrieb?"
+            subtitle="So kann Bernd Zuständigkeiten und Freigaben passend einrichten."
+            options={TEAM_OPTIONS}
+            value={data.unternehmensgroesse}
+            onSelect={(v) => updateData('unternehmensgroesse', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 3:
+        return (
+          <QuestionStep
+            title="Welche Rolle hast du im Betrieb?"
+            subtitle="Damit Bernd weiß, welche Entscheidungen du selbst triffst."
+            options={ROLE_OPTIONS}
+            value={data.rolle_im_unternehmen}
+            onSelect={(v) => updateData('rolle_im_unternehmen', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 4:
+        return (
+          <QuestionStep
             title="Welche Auftragsarten hast du am häufigsten?"
             subtitle="Mehrere Antworten möglich."
             options={AUFTRAGSARTEN_OPTIONS}
@@ -274,30 +311,6 @@ export default function BerndOnboardingWizard() {
             onNext={nextStep}
             onBack={prevStep}
             mode="multi"
-          />
-        );
-      case 3:
-        return (
-          <QuestionStep
-            title="Wie läuft dein Angebots-Prozess ab?"
-            subtitle="Vom ersten Kontakt bis zum fertigen Angebot."
-            options={ANGEBOTS_PROZESS_OPTIONS}
-            value={data.angebots_prozess}
-            onSelect={(v) => updateData('angebots_prozess', v)}
-            onNext={nextStep}
-            onBack={prevStep}
-          />
-        );
-      case 4:
-        return (
-          <QuestionStep
-            title="Wie läuft dein Rechnungs- und Mahnwesen ab?"
-            subtitle="Ehrliche Antwort — Bernd urteilt nicht, er übernimmt."
-            options={RECHNUNGS_PROZESS_OPTIONS}
-            value={data.rechnungs_prozess}
-            onSelect={(v) => updateData('rechnungs_prozess', v)}
-            onNext={nextStep}
-            onBack={prevStep}
           />
         );
       case 5:
@@ -311,6 +324,7 @@ export default function BerndOnboardingWizard() {
             onNext={nextStep}
             onBack={prevStep}
             mode="multi"
+            exclusiveValue="keine"
           />
         );
       case 6:
@@ -329,17 +343,53 @@ export default function BerndOnboardingWizard() {
       case 7:
         return (
           <QuestionStep
-            title="Was frisst bei dir am meisten Zeit?"
-            subtitle="Wähle alles, was zutrifft — hier setzt Bernd zuerst an."
-            options={ZEITFRESSER_OPTIONS}
-            value={data.zeitfresser}
-            onSelect={(v) => updateData('zeitfresser', v)}
+            title="Welche Aufgabe ist für dich am anstrengendsten?"
+            subtitle="Wir richten zuerst nur diesen einen Bereich vollständig ein. Weitere Aufgaben kommen später in einem eigenen Gespräch dazu."
+            options={START_SCOPE_OPTIONS}
+            value={data.start_scope}
+            onSelect={(v) => updateData('start_scope', v)}
             onNext={nextStep}
             onBack={prevStep}
-            mode="multi"
           />
         );
       case 8:
+        return (
+          <QuestionStep
+            title="Wobei hast du vor der Einrichtung noch Bedenken?"
+            subtitle="Mehrere Antworten möglich. Bernd spricht diese Punkte an, bevor du etwas verbindest."
+            options={CONCERN_OPTIONS}
+            value={data.bedenken}
+            onSelect={(v) => updateData('bedenken', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+            mode="multi"
+            exclusiveValue="keine"
+          />
+        );
+      case 9:
+        return (
+          <TextStep
+            title="Wie dürfen wir dich ansprechen?"
+            subtitle="Dein Vorname reicht."
+            value={data.vorname || ''}
+            onChange={(v) => updateData('vorname', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+            placeholder="Vorname"
+          />
+        );
+      case 10:
+        return (
+          <CompanyStep
+            company={data.firmenname || ''}
+            website={data.firmen_website || ''}
+            onCompanyChange={(v) => updateData('firmenname', v)}
+            onWebsiteChange={(v) => updateData('firmen_website', v)}
+            onNext={nextStep}
+            onBack={prevStep}
+          />
+        );
+      case 11:
         return (
           <ChatNotesStep
             value={chatNotes}
@@ -348,7 +398,7 @@ export default function BerndOnboardingWizard() {
             onBack={prevStep}
           />
         );
-      case 9:
+      case 12:
         if (isProvisioning) {
           return (
             <div className="flex flex-col items-center gap-4 text-center">
@@ -362,7 +412,7 @@ export default function BerndOnboardingWizard() {
           return (
             <OnboardingExistingAccount
               email={existingAccount.email}
-              firmenname={data.gewerk ? `Bernd — ${data.gewerk}` : undefined}
+              firmenname={data.firmenname || (data.gewerk ? `Bernd — ${data.gewerk}` : undefined)}
               loading={existingAccountBusy}
               error={existingAccountError}
               onStartNewProject={handleStartNewProjectWithOnboarding}
@@ -456,6 +506,125 @@ export default function BerndOnboardingWizard() {
   );
 }
 
+function TextStep({
+  title,
+  subtitle,
+  value,
+  onChange,
+  onNext,
+  onBack,
+  placeholder,
+}: {
+  title: string;
+  subtitle?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onNext: () => void;
+  onBack: () => void;
+  placeholder: string;
+}) {
+  return (
+    <form
+      className="flex flex-col gap-8"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (value.trim()) onNext();
+      }}
+    >
+      <BackButton onClick={onBack} />
+      <div className="text-center">
+        <h2 className="mb-2 text-3xl font-bold leading-tight text-gray-900">{title}</h2>
+        {subtitle && <p className="mx-auto max-w-md text-base text-gray-500">{subtitle}</p>}
+      </div>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        autoFocus
+        className="w-full rounded-2xl border-2 border-gray-200 px-5 py-4 text-base outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+      />
+      <NextButton disabled={!value.trim()} />
+    </form>
+  );
+}
+
+function CompanyStep({
+  company,
+  website,
+  onCompanyChange,
+  onWebsiteChange,
+  onNext,
+  onBack,
+}: {
+  company: string;
+  website: string;
+  onCompanyChange: (value: string) => void;
+  onWebsiteChange: (value: string) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <form
+      className="flex flex-col gap-8"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (company.trim()) onNext();
+      }}
+    >
+      <BackButton onClick={onBack} />
+      <div className="text-center">
+        <h2 className="mb-2 text-3xl font-bold leading-tight text-gray-900">Wie heißt dein Unternehmen?</h2>
+        <p className="mx-auto max-w-md text-base text-gray-500">
+          Mit der Website kann Bernd deinen Betrieb recherchieren und sich gezielter vorbereiten.
+        </p>
+      </div>
+      <div className="space-y-3">
+        <input
+          value={company}
+          onChange={(event) => onCompanyChange(event.target.value)}
+          placeholder="Unternehmensname"
+          autoFocus
+          className="w-full rounded-2xl border-2 border-gray-200 px-5 py-4 text-base outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        />
+        <input
+          value={website}
+          onChange={(event) => onWebsiteChange(event.target.value)}
+          placeholder="Website (optional)"
+          inputMode="url"
+          className="w-full rounded-2xl border-2 border-gray-200 px-5 py-4 text-base outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        />
+      </div>
+      <NextButton disabled={!company.trim()} />
+    </form>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="mb-[-1rem] flex justify-center">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-center gap-1.5 rounded-full border border-gray-100 bg-white px-4 py-1.5 text-sm font-medium text-gray-400 shadow-sm transition-colors hover:text-gray-600"
+      >
+        <ArrowLeft size={16} /> Zurück
+      </button>
+    </div>
+  );
+}
+
+function NextButton({ disabled = false }: { disabled?: boolean }) {
+  return (
+    <button
+      type="submit"
+      disabled={disabled}
+      className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-4 font-bold text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      Weiter <ArrowRight size={20} />
+    </button>
+  );
+}
+
 function ChatNotesStep({
   value,
   onChange,
@@ -515,6 +684,7 @@ function QuestionStep({
   onBack,
   isFirst = false,
   mode = 'single',
+  exclusiveValue,
 }: {
   title: string;
   subtitle?: string;
@@ -525,13 +695,19 @@ function QuestionStep({
   onBack: () => void;
   isFirst?: boolean;
   mode?: 'single' | 'multi';
+  exclusiveValue?: string;
 }) {
   const isMulti = mode === 'multi';
   const selectedValues = parseMultiValue(value);
 
   const handleSelect = (opt: WizardOption) => {
     if (isMulti) {
-      onSelect(toggleMultiValue(value, opt.value));
+      if (exclusiveValue && opt.value === exclusiveValue) {
+        onSelect(selectedValues.includes(exclusiveValue) ? '' : exclusiveValue);
+      } else {
+        const base = exclusiveValue ? selectedValues.filter((item) => item !== exclusiveValue).join(',') : value;
+        onSelect(toggleMultiValue(base, opt.value));
+      }
     } else {
       onSelect(opt.value);
       setTimeout(() => onNext(), 180);

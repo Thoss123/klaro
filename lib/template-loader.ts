@@ -33,8 +33,8 @@ interface NodeSpec {
  */
 export const MAIL_PROVIDER_NODES: Record<MailProvider, { trigger: NodeSpec; send: NodeSpec }> = {
   gmail: {
-    trigger: { type: 'n8n-nodes-base.gmailTrigger', typeVersion: 1, credentialType: 'gmailOAuth2Api' },
-    send: { type: 'n8n-nodes-base.gmail', typeVersion: 2, credentialType: 'gmailOAuth2Api' },
+    trigger: { type: 'n8n-nodes-base.gmailTrigger', typeVersion: 1, credentialType: 'gmailOAuth2' },
+    send: { type: 'n8n-nodes-base.gmail', typeVersion: 2, credentialType: 'gmailOAuth2' },
   },
   outlook: {
     trigger: { type: 'n8n-nodes-base.microsoftOutlookTrigger', typeVersion: 1, credentialType: 'microsoftOutlookOAuth2Api' },

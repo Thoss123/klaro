@@ -4,7 +4,10 @@ import { projectSuffix } from '@/lib/template-deploy';
 import { upsertBerndConfig, upsertBerndSetupState } from '@/lib/bernd/config';
 import { getTemplateManifest } from '@/lib/bernd/templates';
 import { parseMultiValue } from '@/lib/onboarding-multi';
+import { researchCompany } from '@/lib/company-research';
+import { generateInitialStrategy } from '@/lib/strategy';
 import type { BerndConfig, SetupScope } from '@/lib/bernd/types';
+import type { OnboardingData } from '@/lib/types';
 import type { BerndWizardData } from '@/app/bernd/onboarding/BerndOnboardingWizard';
 
 /**
@@ -55,18 +58,79 @@ function zeitfresserToProposedScopes(zeitfresser?: string): SetupScope[] {
   return Array.from(ids, (id) => ({ id, status: 'vorgeschlagen' as const }));
 }
 
+function initialScopes(wizardData: BerndWizardData): SetupScope[] {
+  if (wizardData.start_scope) return [{ id: wizardData.start_scope, status: 'gewaehlt' }];
+  return zeitfresserToProposedScopes(wizardData.zeitfresser);
+}
+
+function resolveMailProvider(wizardData: BerndWizardData): 'gmail' | 'outlook' | null {
+  const tools = parseMultiValue(wizardData.tools);
+  if (tools.includes('outlook')) return 'outlook';
+  if (tools.includes('gmail')) return 'gmail';
+  return null;
+}
+
+const START_SCOPE_LABELS: Record<string, string> = {
+  email_triage: 'Kunden-E-Mails bearbeiten und beantworten',
+  angebot: 'Angebote vorbereiten',
+  rechnung: 'Rechnungen und Mahnungen vorbereiten',
+  followup: 'Bei offenen Angeboten nachfassen',
+};
+
+function toOnboardingData(wizardData: BerndWizardData, recherche: string | null): Partial<OnboardingData> {
+  return {
+    ziel: wizardData.start_scope ? START_SCOPE_LABELS[wizardData.start_scope] : 'Einen belastenden Büroablauf automatisieren',
+    ki_erfahrung: 'noch nicht erhoben',
+    wer_setzt_um: wizardData.rolle_im_unternehmen || 'noch nicht erhoben',
+    hindernis: wizardData.bedenken || 'noch nicht angegeben',
+    branche: wizardData.gewerk || 'Handwerk',
+    tempo: 'Schritt für Schritt mit Freigaben',
+    unternehmensgroesse: wizardData.unternehmensgroesse || 'noch nicht angegeben',
+    technik_level: 'wird im Einrichtungsgespräch berücksichtigt',
+    vorname: wizardData.vorname,
+    firmenname: wizardData.firmenname,
+    rolle_im_unternehmen: wizardData.rolle_im_unternehmen,
+    firmen_website: wizardData.firmen_website,
+    firmen_recherche: recherche || undefined,
+  };
+}
+
+function fallbackStrategy(wizardData: BerndWizardData, recherche: string | null): string {
+  const scope = wizardData.start_scope ? START_SCOPE_LABELS[wizardData.start_scope] : 'noch offen';
+  return [
+    '# Einrichtungsstrategie für Bernd',
+    '',
+    `Unternehmen: ${wizardData.firmenname || 'noch nicht angegeben'}`,
+    `Ansprechpartner: ${wizardData.vorname || 'noch nicht angegeben'}`,
+    `Rolle: ${wizardData.rolle_im_unternehmen || 'noch nicht angegeben'}`,
+    `Gewerk: ${wizardData.gewerk || 'noch nicht angegeben'}`,
+    `Teamgröße: ${wizardData.unternehmensgroesse || 'noch nicht angegeben'}`,
+    `Erster Einrichtungsbereich: ${scope}`,
+    `Bedenken: ${wizardData.bedenken || 'keine angegeben'}`,
+    '',
+    '## Vorgehen',
+    '1. Den heutigen Ablauf und alle Ausnahmen verständlich klären.',
+    '2. Wissensquellen, Freigaben und Sicherheitsgrenzen festlegen.',
+    '3. Nur die für diesen Einrichtungsbereich notwendigen Konten verbinden.',
+    '4. Den Ablauf testen und erst nach ausdrücklicher Bestätigung aktivieren.',
+    ...(recherche ? ['', '## Recherche', recherche] : []),
+  ].join('\n');
+}
+
 function toNumberString(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
   return trimmed || fallback;
 }
 
-/** Baut den Firmenwissen-Block (Preise, Prozesse, Zeitfresser) aus Wizard + Freitext-Chat. */
+/** Baut das bestätigte Firmenwissen aus Wizard, Recherche und Strategie. */
 function buildCompanyBaseContent(args: {
   gewerk: string;
   wizardData: BerndWizardData;
   chatNotes?: string;
+  recherche?: string | null;
+  strategy?: string | null;
 }): string {
-  const { gewerk, wizardData, chatNotes } = args;
+  const { gewerk, wizardData, chatNotes, recherche, strategy } = args;
   const lines: string[] = [
     '# Firmen-Basiswissen',
     '',
@@ -75,6 +139,13 @@ function buildCompanyBaseContent(args: {
     '',
     '## Gewerk',
     `- ${gewerk}`,
+    '',
+    '## Unternehmen',
+    `- Firmenname: ${wizardData.firmenname || 'nicht angegeben'}`,
+    `- Website: ${wizardData.firmen_website || 'nicht angegeben'}`,
+    `- Ansprechpartner: ${wizardData.vorname || 'nicht angegeben'}`,
+    `- Rolle: ${wizardData.rolle_im_unternehmen || 'nicht angegeben'}`,
+    `- Teamgröße: ${wizardData.unternehmensgroesse || 'nicht angegeben'}`,
     '',
     '## Preislogik',
     ...(wizardData.stundensatz?.trim()
@@ -87,12 +158,13 @@ function buildCompanyBaseContent(args: {
     '',
     '## Prozesse',
     `- Auftragsarten: ${wizardData.auftragsarten || 'nicht angegeben'}`,
-    `- Angebots-Prozess: ${wizardData.angebots_prozess || 'nicht angegeben'}`,
-    `- Rechnungs-/Mahnwesen-Prozess: ${wizardData.rechnungs_prozess || 'nicht angegeben'}`,
     `- Kommunikationskanäle mit Kunden: ${wizardData.kommunikationskanaele || 'nicht angegeben'}`,
     '',
-    '## Zeitfresser (wo Bernd zuerst ansetzt)',
-    `- ${wizardData.zeitfresser || 'nicht angegeben'}`,
+    '## Erster Einrichtungsbereich',
+    `- ${wizardData.start_scope ? START_SCOPE_LABELS[wizardData.start_scope] : wizardData.zeitfresser || 'nicht angegeben'}`,
+    '',
+    '## Bedenken vor der Einrichtung',
+    `- ${wizardData.bedenken || 'keine angegeben'}`,
     '',
     '## Tools im Einsatz',
     `- ${wizardData.tools || 'nicht angegeben'}`,
@@ -103,6 +175,8 @@ function buildCompanyBaseContent(args: {
   if (chatNotes?.trim()) {
     lines.push('', '## Ergänzungen aus dem Onboarding-Chat', chatNotes.trim());
   }
+  if (recherche?.trim()) lines.push('', '## Automatische Unternehmensrecherche', recherche.trim());
+  if (strategy?.trim()) lines.push('', '## Einrichtungsstrategie', strategy.trim());
   return lines.join('\n');
 }
 
@@ -205,14 +279,42 @@ export async function provisionBernd(
 ): Promise<ProvisionResult> {
   const { userId, projectId, gewerk, wizardData, chatNotes } = args;
 
-  // (a) Firmenwissen + Persona schreiben.
-  await ensureBaseRules(supabase, { userId, projectId });
-  const companyBaseContent = buildCompanyBaseContent({ gewerk, wizardData, chatNotes });
+  // (a) Recherche + Strategie wie im Axantilo-Onboarding, aber fail-open.
+  const recherche = await researchCompany(
+    wizardData.firmenname || '',
+    gewerk,
+    wizardData.firmen_website,
+  ).catch((error) => {
+    console.warn('[bernd/provision] Firmenrecherche fehlgeschlagen:', error instanceof Error ? error.message : String(error));
+    return null;
+  });
+  const generatedStrategy = await generateInitialStrategy({
+    onboarding: toOnboardingData(wizardData, recherche),
+    recherche,
+  });
+  const strategy = generatedStrategy?.trim() || fallbackStrategy(wizardData, recherche);
+
+  const { error: strategyError } = await supabase
+    .from('projects')
+    .update({ strategy, strategy_updated_at: new Date().toISOString() })
+    .eq('id', projectId)
+    .eq('user_id', userId);
+  if (strategyError) console.warn('[bernd/provision] Strategie konnte nicht im Projekt gespeichert werden:', strategyError.message);
+
+  await ensureBaseRules(supabase, { userId, projectId, strategy });
+  const companyBaseContent = buildCompanyBaseContent({ gewerk, wizardData, chatNotes, recherche, strategy });
   await writeWorkspaceFile(supabase, {
     userId,
     projectId,
     path: 'rules/company_base.md',
     content: companyBaseContent,
+    updatedBy: 'bernd_onboarding',
+  });
+  await writeWorkspaceFile(supabase, {
+    userId,
+    projectId,
+    path: 'rules/strategy.md',
+    content: strategy,
     updatedBy: 'bernd_onboarding',
   });
 
@@ -239,6 +341,7 @@ export async function provisionBernd(
       },
       tools: {
         genutzt: (wizardData.tools || '').split(',').map((t) => t.trim()).filter(Boolean),
+        mail_provider: resolveMailProvider(wizardData),
         kommunikationskanaele: (wizardData.kommunikationskanaele || '')
           .split(',')
           .map((t) => t.trim())
@@ -257,8 +360,16 @@ export async function provisionBernd(
     userId,
     projectId,
     patch: {
-      profil: { gewerk },
-      scopes: zeitfresserToProposedScopes(wizardData.zeitfresser),
+      profil: {
+        gewerk,
+        firmenname: wizardData.firmenname,
+        mitarbeiter: wizardData.unternehmensgroesse,
+        ansprechpartner: wizardData.vorname,
+        rolle: wizardData.rolle_im_unternehmen,
+        website: wizardData.firmen_website,
+      },
+      scopes: initialScopes(wizardData),
+      fortschritt: { betrieb: 100, aufgaben: wizardData.start_scope ? 100 : 0, wissen: 0, regeln: 0 },
     },
   });
 

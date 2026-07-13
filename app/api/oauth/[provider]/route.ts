@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { getRequestOrigin } from '@/lib/app-origin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { accessDenied, assertProjectOwner, requireUser } from '@/lib/access-control';
-import { OAUTH_PROVIDERS, oauthRedirectUri, type OAuthProvider } from '@/lib/oauth-config';
+import { OAUTH_PROVIDERS, oauthRedirectUri, scopesForOAuthRequest, type OAuthProvider } from '@/lib/oauth-config';
 
 export const OAUTH_STATE_COOKIE = 'axantilo_oauth_state';
 
@@ -58,7 +58,7 @@ export async function GET(
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', oauthRedirectUri(provider, origin));
   authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('scope', cfg.scopes.join(' '));
+  authUrl.searchParams.set('scope', scopesForOAuthRequest(provider, toolName).join(' '));
   authUrl.searchParams.set('state', state);
   for (const [k, v] of Object.entries(cfg.extraAuthParams ?? {})) {
     authUrl.searchParams.set(k, v);

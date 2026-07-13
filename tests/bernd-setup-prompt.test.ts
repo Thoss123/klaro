@@ -24,17 +24,26 @@ describe('buildSetupSystemPrompt', () => {
   it('enforces one semantic question and the single-question options schema', () => {
     const prompt = buildPrompt();
 
-    expect(prompt).toContain('genau EINER Frage');
-    expect(prompt).toContain('Nutze NIEMALS ein questions-Array');
-    expect(prompt).toContain('Wie heisst dein Betrieb?');
-    expect(prompt).toContain('Frage dabei nicht erneut nach Gewerk oder');
-    expect(prompt).toContain('options, getcredential und wissen_anfrage duerfen nie gemeinsam');
+    expect(prompt).toContain('Stelle nie zwei Fragen in einem Satz');
+    expect(prompt).toContain('Ein questions-Array ist verboten');
+    expect(prompt).toContain('Okay, verstanden');
+    expect(prompt).toContain('options, getcredential und wissen_anfrage dürfen nie gemeinsam');
+    expect(prompt).toContain('Weitere Bereiche werden später in einem eigenen Gespräch eingerichtet');
+  });
+
+  it('explains mail knowledge and safety before connections', () => {
+    const prompt = buildPrompt();
+    expect(prompt).toContain('Gesendete E-Mails dürfen nur nach ausdrücklicher Zustimmung');
+    expect(prompt).toContain('crm_noetig');
+    expect(prompt).toContain('kalender_noetig');
+    expect(prompt).toContain('Biete das Postfach erst an');
+    expect(prompt).toMatch(/Die zweite Stufe darf als empfohlen\s+markiert werden/);
   });
 
   it('keeps the supported setup tags in the runtime prompt', () => {
     const prompt = buildPrompt();
 
-    expect(prompt).toContain('<profil feld="gewerk|firmenname|mitarbeiter|standort|ton">');
+    expect(prompt).toContain('<profil feld="gewerk|firmenname|mitarbeiter|standort|ton|ansprechpartner|rolle|website">');
     expect(prompt).toContain('<scope id="email_triage|angebot|rechnung|followup"');
     expect(prompt).toContain('<getcredential tool="email|telegram"/>');
     expect(prompt).toContain('<zusammenfassung_bestaetigt/>');

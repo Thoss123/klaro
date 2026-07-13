@@ -44,7 +44,16 @@ export interface SetupScope {
  */
 export interface BerndSetupState {
   /** Firmen-/Betriebsbild, wie es der Setup-Chat aus `<profil>`-Tags gesammelt hat. */
-  profil?: { gewerk?: string; firmenname?: string; mitarbeiter?: string; standort?: string; ton?: string };
+  profil?: {
+    gewerk?: string;
+    firmenname?: string;
+    mitarbeiter?: string;
+    standort?: string;
+    ton?: string;
+    ansprechpartner?: string;
+    rolle?: string;
+    website?: string;
+  };
   /** Zeitfresser-Scopes, die vorgeschlagen bzw. vom Nutzer gewählt/abgelehnt wurden. */
   scopes?: SetupScope[];
   /** Ablauf-Pflichtfragen je Scope: scope-id → Frage → Antwort. */

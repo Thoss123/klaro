@@ -23,6 +23,7 @@ export default function ChatInput({
   sessionId,
   compact = false,
   backgroundStatus,
+  allowAttachments = true,
 }: {
   value: string
   onChange: (s: string) => void
@@ -36,6 +37,7 @@ export default function ChatInput({
   compact?: boolean
   /** Shown while canvas/memory sync runs after the coach reply finished */
   backgroundStatus?: string | null
+  allowAttachments?: boolean
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +122,7 @@ export default function ChatInput({
           {backgroundStatus}
         </p>
       )}
-      {attachments.length > 0 && (
+      {allowAttachments && attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 px-1">
           {attachments.map(a => {
             const preview = a.type === 'image' ? attachmentPreviewUrl(a) : undefined;
@@ -172,27 +174,31 @@ export default function ChatInput({
           onSubmit={onSubmit}
           className="flex w-full min-w-0 items-center gap-1.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-3xl min-h-[52px]"
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={FILE_ACCEPT}
-            className="hidden"
-            onChange={e => {
-              const f = e.target.files?.[0];
-              if (f) uploadFile(f);
-              e.target.value = '';
-            }}
-          />
-          <button
-            type="button"
-            disabled={uploading || disabled}
-            onClick={() => fileInputRef.current?.click()}
-            className="w-8 h-8 flex shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 active:bg-gray-200 rounded-full transition-colors"
-            aria-label="Datei oder Bild anhängen"
-            title="Datei oder Bild anhängen"
-          >
-            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={18} />}
-          </button>
+          {allowAttachments && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={FILE_ACCEPT}
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                disabled={uploading || disabled}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-8 h-8 flex shrink-0 items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 active:bg-gray-200 rounded-full transition-colors"
+                aria-label="Datei oder Bild anhängen"
+                title="Datei oder Bild anhängen"
+              >
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={18} />}
+              </button>
+            </>
+          )}
 
           <div className="flex-1 min-w-0 flex items-center">
             <textarea
@@ -205,7 +211,7 @@ export default function ChatInput({
               }}
               onPaste={e => {
                 const items = e.clipboardData?.items;
-                if (!items || uploading || disabled) return;
+                if (!allowAttachments || !items || uploading || disabled) return;
                 for (const item of items) {
                   if (item.type.startsWith('image/')) {
                     e.preventDefault();

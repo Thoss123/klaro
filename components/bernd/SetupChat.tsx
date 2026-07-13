@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Loader2, RefreshCw, PartyPopper, User } from 'lucide-react';
+import { Loader2, RefreshCw, PartyPopper } from 'lucide-react';
 import { ConnectButton } from '@/components/bernd/ConnectButton';
 import { UploadSlot } from '@/components/bernd/UploadSlot';
 import OptionsCard, { parseOptionsTag } from '@/components/chat/OptionsCard';
+import MessageBubble from '@/components/chat/MessageBubble';
+import ChatInput from '@/components/chat/ChatInput';
 import { stripInternalTags } from '@/lib/strip-internal-tags';
 import { splitVisibleStream, type SetupTag } from '@/lib/bernd/setup-tags';
 import { evaluateGate, buildGateStatusText } from '@/lib/bernd/gate';
@@ -23,6 +25,7 @@ interface SetupChatProps {
   initialState: BerndSetupState;
   emailConnected: boolean;
   telegramConnected: boolean;
+  emailProvider: 'gmail' | 'outlook';
   onStateChange: (state: BerndSetupState) => void;
   onDeployed: () => void;
   /**
@@ -114,6 +117,7 @@ export function SetupChat({
   initialState,
   emailConnected,
   telegramConnected,
+  emailProvider,
   onStateChange,
   onDeployed,
   onConnectionChange,
@@ -338,6 +342,7 @@ export function SetupChat({
                     projectId={projectId}
                     tool={item.tool}
                     connected={item.tool === 'email' ? emailConnected : telegramConnected}
+                    emailProvider={emailProvider}
                     onConnected={(tool) => onConnectionChange?.(tool as 'email' | 'telegram')}
                   />
                 </div>
@@ -364,35 +369,21 @@ export function SetupChat({
                 </div>
               );
             }
-            return item.role === 'user' ? (
-              <div key={item.id} className="flex max-w-[88%] items-end gap-2 self-end">
-                <div className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-indigo-600 px-4 py-2.5 text-sm leading-relaxed text-white">
-                  {item.display}
-                </div>
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600">
-                  <User size={14} />
-                </span>
-              </div>
-            ) : (
-              <div key={item.id} className="group max-w-[92%] self-start">
-                <div
-                  className={`whitespace-pre-wrap text-sm leading-7 ${
-                    item.failed
-                      ? 'border-l-2 border-red-300 pl-3 text-red-700'
-                      : 'text-slate-800'
-                  }`}
-                >
-                  {item.display || (item.streaming ? '…' : '')}
-                  {item.failed && (
-                    <button
-                      type="button"
-                      onClick={retry}
-                      className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800"
-                    >
-                      <RefreshCw size={12} /> Erneut versuchen
-                    </button>
-                  )}
-                </div>
+            return (
+              <div key={item.id} className={item.failed ? 'border-l-2 border-red-300 pl-3' : undefined}>
+                <MessageBubble
+                  message={{ id: item.id, role: item.role, content: item.display || (item.streaming ? '…' : '') }}
+                  isStreamingPartial={item.streaming}
+                />
+                {item.failed && (
+                  <button
+                    type="button"
+                    onClick={retry}
+                    className="ml-10 mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800"
+                  >
+                    <RefreshCw size={12} /> Erneut versuchen
+                  </button>
+                )}
               </div>
             );
           })
@@ -406,14 +397,14 @@ export function SetupChat({
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+      <footer className="shrink-0 border-t border-gray-100 bg-white">
         <div className="mx-auto w-full max-w-2xl">
           {readyToDeploy && (
             <button
               type="button"
               onClick={handleDeploy}
               disabled={deploying}
-              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mx-4 mt-3 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
             {deploying ? (
               <>
@@ -427,47 +418,37 @@ export function SetupChat({
             </button>
           )}
 
-          {error && <p className="mb-2 px-1 text-xs text-red-600">{error}</p>}
+          {error && <p className="px-4 pt-2 text-xs text-red-600">{error}</p>}
           {activeOptions ? (
-            <OptionsCard
-              options={activeOptions.options}
-              onSelect={(label) => {
-                setDismissedOptionsId(activeOptions.itemId);
-                void send(label);
-              }}
-              onCustomSubmit={(text) => {
-                setDismissedOptionsId(activeOptions.itemId);
-                void send(text);
-              }}
-              onDismiss={() => setDismissedOptionsId(activeOptions.itemId)}
-            />
-          ) : (
-            <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void send(input);
-                  }
+            <div className="px-4 pt-3">
+              <OptionsCard
+                options={activeOptions.options}
+                onSelect={(label) => {
+                  setDismissedOptionsId(activeOptions.itemId);
+                  void send(label);
                 }}
-                placeholder="Bernd antworten …"
-                disabled={sending}
-                rows={1}
-                className="min-h-10 max-h-32 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 disabled:opacity-50"
+                onCustomSubmit={(text) => {
+                  setDismissedOptionsId(activeOptions.itemId);
+                  void send(text);
+                }}
+                onDismiss={() => setDismissedOptionsId(activeOptions.itemId)}
               />
-              <button
-                type="button"
-                onClick={() => void send(input)}
-                disabled={sending || !input.trim()}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:pointer-events-none disabled:bg-slate-200 disabled:text-slate-400"
-                aria-label="Senden"
-                title="Senden"
-              >
-                {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={17} />}
-              </button>
             </div>
+          ) : (
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void send(input);
+              }}
+              disabled={sending}
+              isStreaming={sending}
+              attachments={[]}
+              onAttachmentsChange={() => undefined}
+              sessionId={null}
+              allowAttachments={false}
+            />
           )}
         </div>
       </footer>

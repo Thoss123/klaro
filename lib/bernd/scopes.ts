@@ -19,7 +19,7 @@ export const SETUP_SCOPE_IDS = Object.keys(SCOPE_TO_SLUG);
 
 /** Kurze, nutzerverständliche Labels je Scope fürs Setup-Chat (`<options>`) und Canvas. */
 export const SCOPE_LABELS: Record<string, string> = {
-  email_triage: 'E-Mails vorsortieren & beantworten',
+  email_triage: 'Kunden-E-Mails bearbeiten und beantworten',
   angebot: 'Angebote erstellen',
   rechnung: 'Rechnungen & Mahnungen',
   followup: 'Angebote nachfassen',

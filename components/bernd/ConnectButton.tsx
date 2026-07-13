@@ -4,23 +4,22 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Mail } from 'lucide-react';
 import { Card, PRIMARY_BTN } from '@/components/bernd/ui';
 import { PairingCard } from '@/components/bernd/PairingCard';
+import { BERND_MAIL_CONNECTIONS } from '@/lib/bernd/mail-provider';
 
 export interface ConnectButtonProps {
   projectId: string;
   tool: 'email' | 'telegram';
   connected: boolean;
+  emailProvider?: 'gmail' | 'outlook';
   onConnected?: (tool: string) => void;
 }
-
-const GMAIL_TOOL_NAME = 'gmail';
-const GMAIL_CREDENTIAL_TYPE = 'gmailOAuth2Api';
 
 /**
  * Inline-Verbindungs-Baustein für Bernds Setup-Chat (`<getcredential tool="email|telegram"/>`,
  * siehe Architekturplan §WP4). Rendert an der Stelle im Chat, an der das Tag steht.
  *
- * tool="email": öffnet den bestehenden Google-OAuth-Broker
- * (`app/api/oauth/[provider]/route.ts` + `callback/[provider]/route.ts`, Provider "google")
+ * tool="email": öffnet den bestehenden OAuth-Broker für den im Wizard gewählten Anbieter
+ * (`app/api/oauth/[provider]/route.ts` + `callback/[provider]/route.ts`, Google oder Microsoft)
  * in einem Popup und lauscht auf die postMessage `axantilo_oauth`, die der Callback an
  * `window.opener` sendet — kein eigener OAuth-Code, volle Wiederverwendung.
  *
@@ -31,12 +30,13 @@ const GMAIL_CREDENTIAL_TYPE = 'gmailOAuth2Api';
  * die Komponente einen lokalen Status, damit der Chip sofort nach dem Verbinden erscheint,
  * auch bevor der Elternteil neu rendert.
  */
-export function ConnectButton({ projectId, tool, connected, onConnected }: ConnectButtonProps) {
+export function ConnectButton({ projectId, tool, connected, emailProvider = 'gmail', onConnected }: ConnectButtonProps) {
   const [localConnected, setLocalConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isConnected = connected || localConnected;
+  const mailConnection = BERND_MAIL_CONNECTIONS[emailProvider];
 
   // Popup-Ergebnis des OAuth-Callbacks entgegennehmen (nur relevant für tool="email").
   useEffect(() => {
@@ -46,7 +46,7 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
       // Origin wie diese Seite — Popup und Opener teilen sich window.location.origin).
       if (e.origin !== window.location.origin) return;
       const data = e.data as { type?: string; ok?: boolean; toolName?: string; error?: string };
-      if (data?.type !== 'axantilo_oauth') return;
+      if (data?.type !== 'axantilo_oauth' || data.toolName !== mailConnection.toolName) return;
       setConnecting(false);
       if (data.ok) {
         setError(null);
@@ -58,16 +58,16 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [tool, onConnected]);
+  }, [tool, onConnected, mailConnection.toolName]);
 
-  const connectGmail = useCallback(() => {
+  const connectMailbox = useCallback(() => {
     setError(null);
     setConnecting(true);
     const returnUrl = window.location.pathname + window.location.search;
-    const url = `/api/oauth/google?${new URLSearchParams({
+    const url = `/api/oauth/${mailConnection.provider}?${new URLSearchParams({
       project_id: projectId,
-      tool_name: GMAIL_TOOL_NAME,
-      n8n_credential_type: GMAIL_CREDENTIAL_TYPE,
+      tool_name: mailConnection.toolName,
+      n8n_credential_type: mailConnection.credentialType,
       return_url: returnUrl,
     }).toString()}`;
     const popup = window.open(url, 'axantilo_oauth', 'width=500,height=650');
@@ -76,7 +76,7 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
       setConnecting(false);
       window.location.href = url;
     }
-  }, [projectId]);
+  }, [projectId, mailConnection]);
 
   const handleTelegramLinked = useCallback(() => {
     setLocalConnected(true);
@@ -90,7 +90,7 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
           <CheckCircle2 size={15} />
         </span>
         <span className="text-sm font-medium text-emerald-800">
-          {tool === 'email' ? 'E-Mail verbunden' : 'Telegram verbunden'}
+          {tool === 'email' ? `${mailConnection.accountLabel} verbunden` : 'Telegram verbunden'}
         </span>
       </Card>
     );
@@ -113,12 +113,12 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-900">Postfach verbinden</p>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-            Verbinde dein Gmail-Konto in drei Klicks — Bernd liest und entwirft erst danach Antworten.
+            Verbinde dein {mailConnection.accountLabel}-Postfach. Bernd erhält nur die für E-Mails nötigen Rechte.
           </p>
           {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
           <button
             type="button"
-            onClick={connectGmail}
+            onClick={connectMailbox}
             disabled={connecting}
             className={`${PRIMARY_BTN} mt-3 w-full`}
           >
@@ -127,7 +127,7 @@ export function ConnectButton({ projectId, tool, connected, onConnected }: Conne
                 <Loader2 size={15} className="animate-spin" /> Warte auf Bestätigung…
               </>
             ) : (
-              <>Gmail verbinden</>
+              <>{mailConnection.accountLabel} verbinden</>
             )}
           </button>
         </div>

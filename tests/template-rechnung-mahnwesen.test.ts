@@ -36,8 +36,8 @@ describe('rechnung-mahnwesen template (golden)', () => {
     }
     expect(credentialBindings).toEqual(
       expect.arrayContaining([
-        { node: 'Rechnung senden', credentialType: 'gmailOAuth2Api' },
-        { node: 'Mahnung senden', credentialType: 'gmailOAuth2Api' },
+        { node: 'Rechnung senden', credentialType: 'gmailOAuth2' },
+        { node: 'Mahnung senden', credentialType: 'gmailOAuth2' },
       ]),
     );
   });

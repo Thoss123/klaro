@@ -77,7 +77,7 @@ describe('buildN8nWorkflow', () => {
     const json = buildN8nWorkflow(wf, mappings, 'X') as N8nJson;
     expect(json.nodes[0].credentials).toBeUndefined(); // webhook → no credential
     expect(json.nodes[1].credentials!.openAiApi.id).toBe('cred_ai');
-    expect(json.nodes[3].credentials!.gmailOAuth2Api.id).toBe('cred_gmail');
+    expect(json.nodes[3].credentials!.gmailOAuth2.id).toBe('cred_gmail');
   });
 
   it('positions nodes horizontally and omits the read-only active field', () => {

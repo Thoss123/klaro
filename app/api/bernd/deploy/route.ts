@@ -11,6 +11,7 @@ import { deployTemplateWorkflow, findCredentialByTool } from '@/lib/template-dep
 import { COMPANY_BASE_PATH, personaPath, readWorkspaceFile, writeWorkspaceFile } from '@/lib/workspace';
 import { tgSendMessage } from '@/lib/bernd/telegram';
 import type { ActiveTemplate, BerndSetupState, SetupScope } from '@/lib/bernd/types';
+import { mailToolName, resolveBerndMailProvider } from '@/lib/bernd/mail-provider';
 
 export const maxDuration = 120;
 
@@ -32,7 +33,7 @@ interface FailedFlow {
  * `nein-nur-handwerker-das-mutable-charm.md` §WP5): friert `setup_state` ein, prüft das
  * regelbasierte Completion-Gate (`lib/bernd/gate.ts`) und deployt für jeden Scope mit
  * status="gewaehlt" den zugehörigen golden Flow ECHT über `deployTemplateWorkflow`
- * (Provider-Slots, Credential-Bindung, automatische Aktivierung sobald Gmail verbunden ist —
+ * (Provider-Slots, Credential-Bindung, automatische Aktivierung sobald das Postfach verbunden ist —
  * siehe `lib/template-deploy.ts`). Ersetzt den kaputten Auto-Deploy, den
  * `lib/bernd/provision.ts` früher beim Onboarding versucht hat (`loadWorkflowTemplate` ohne
  * `mailProvider` → ungefüllte Struct-Slots → nie ein lauffähiger Flow).
@@ -71,8 +72,9 @@ export async function POST(req: NextRequest) {
 
   // ── Verbindungsstatus live ermitteln (nie aus setup_state selbst, siehe BerndSetupState-Doku
   // in lib/bernd/types.ts — der Stand darf nie veraltet im JSONB einfrieren). ─────────────────
-  const gmailCredId = await findCredentialByTool(supabase, pid, 'gmail');
-  const emailConnected = Boolean(gmailCredId);
+  const mailProvider = resolveBerndMailProvider(config.tools, config.setup_state);
+  const emailCredId = await findCredentialByTool(supabase, pid, mailToolName(mailProvider));
+  const emailConnected = Boolean(emailCredId);
 
   const { data: tgLink } = await supabase
     .from('bernd_channel_links')
@@ -117,7 +119,7 @@ export async function POST(req: NextRequest) {
         userId: auth.userId,
         projectId: pid,
         appBaseUrl,
-        mailProvider: 'gmail',
+        mailProvider,
         scalars,
       });
       if (!result.ok) {

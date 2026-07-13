@@ -117,6 +117,7 @@ export const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
     buildCredentialData: (tokens) => ({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+      allowedHttpRequestDomains: 'all',
       oauthTokenData: withExpiry(tokens),
     }),
   },
@@ -154,12 +155,10 @@ export const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
       return {
         clientId: process.env.MICROSOFT_CLIENT_ID ?? '',
         clientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? '',
-        grantType: 'authorizationCode',
         authUrl: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
         accessTokenUrl: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
-        authQueryParameters: 'response_mode=query&prompt=select_account',
-        authentication: 'body',
         graphApiBaseUrl: 'https://graph.microsoft.com',
+        allowedHttpRequestDomains: 'all',
         oauthTokenData: withExpiry(tokens),
       };
     },
@@ -190,6 +189,40 @@ export const OAUTH_PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
     }),
   },
 };
+
+const BASIC_GOOGLE_SCOPES = ['openid', 'email', 'profile'];
+const BASIC_MICROSOFT_SCOPES = ['openid', 'email', 'profile', 'offline_access', 'User.Read'];
+
+/**
+ * Least-privilege scopes for the concrete tool currently being connected. A later tool
+ * starts its own consent flow instead of silently inheriting unrelated permissions.
+ */
+export function scopesForOAuthRequest(provider: OAuthProvider, toolName: string): string[] {
+  const tool = toolName.trim().toLowerCase();
+  if (provider === 'google') {
+    if (tool === 'gmail') {
+      return [
+        ...BASIC_GOOGLE_SCOPES,
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+      ];
+    }
+    if (tool === 'google_calendar') return [...BASIC_GOOGLE_SCOPES, 'https://www.googleapis.com/auth/calendar'];
+    if (tool === 'google_docs') return [...BASIC_GOOGLE_SCOPES, 'https://www.googleapis.com/auth/documents'];
+    if (tool === 'google_sheets') return [...BASIC_GOOGLE_SCOPES, 'https://www.googleapis.com/auth/spreadsheets'];
+    if (tool === 'google_drive') return [...BASIC_GOOGLE_SCOPES, 'https://www.googleapis.com/auth/drive'];
+    if (tool.startsWith('youtube')) {
+      return [...BASIC_GOOGLE_SCOPES, 'https://www.googleapis.com/auth/youtube', 'https://www.googleapis.com/auth/youtube.upload'];
+    }
+  }
+  if (provider === 'microsoft') {
+    if (tool === 'outlook') return [...BASIC_MICROSOFT_SCOPES, 'Mail.ReadWrite', 'Mail.Send'];
+    if (tool.includes('calendar')) return [...BASIC_MICROSOFT_SCOPES, 'Calendars.ReadWrite'];
+    if (tool.includes('onedrive') || tool.includes('excel')) return [...BASIC_MICROSOFT_SCOPES, 'Files.ReadWrite.All'];
+    if (tool.includes('teams')) return [...BASIC_MICROSOFT_SCOPES, 'Chat.ReadWrite', 'ChannelMessage.Send', 'Team.ReadBasic.All'];
+  }
+  return OAUTH_PROVIDERS[provider].scopes;
+}
 
 /** Liefert den OAuth-Provider für einen n8n-Credential-Typ — oder null (API-Key-Tool). */
 export function providerForCredentialType(credentialType?: string | null): OAuthProvider | null {

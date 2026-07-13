@@ -42,8 +42,8 @@ describe('angebot-autopilot template (golden)', () => {
     expect(sendNode.type).toBe('n8n-nodes-base.gmail');
     expect(credentialBindings).toEqual(
       expect.arrayContaining([
-        { node: 'Neue Anfrage', credentialType: 'gmailOAuth2Api' },
-        { node: 'Angebot senden', credentialType: 'gmailOAuth2Api' },
+        { node: 'Neue Anfrage', credentialType: 'gmailOAuth2' },
+        { node: 'Angebot senden', credentialType: 'gmailOAuth2' },
       ]),
     );
   });

@@ -7,6 +7,7 @@ import {
 } from '@/lib/template-loader';
 import { buildCentralCredMap } from '@/lib/central-credentials';
 import { AXANTILO_AI_TOOL, ensureAxantiloLlmCredential } from '@/lib/axantilo-llm-credential';
+import { mailToolName } from '@/lib/bernd/mail-provider';
 
 /**
  * Generischer Deploy-Pfad für golden Workflow-Templates (verallgemeinert aus
@@ -42,7 +43,7 @@ const MAIL_CRED_KEY: Record<MailProvider, string> = {
  * dieselbe Mail-Credential-ID des Users.
  */
 const MAIL_BINDING_CRED_TYPES: Record<MailProvider, string[]> = {
-  gmail: ['gmailOAuth2Api'],
+  gmail: ['gmailOAuth2'],
   outlook: ['microsoftOutlookOAuth2Api'],
   imap: ['imap', 'smtp'],
 };
@@ -81,10 +82,6 @@ export async function findCredentialByTool(
     .eq('status', 'active')
     .maybeSingle();
   return (data?.n8n_credential_id as string | undefined) ?? null;
-}
-
-function mailToolName(provider: MailProvider): string {
-  return provider === 'gmail' ? 'gmail' : provider === 'outlook' ? 'outlook' : 'imap';
 }
 
 export interface DeployTemplateWorkflowArgs {

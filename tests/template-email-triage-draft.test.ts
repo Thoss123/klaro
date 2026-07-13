@@ -28,7 +28,7 @@ describe('email-triage-draft template (golden)', () => {
     expect(trigger?.type).toBe('n8n-nodes-base.gmailTrigger');
     // Trigger + Postfach-Aufräum-Nodes (markAsRead/Archiv) brauchen Provider-Credentials.
     expect(credentialBindings).toEqual(
-      expect.arrayContaining([{ node: 'Neue E-Mail', credentialType: 'gmailOAuth2Api' }]),
+      expect.arrayContaining([{ node: 'Neue E-Mail', credentialType: 'gmailOAuth2' }]),
     );
 
     const raw = JSON.stringify(workflow);

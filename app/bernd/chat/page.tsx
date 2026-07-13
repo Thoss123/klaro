@@ -8,6 +8,7 @@ import { loadProjects } from '@/lib/supabase-chat';
 import { SetupChat } from '@/components/bernd/SetupChat';
 import { ProfilCanvas } from '@/components/bernd/ProfilCanvas';
 import type { BerndConfig, BerndSetupState } from '@/lib/bernd/types';
+import { resolveBerndMailProvider } from '@/lib/bernd/mail-provider';
 
 /**
  * Setup-Chat-Seite (v2-Onboarding, Architekturplan §WP3 Aufgabe 3): 70/30-Layout — links
@@ -23,6 +24,7 @@ import type { BerndConfig, BerndSetupState } from '@/lib/bernd/types';
 interface Connections {
   email: boolean;
   telegram: boolean;
+  emailProvider?: 'gmail' | 'outlook' | 'imap';
 }
 
 export default function BerndChatPage() {
@@ -38,7 +40,11 @@ export default function BerndChatPage() {
       const res = await fetch(`/api/bernd/connections?projectId=${encodeURIComponent(pid)}`);
       if (!res.ok) return;
       const data = (await res.json()) as Connections;
-      setConnections({ email: Boolean(data.email), telegram: Boolean(data.telegram) });
+      setConnections({
+        email: Boolean(data.email),
+        telegram: Boolean(data.telegram),
+        emailProvider: data.emailProvider,
+      });
     } catch {
       // Verbindungsstatus ist rein additiv fürs Gate — ein fehlgeschlagenes Nachladen blockiert
       // den Chat nicht, das Gate bleibt einfach konservativ (nicht verbunden) bis zum nächsten Poll.
@@ -128,6 +134,8 @@ export default function BerndChatPage() {
   }
 
   const setupState = config.setup_state ?? {};
+  const resolvedMailProvider = connections.emailProvider ?? resolveBerndMailProvider(config.tools, setupState);
+  const emailProvider = resolvedMailProvider === 'outlook' ? 'outlook' : 'gmail';
 
   return (
     <div className="relative flex h-[100dvh] min-h-0 overflow-hidden bg-white font-sans">
@@ -159,6 +167,7 @@ export default function BerndChatPage() {
             initialState={setupState}
             emailConnected={connections.email}
             telegramConnected={connections.telegram}
+            emailProvider={emailProvider}
             onStateChange={handleStateChange}
             onConnectionChange={handleConnectionChange}
             onDeployed={handleDeployed}

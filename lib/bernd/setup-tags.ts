@@ -12,7 +12,16 @@ import type { BerndSetupState, ScopeStatus, SetupScope } from '@/lib/bernd/types
  * über `lib/strip-internal-tags.ts` + `components/chat/OptionsCard.tsx`.
  */
 
-const PROFIL_FELDER = ['gewerk', 'firmenname', 'mitarbeiter', 'standort', 'ton'] as const;
+const PROFIL_FELDER = [
+  'gewerk',
+  'firmenname',
+  'mitarbeiter',
+  'standort',
+  'ton',
+  'ansprechpartner',
+  'rolle',
+  'website',
+] as const;
 type ProfilFeld = (typeof PROFIL_FELDER)[number];
 
 const SCOPE_STATUS_WERTE: ScopeStatus[] = ['vorgeschlagen', 'gewaehlt', 'abgelehnt'];

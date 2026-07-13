@@ -9,7 +9,7 @@ import { branchOutputIndex, edgeTargetInput, resolveWorkflowEdges } from './work
 
 // Maps tool name → n8n credential type key (null = no credential needed)
 export const CREDENTIAL_TYPE: Record<string, string | null> = {
-  gmail:       'gmailOAuth2Api',
+  gmail:       'gmailOAuth2',
   outlook:     'microsoftOutlookOAuth2Api',
   imap:        'imap',
   email_send:  'smtp',      // zentral (Resend SMTP) — via central-credentials injiziert

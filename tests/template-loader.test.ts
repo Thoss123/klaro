@@ -43,8 +43,8 @@ describe('applySlots', () => {
 
     // Beide Provider-Nodes brauchen eine Credential-Bindung.
     expect(credentialBindings).toEqual([
-      { node: 'Mail rein', credentialType: 'gmailOAuth2Api' },
-      { node: 'Entwurf senden', credentialType: 'gmailOAuth2Api' },
+      { node: 'Mail rein', credentialType: 'gmailOAuth2' },
+      { node: 'Entwurf senden', credentialType: 'gmailOAuth2' },
     ]);
   });
 

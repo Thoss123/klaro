@@ -8,6 +8,7 @@ describe('parseSetupTags', () => {
       '',
       '<profil feld="gewerk">Elektriker</profil>',
       '<profil feld="firmenname">Mustermann GmbH</profil>',
+      '<profil feld="website">mustermann.de</profil>',
       '<scope id="email_triage" status="gewaehlt"/>',
       '<ablauf scope="email_triage" frage="eskalation_bei">nur dringend</ablauf>',
       '<ziel>Materialbelege automatisch ablegen</ziel>',
@@ -25,6 +26,7 @@ describe('parseSetupTags', () => {
     expect(tags).toEqual([
       { type: 'profil', feld: 'gewerk', value: 'Elektriker' },
       { type: 'profil', feld: 'firmenname', value: 'Mustermann GmbH' },
+      { type: 'profil', feld: 'website', value: 'mustermann.de' },
       { type: 'scope', id: 'email_triage', status: 'gewaehlt' },
       { type: 'ablauf', scope: 'email_triage', frage: 'eskalation_bei', antwort: 'nur dringend' },
       { type: 'ziel', text: 'Materialbelege automatisch ablegen' },

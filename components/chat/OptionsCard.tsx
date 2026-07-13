@@ -13,6 +13,7 @@ export interface ActiveOptions {
   question: string;
   choices: OptionChoice[];
   questions?: OptionQuestion[];
+  acknowledge?: boolean;
 }
 
 export interface OptionQuestion {
@@ -74,6 +75,7 @@ export function parseOptionsTag(content: string): ActiveOptions | null {
     return {
       question: typeof parsed?.question === 'string' ? parsed.question.trim() : '',
       choices,
+      ...(parsed?.acknowledge === true ? { acknowledge: true as const } : {}),
     };
   } catch {
     return null;
@@ -192,6 +194,20 @@ export default function OptionsCard({
     if (!text) return;
     finishMulti(answers);
   };
+
+  if (options.acknowledge) {
+    const choice = options.choices[0];
+    return (
+      <button
+        type="button"
+        onClick={() => onSelect(choice.label)}
+        className="mb-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+      >
+        {choice.label}
+        <ArrowUp size={14} className="rotate-90" />
+      </button>
+    );
+  }
 
   if (isMulti) {
     const currentQuestion = questions[Math.min(questionIndex, questions.length - 1)];

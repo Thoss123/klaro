@@ -32,7 +32,7 @@ describe('followup-serie template (golden)', () => {
     const sendNode = workflow.nodes.find((n) => n.name === 'Nachfass-Mail senden')!;
     expect(sendNode.type).toBe('n8n-nodes-base.gmail');
     expect(credentialBindings).toEqual(
-      expect.arrayContaining([{ node: 'Nachfass-Mail senden', credentialType: 'gmailOAuth2Api' }]),
+      expect.arrayContaining([{ node: 'Nachfass-Mail senden', credentialType: 'gmailOAuth2' }]),
     );
   });
 

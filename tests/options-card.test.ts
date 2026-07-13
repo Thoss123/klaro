@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { parseOptionsTag } from '@/components/chat/OptionsCard';
 
 describe('parseOptionsTag', () => {
+  it('parses a guided acknowledgement without inventing a question', () => {
+    const parsed = parseOptionsTag(
+      '<options>{"acknowledge":true,"choices":[{"id":"verstanden","label":"Okay, verstanden"}]}</options>',
+    );
+    expect(parsed).toEqual({
+      question: '',
+      choices: [{ id: 'verstanden', label: 'Okay, verstanden' }],
+      acknowledge: true,
+    });
+  });
+
   it('parses legacy single-question options', () => {
     const parsed = parseOptionsTag(
       'Passt das?\n<options>{"question":"Passt das so?","choices":[{"id":"yes","label":"Ja"},{"id":"edit","label":"Ändern"}]}</options>',
