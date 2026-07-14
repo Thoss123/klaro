@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServiceClient } from '@/lib/supabase';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { isN8nMcpConfigured, mcpGetNodeTypes } from '@/lib/n8n-mcp-bridge';
 import {
@@ -7,18 +8,17 @@ import {
 } from '@/lib/n8n-node-type-parser';
 import { dedupePropertyOptions, resolveStaticOptions } from '@/lib/n8n-static-options';
 import { fetchAirtableOptions, isUuid, supportsDynamicOptions } from '@/lib/n8n-dynamic-options';
-import type { SupabaseClient } from '@supabase/supabase-js';
-
 /**
  * Credential-Token für den User laden und entschlüsseln.
  * Das Frontend sendet die n8n-Credential-ID (`n8n_credential_id`); ältere
  * Stände schickten die Supabase-Zeilen-ID (UUID) — beides akzeptieren.
+ * `encrypted_value` ist nur via service_role lesbar (Spalten-Grant-Härtung).
  */
 async function loadCredentialToken(
-  supabase: SupabaseClient,
   userId: string,
   credentialId: string,
 ): Promise<string | null> {
+  const supabase = createSupabaseServiceClient();
   // `id` ist eine UUID-Spalte — ein Nicht-UUID-Wert würde den Query crashen.
   const columns = isUuid(credentialId) ? ['id', 'n8n_credential_id'] : ['n8n_credential_id'];
   for (const column of columns) {
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   // Anbieter-API (z. B. Airtable Bases/Tables) — live mit dem User-Credential laden.
   if (credentialId && supportsDynamicOptions(nodeType, propertyName)) {
     try {
-      const token = await loadCredentialToken(supabase, user.id, credentialId);
+      const token = await loadCredentialToken(user.id, credentialId);
       if (token) {
         const options = await fetchAirtableOptions({ token, propertyName, parameters });
         if (options?.length) {
