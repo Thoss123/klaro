@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
 
   const project_id = req.nextUrl.searchParams.get('project_id');
   let query = supabase
-    .from('user_credentials')
+    .from('user_credentials_safe')
     .select('id, tool_name, credential_type, status, n8n_credential_id, created_at')
     .eq('user_id', user.id)
     .eq('status', 'active');
@@ -199,7 +199,7 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
 
   const { data: cred } = await supabase
-    .from('user_credentials')
+    .from('user_credentials_safe')
     .select('n8n_credential_id')
     .eq('id', id)
     .eq('user_id', user.id)

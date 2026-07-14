@@ -20,9 +20,8 @@ const credRows = [{
 }];
 
 /** Minimaler chainbarer Supabase-Mock: select/eq sammeln Filter, limit() liefert Treffer. */
-function makeSupabase() {
+function makeCredentialSupabase() {
   return {
-    auth: { getUser: async () => ({ data: { user: { id: USER_ID } } }) },
     from: (_table: string) => {
       const filters: Array<[string, unknown]> = [];
       type Builder = {
@@ -42,8 +41,18 @@ function makeSupabase() {
   };
 }
 
+function makeAuthSupabase() {
+  return {
+    auth: { getUser: async () => ({ data: { user: { id: USER_ID } } }) },
+  };
+}
+
 vi.mock('@/lib/supabase-server', () => ({
-  createSupabaseServerClient: async () => makeSupabase(),
+  createSupabaseServerClient: async () => makeAuthSupabase(),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createSupabaseServiceClient: () => makeCredentialSupabase(),
 }));
 
 vi.mock('@/lib/n8n-mcp-bridge', () => ({
